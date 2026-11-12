@@ -3,7 +3,7 @@ import type { Level } from './sim/model'
 export const LEVELS: Level[] = [
   {
     id: 'primeiro-deploy',
-    title: '1. Primeiro deploy',
+    title: 'Primeiro deploy',
     briefing:
       'Seu app saiu no jornal da faculdade. São 900 requisições por segundo, e um servidor sozinho aguenta 400. Coloque o app no ar sem estourar o orçamento.',
     durationS: 30,
@@ -14,7 +14,7 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'banco-nao-aguenta',
-    title: '2. O banco não aguenta',
+    title: 'O banco não aguenta',
     briefing:
       'O tráfego subiu para 1.800 req/s e quase tudo é leitura. O banco aguenta 1.000 req/s e custa caro. Encontre outro jeito de responder as leituras.',
     durationS: 30,
@@ -25,7 +25,7 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'black-friday',
-    title: '3. Black Friday',
+    title: 'Black Friday',
     briefing:
       'Às 20s o tráfego triplica, e no pico um servidor cai. Metade das requisições é imagem e CSS. Sobreviva à noite sem quebrar o caixa.',
     durationS: 60,

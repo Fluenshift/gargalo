@@ -1,17 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   addEdge,
   useEdgesState,
   useNodesState,
+  useReactFlow,
 } from '@xyflow/react'
 import type { Connection, Edge, IsValidConnection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
+import { KindIcon } from './KindIcon'
 import { LEVELS } from './levels'
 import { NodeCard } from './NodeCard'
 import type { ComponentNode } from './NodeCard'
@@ -108,10 +111,11 @@ export default function App() {
   }, [])
 
   return (
-    <Board
-      key={level.id}
-      level={level}
-      onPassed={markPassed}
+    <ReactFlowProvider key={level.id}>
+      <Board
+        level={level}
+        number={levelIdx + 1}
+        onPassed={markPassed}
       nav={
         <nav className="levels" aria-label="Fases">
           {LEVELS.map((l, i) => (
@@ -121,18 +125,35 @@ export default function App() {
               aria-current={i === levelIdx ? 'step' : undefined}
               onClick={() => setLevelIdx(i)}
             >
-              {l.title}
+              <span className="levels__n">{i + 1}</span>
+              <span className="levels__title">{l.title}</span>
               {passed.includes(l.id) && <span className="tick" aria-label="concluída">✓</span>}
             </button>
           ))}
         </nav>
       }
-    />
+      />
+    </ReactFlowProvider>
   )
 }
 
+const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPassed: (id: string) => void }) {
+function Board({
+  level,
+  number,
+  nav,
+  onPassed,
+}: {
+  level: Level
+  number: number
+  nav: ReactNode
+  onPassed: (id: string) => void
+}) {
+  const { fitView } = useReactFlow()
+  /** Id of a just-added node to bring into view once React Flow has measured it. */
+  const pendingFit = useRef<string | null>(null)
   const [initial] = useState(() => loadDesign(level))
   const [nodes, setNodes, onNodesChange] = useNodesState<ComponentNode>(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges)
@@ -147,6 +168,13 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
   const cost = totalCost(arch)
 
   useEffect(() => save(designKey(level), { nodes, edges }), [level, nodes, edges])
+
+  useEffect(() => {
+    const added = nodes.find((n) => n.id === pendingFit.current)
+    if (!added?.measured?.width) return
+    pendingFit.current = null
+    fitView({ padding: 0.3, maxZoom: 1, duration: prefersReducedMotion() ? 0 : 250 })
+  }, [nodes, fitView])
 
   useEffect(() => {
     if (!running) return
@@ -190,6 +218,7 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
       ...ns,
       { id, type: 'component', position: { x: COLUMN[kind], y: 20 + sameKind * 100 }, data: { kind } },
     ])
+    pendingFit.current = id
   }
 
   const reset = () => {
@@ -225,6 +254,7 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
 
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
+  const measured = finished ? run.summary : undefined
 
   return (
     <div className="app">
@@ -236,30 +266,27 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
 
         {nav}
 
-        <section className="brief">
-          <p>{level.briefing}</p>
-          <ul className="goals">
-            <li>Disponibilidade de pelo menos {pct(g.minAvailability)}</li>
-            <li>p99 de até {ms(g.maxP99Ms)}</li>
-            <li className={cost > g.maxCost ? 'over' : ''}>
-              Custo até ${g.maxCost}/mês <strong>(atual: ${cost})</strong>
-            </li>
-          </ul>
-        </section>
+        <p className="brief">{level.briefing}</p>
 
-        <section className="palette">
-          <h2>Adicionar componente</h2>
-          {PALETTE.map((kind) => (
-            <button key={kind} onClick={() => addComponent(kind)} disabled={!editable}>
-              <span className="palette__name">{SPECS[kind].label}</span>
-              <span className="palette__meta">
-                {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
-              </span>
-              <span className="palette__desc">{SPECS[kind].description}</span>
-            </button>
-          ))}
+        <section className="parts" aria-labelledby="parts-title">
+          <h2 id="parts-title">Peças</h2>
+          <ul>
+            {PALETTE.map((kind) => (
+              <li key={kind}>
+                <button className="part" onClick={() => addComponent(kind)} disabled={!editable}>
+                  <KindIcon kind={kind} size={22} />
+                  <span className="part__name">{SPECS[kind].label}</span>
+                  <span className="part__spec">
+                    {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
+                  </span>
+                  <span className="part__desc">{SPECS[kind].description}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
           <p className="help">
-            Arraste da bolinha direita de um componente até outro para conectar. Selecione e aperte Delete para remover.
+            Clique numa peça para pôr no desenho. Arraste da bolinha direita de um componente até outro para ligar.
+            Selecione e aperte Delete para remover.
           </p>
         </section>
       </aside>
@@ -282,16 +309,17 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
             onEdgesDelete={clearRun}
             fitView
             fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+            minZoom={0.2}
           >
             <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
-            <Controls showInteractive={false} />
+            <Controls showInteractive={false} position="top-left" />
           </ReactFlow>
         </div>
 
         <footer className="console">
           <div className="console__actions">
             <button className="run" onClick={start} disabled={running}>
-              {running ? `Simulando… ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
+              {running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
             </button>
             <button className="ghost" onClick={reset} disabled={running}>
               Recomeçar fase
@@ -340,10 +368,55 @@ function Board({ level, nav, onPassed }: { level: Level; nav: ReactNode; onPasse
             </label>
           )}
 
-          {finished && <Result summary={run.summary} level={level} ticks={run.ticks} />}
+          {finished && <Result summary={run.summary} ticks={run.ticks} />}
+
+          <table className="sheet">
+            <caption>
+              <span className="sheet__n">
+                Folha {number}/{LEVELS.length}
+              </span>
+              <span className="sheet__title">{level.title}</span>
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Meta</th>
+                <th scope="col">Exigido</th>
+                <th scope="col">Medido</th>
+              </tr>
+            </thead>
+            <tbody>
+              <GoalRow
+                name="Disponibilidade"
+                required={`≥ ${pct(g.minAvailability)}`}
+                value={measured && pct(measured.availability)}
+                ok={measured?.passed.availability}
+              />
+              <GoalRow
+                name="Latência p99"
+                required={`≤ ${ms(g.maxP99Ms)}`}
+                value={measured && ms(measured.p99Ms)}
+                ok={measured?.passed.p99}
+              />
+              <GoalRow name="Custo mensal" required={`≤ $${g.maxCost}`} value={`$${cost}`} ok={cost <= g.maxCost} />
+            </tbody>
+          </table>
         </footer>
       </main>
     </div>
+  )
+}
+
+function GoalRow({ name, required, value, ok }: { name: string; required: string; value?: string; ok?: boolean }) {
+  const state = value === undefined ? '' : ok ? 'is-ok' : 'is-fail'
+  return (
+    <tr className={state}>
+      <th scope="row">{name}</th>
+      <td>{required}</td>
+      <td>
+        {value ?? '—'}
+        {value !== undefined && <span className="sheet__mark">{ok ? ' ✓' : ' ✗'}</span>}
+      </td>
+    </tr>
   )
 }
 
@@ -357,23 +430,14 @@ function Meter({ name, value, bad, children }: { name: string; value: string; ba
   )
 }
 
-function Result({ summary, level, ticks }: { summary: RunSummary; level: Level; ticks: TickResult[] }) {
-  const g = level.goals
-  const rows: [string, string, boolean][] = [
-    ['Disponibilidade', `${pct(summary.availability)} (meta ${pct(g.minAvailability)})`, summary.passed.availability],
-    ['p99 da rodada', `${ms(summary.p99Ms)} (meta ${ms(g.maxP99Ms)})`, summary.passed.p99],
-    ['Custo', `$${summary.cost}/mês (meta $${g.maxCost})`, summary.passed.cost],
-  ]
+function Result({ summary, ticks }: { summary: RunSummary; ticks: TickResult[] }) {
   return (
     <section className={`result ${summary.passed.all ? 'result--pass' : 'result--fail'}`} aria-live="polite">
-      <h2>{summary.passed.all ? 'Fase concluída' : 'Ainda não'}</h2>
-      <ul>
-        {rows.map(([name, value, ok]) => (
-          <li key={name} className={ok ? 'ok' : 'fail'}>
-            <span aria-hidden>{ok ? '✓' : '✗'}</span> {name}: {value}
-          </li>
-        ))}
-      </ul>
+      <h2>
+        {summary.passed.all
+          ? 'Fase concluída. As três metas foram cumpridas.'
+          : 'Ainda não. Veja no selo da folha qual meta falhou.'}
+      </h2>
       {hints(summary, ticks).map((h) => (
         <p key={h} className="hint">
           {h}

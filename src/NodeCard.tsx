@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type { Node, NodeProps } from '@xyflow/react'
+import { KindIcon } from './KindIcon'
 import { SPECS } from './sim/model'
 import type { Kind } from './sim/model'
 import type { NodeStats } from './sim/engine'
@@ -25,7 +26,10 @@ export function NodeCard({ data, selected }: NodeProps<ComponentNode>) {
   return (
     <div className={`node node--${data.kind} heat--${state}${selected ? ' is-selected' : ''}`}>
       {data.kind !== 'client' && <Handle type="target" position={Position.Left} />}
-      <div className="node__title">{spec.label}</div>
+      <div className="node__title">
+        <KindIcon kind={data.kind} size={18} />
+        {spec.label}
+      </div>
       {stats ? (
         <>
           <div className="node__load">
