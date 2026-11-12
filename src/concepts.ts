@@ -192,9 +192,29 @@ export const GLOSSARY: GlossaryEntry[] = [
     definition: 'Somar capacidade com mais cópias da mesma peça, em vez de trocar por uma maior.',
   },
   {
+    id: 'sem-estado',
+    term: 'sem estado',
+    forms: ['stateless'],
+    definition:
+      'Servidor que não guarda nada entre uma requisição e outra. O que precisa durar fica no banco, e por isso qualquer cópia atende qualquer pessoa.',
+  },
+  {
     id: 'ponto-unico',
     term: 'ponto único de falha',
     definition: 'Peça que, se cair, derruba o sistema inteiro porque não há outra fazendo o mesmo papel.',
+  },
+  {
+    id: 'redundancia',
+    term: 'redundância',
+    forms: ['redundante', 'redundantes'],
+    definition: 'Mais de uma peça fazendo o mesmo papel, para que a queda de uma não derrube o serviço.',
+  },
+  {
+    id: 'folga',
+    term: 'folga',
+    forms: ['folga de capacidade'],
+    definition:
+      'Capacidade além da carga esperada. Cobre o pico e a queda de uma peça: com N servidores no limite, quando um cai os outros transbordam.',
   },
   {
     id: 'health-check',
