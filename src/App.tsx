@@ -46,8 +46,10 @@ import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db']
-const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020 }
+const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db', 'queue', 'worker']
+const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020, queue: 820, worker: 1020 }
+/** Pieces that share a column with another start lower, so they don't land on top of it. */
+const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320 }
 const TICK_MS = 120
 const TOAST_MS = 6000
 const LONG_PRESS_MS = 550
@@ -141,6 +143,10 @@ function hints(summary: RunSummary, ticks: TickResult[]): string[] {
     out.push('Requisições foram mandadas para um servidor fora do ar. Um load balancer para de enviar tráfego a servidores que caem.')
   if (!summary.passed.p99 && out.length === 0)
     out.push('Nada caiu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.')
+  if (summary.backlogAtEnd >= 1)
+    out.push(`A rodada terminou com ${count(summary.backlogAtEnd)} mensagens esperando na fila. Se o backlog não esvazia, o problema só foi adiado: ponha mais workers.`)
+  if (summary.async.lost >= 1)
+    out.push(`${count(summary.async.lost)} escritas foram aceitas pela fila e se perderam depois. Confira se os workers chegam ao banco e se ele aguenta o ritmo deles.`)
   if (!summary.passed.cost)
     out.push('Acima do orçamento. Procure o componente que resolve o gargalo gastando menos.')
   return out
@@ -446,7 +452,7 @@ function Board({
     const id = `${kind}-${Date.now().toString(36)}`
     setNodes((ns) => [
       ...ns,
-      { id, type: 'component', position: { x: COLUMN[kind], y: 20 + sameKind * 100 }, data: { kind } },
+      { id, type: 'component', position: { x: COLUMN[kind], y: (FIRST_ROW[kind] ?? 20) + sameKind * 100 }, data: { kind } },
     ])
     pendingFit.current = id
   }

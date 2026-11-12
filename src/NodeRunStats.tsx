@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Sparkline } from './Sparkline'
 import type { TickResult } from './sim/engine'
-import { nodeSeries } from './sim/metrics'
+import { nodeSeries, waitLabel } from './sim/metrics'
 
 interface Props {
   ticks: TickResult[]
@@ -53,6 +53,27 @@ export function NodeRunStats({ ticks, nodeId, shown }: Props) {
       max: peak(series.latencyMs),
     },
   ]
+  if (series.backlog && series.waitMs) {
+    // A stalled queue (nothing draining it) plots at the top of the chart.
+    const finiteWait = series.waitMs.filter(Number.isFinite)
+    const waitTop = peak(finiteWait)
+    rows.push(
+      {
+        name: 'Fila',
+        value: now ? `${fmt(series.backlog[i])} msgs` : '—',
+        bad: now && series.backlog[i] > 0 && i === ticks.length - 1,
+        values: series.backlog,
+        max: peak(series.backlog),
+      },
+      {
+        name: 'Tempo até processar',
+        value: now ? waitLabel(series.waitMs[i]) : '—',
+        bad: now && !Number.isFinite(series.waitMs[i]),
+        values: series.waitMs.map((v) => (Number.isFinite(v) ? v : waitTop)),
+        max: waitTop,
+      },
+    )
+  }
 
   return (
     <section className="noderun" aria-label="Esta peça na rodada">

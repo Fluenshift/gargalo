@@ -31,12 +31,22 @@ export function mostSaturated(tick: TickResult): string | undefined {
   return best
 }
 
+/** "800 ms", "12,5 s", or "parada" when nothing drains the backlog. */
+export function waitLabel(ms: number): string {
+  if (!Number.isFinite(ms)) return 'parada'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return `${(ms / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`
+}
+
 export interface NodeSeries {
   load: number[]
   utilization: number[]
   dropRate: number[]
   latencyMs: number[]
   down: boolean[]
+  /** Only for pieces that hold a backlog; undefined for the others. */
+  backlog?: number[]
+  waitMs?: number[]
 }
 
 /** One piece's numbers per second of the run. Seconds where it did not exist count as idle. */
@@ -49,6 +59,10 @@ export function nodeSeries(ticks: TickResult[], nodeId: string): NodeSeries {
     series.dropRate.push(s?.dropRate ?? 0)
     series.latencyMs.push(s?.latencyMs ?? 0)
     series.down.push(s?.down ?? false)
+  }
+  if (ticks.some((t) => t.nodes[nodeId]?.backlog !== undefined)) {
+    series.backlog = ticks.map((t) => t.nodes[nodeId]?.backlog ?? 0)
+    series.waitMs = ticks.map((t) => t.nodes[nodeId]?.waitMs ?? 0)
   }
   return series
 }

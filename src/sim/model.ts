@@ -1,6 +1,6 @@
 // Domain model: component catalogue, architecture graph and level definitions.
 
-export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db'
+export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db' | 'queue' | 'worker'
 export type RequestClass = 'static' | 'read' | 'write'
 /** Requests per second of each class. */
 export type ClassLoad = Record<RequestClass, number>
@@ -40,7 +40,40 @@ export interface Spec {
    * from what arrived and the state it kept from the previous second.
    * Without it, the node handles exactly what arrived and keeps no state.
    */
-  step?: (arriving: ClassLoad, state: NodeState | undefined) => { load: ClassLoad; state: NodeState }
+  step?: (arriving: ClassLoad, state: NodeState | undefined, ctx: StepContext) => StepResult
+  /**
+   * Classes this piece answers to the user as soon as it accepts them. The
+   * work still goes on downstream, but nobody waits for it: what happens to it
+   * later no longer counts for availability or latency.
+   */
+  acknowledges?: RequestClass[]
+}
+
+export interface StepContext {
+  /** Requests per second the live targets of this node can take, summed. */
+  downstreamCapacity: number
+}
+
+export interface StepResult {
+  load: ClassLoad
+  state: NodeState
+  /** Arrivals refused this second (a full queue). They fail like an overload. */
+  dropped?: ClassLoad
+  /** Requests waiting inside the node when the second ends. */
+  backlog?: number
+  /** How long a request accepted now waits before it moves on, in ms. Infinity if nothing drains it. */
+  waitMs?: number
+}
+
+const QUEUE_CAPACITY = 10_000
+/** Messages a queue holds before it starts refusing new ones. */
+export const QUEUE_MAX_BACKLOG = 20_000
+
+/** Writes go to a queue when there is one; everything else stays off queues. */
+function splitByClass(targets: RouteTarget[], c: RequestClass): RouteTarget[] {
+  const usable = c === 'write' ? targets : targets.filter((t) => t.kind !== 'queue')
+  const queues = usable.filter((t) => t.kind === 'queue')
+  return c === 'write' && queues.length ? queues : usable
 }
 
 export const SPECS: Record<Kind, Spec> = {
@@ -82,9 +115,10 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 30,
     cost: 50,
     serves: { static: 1 },
-    targets: ['cache', 'db'],
-    maxOut: 1,
+    targets: ['cache', 'db', 'queue'],
+    maxOut: 2,
     description: 'Roda a aplicação. Responde estáticos; leituras e escritas vão adiante.',
+    route: splitByClass,
   },
   cache: {
     label: 'Cache',
@@ -105,6 +139,43 @@ export const SPECS: Record<Kind, Spec> = {
     targets: [],
     maxOut: 0,
     description: 'Fonte da verdade. Caro e difícil de escalar.',
+  },
+  queue: {
+    label: 'Fila de mensagens',
+    capacity: QUEUE_CAPACITY,
+    baseLatencyMs: 2,
+    cost: 30,
+    serves: {},
+    targets: ['worker'],
+    maxOut: 16,
+    description: 'Guarda as escritas e responde na hora. Os workers consomem no ritmo deles; cabem 20.000 mensagens.',
+    acknowledges: ['write'],
+    // Consumers pull: a crashed worker simply stops taking messages.
+    route: (targets) => targets.filter((t) => !t.down),
+    step: (arriving, state, { downstreamCapacity }) => {
+      const drain = Math.min(downstreamCapacity, QUEUE_CAPACITY)
+      const total = (state?.backlog ?? 0) + arriving.write
+      const out = Math.min(total, drain)
+      const dropped = Math.max(0, total - out - QUEUE_MAX_BACKLOG)
+      const backlog = total - out - dropped
+      return {
+        load: { ...arriving, write: out },
+        state: { backlog },
+        dropped: { static: 0, read: 0, write: dropped },
+        backlog,
+        waitMs: backlog === 0 ? 0 : drain > 0 ? (backlog / drain) * 1000 : Infinity,
+      }
+    },
+  },
+  worker: {
+    label: 'Worker',
+    capacity: 200,
+    baseLatencyMs: 20,
+    cost: 40,
+    serves: {},
+    targets: ['db'],
+    maxOut: 1,
+    description: 'Consome mensagens da fila e grava no banco. Ninguém espera por ele.',
   },
 }
 
