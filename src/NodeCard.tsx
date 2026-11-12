@@ -1,5 +1,6 @@
 import { Handle, Position } from '@xyflow/react'
 import type { Node, NodeProps } from '@xyflow/react'
+import { useControlScale, useEditor } from './editorContext'
 import { KindIcon } from './KindIcon'
 import { SPECS } from './sim/model'
 import type { Kind } from './sim/model'
@@ -17,7 +18,9 @@ function heat(stats?: NodeStats): 'idle' | 'ok' | 'warm' | 'hot' | 'down' {
   return 'ok'
 }
 
-export function NodeCard({ data, selected }: NodeProps<ComponentNode>) {
+export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentNode>) {
+  const { editable, remove } = useEditor()
+  const scale = useControlScale()
   const spec = SPECS[data.kind]
   const { stats } = data
   const state = heat(stats)
@@ -51,6 +54,21 @@ export function NodeCard({ data, selected }: NodeProps<ComponentNode>) {
         </div>
       )}
       {spec.maxOut > 0 && <Handle type="source" position={Position.Right} />}
+      {selected && editable && deletable && (
+        <button
+          type="button"
+          className="remove-x node__remove nodrag nopan"
+          aria-label={`Remover ${spec.label}`}
+          title="Remover"
+          style={{ transform: `scale(${scale})` }}
+          onClick={(e) => {
+            e.stopPropagation()
+            remove([id])
+          }}
+        >
+          <span aria-hidden>×</span>
+        </button>
+      )}
     </div>
   )
 }
