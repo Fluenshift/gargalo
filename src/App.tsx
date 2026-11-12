@@ -15,6 +15,7 @@ import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnNodeDrag, O
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
+import { LockIcon } from './LockIcon'
 import { ContextMenu } from './ContextMenu'
 import type { MenuItem } from './ContextMenu'
 import {
@@ -32,7 +33,9 @@ import { EditorContext } from './editorContext'
 import type { Editor } from './editorContext'
 import { Inspector } from './Inspector'
 import { KindIcon } from './KindIcon'
-import { LEVELS } from './levels'
+import { CareerMap } from './CareerMap'
+import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
+import type { Progress, Stage } from './career'
 import { NodeCard } from './NodeCard'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
@@ -66,35 +69,44 @@ const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 const designKey = (level: Level) => `gargalo:design:${level.id}`
-const PASSED_KEY = 'gargalo:passed'
 
 interface Design {
   nodes: ComponentNode[]
   edges: Edge[]
 }
 
-function freshDesign(): Design {
-  return {
-    nodes: [{ id: 'client', type: 'component', position: { x: 0, y: 120 }, data: { kind: 'client' }, deletable: false }],
-    edges: [],
-  }
+/** The level's starting architecture laid out in columns, pieces of the same kind stacked. */
+function freshDesign(stage: Stage): Design {
+  const arch = startArchitecture(stage)
+  const nodes = arch.nodes.map((n): ComponentNode => {
+    const same = arch.nodes.filter((m) => m.kind === n.kind)
+    const y = 120 + (same.indexOf(n) - (same.length - 1) / 2) * 110
+    return {
+      id: n.id,
+      type: 'component',
+      position: { x: COLUMN[n.kind], y },
+      data: { kind: n.kind },
+      ...(n.kind === 'client' ? { deletable: false } : {}),
+    }
+  })
+  return { nodes, edges: arch.edges.map((e) => ({ id: `${e.source}->${e.target}`, ...e })) }
 }
 
-function loadDesign(level: Level): Design {
+function loadDesign(stage: Stage): Design {
   try {
-    const raw = localStorage.getItem(designKey(level))
+    const raw = localStorage.getItem(designKey(stage.level))
     if (raw) return JSON.parse(raw) as Design
   } catch {
     // Storage unavailable or corrupt: start from scratch.
   }
-  return freshDesign()
+  return freshDesign(stage)
 }
 
-function loadPassed(): string[] {
+function readStorage(key: string): string | null {
   try {
-    return JSON.parse(localStorage.getItem(PASSED_KEY) ?? '[]') as string[]
+    return localStorage.getItem(key)
   } catch {
-    return []
+    return null
   }
 }
 
@@ -147,41 +159,71 @@ function hints(summary: RunSummary, ticks: TickResult[]): string[] {
 }
 
 export default function App() {
-  const [levelIdx, setLevelIdx] = useState(0)
-  const [passed, setPassed] = useState<string[]>(loadPassed)
-  const level = LEVELS[levelIdx]
+  const [progress, setProgress] = useState<Progress>(() => loadProgress(readStorage))
+  const [view, setView] = useState<'board' | 'map'>('board')
+  const { passed, current } = progress
+  const stage = findStage(current)!
+  const { company } = stage
+
+  useEffect(() => save(CURRENT_KEY, current), [current])
 
   const markPassed = useCallback((id: string) => {
-    setPassed((prev) => {
-      if (prev.includes(id)) return prev
-      const next = [...prev, id]
+    setProgress((prev) => {
+      if (prev.passed.includes(id)) return prev
+      const next = [...prev.passed, id]
       save(PASSED_KEY, next)
-      return next
+      return { ...prev, passed: next }
     })
   }, [])
 
+  const play = (levelId: string) => {
+    setProgress((prev) => ({ ...prev, current: levelId }))
+    setView('board')
+  }
+
+  if (view === 'map')
+    return <CareerMap passed={passed} current={current} onPlay={play} onClose={() => setView('board')} />
+
   return (
-    <ReactFlowProvider key={level.id}>
+    <ReactFlowProvider key={stage.level.id}>
       <Board
-        level={level}
-        number={levelIdx + 1}
+        stage={stage}
         onPassed={markPassed}
-      nav={
-        <nav className="levels" aria-label="Fases">
-          {LEVELS.map((l, i) => (
-            <button
-              key={l.id}
-              className={i === levelIdx ? 'is-current' : ''}
-              aria-current={i === levelIdx ? 'step' : undefined}
-              onClick={() => setLevelIdx(i)}
-            >
-              <span className="levels__n">{i + 1}</span>
-              <span className="levels__title">{l.title}</span>
-              {passed.includes(l.id) && <span className="tick" aria-label="concluída">✓</span>}
-            </button>
-          ))}
-        </nav>
-      }
+        nav={
+          <nav className="levels" aria-labelledby="levels-company">
+            <div className="levels__head">
+              <h2 id="levels-company">
+                <span className="levels__where">Empresa {stage.companyIndex + 1}</span> {company.name}
+              </h2>
+              <button type="button" className="levels__map" onClick={() => setView('map')}>
+                Mapa da carreira
+              </button>
+            </div>
+            {[...company.levels, company.boss].map((l, i) => {
+              const status = levelStatus(l.id, passed)
+              const isBoss = l === company.boss
+              const current = l.id === stage.level.id
+              return (
+                <button
+                  key={l.id}
+                  className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
+                  aria-current={current ? 'step' : undefined}
+                  disabled={status === 'locked'}
+                  title={status === 'locked' ? (isBoss ? 'Conclua as fases da empresa para enfrentar o chefão' : 'Conclua a fase anterior') : undefined}
+                  onClick={() => play(l.id)}
+                >
+                  <span className="levels__n">{i + 1}</span>
+                  <span className="levels__title">
+                    {l.title}
+                    {isBoss && <span className="levels__boss">Chefão</span>}
+                  </span>
+                  {status === 'done' && <span className="tick" aria-label="concluída">✓</span>}
+                  {status === 'locked' && <LockIcon label="bloqueada" />}
+                </button>
+              )
+            })}
+          </nav>
+        }
       />
     </ReactFlowProvider>
   )
@@ -190,21 +232,12 @@ export default function App() {
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-function Board({
-  level,
-  number,
-  nav,
-  onPassed,
-}: {
-  level: Level
-  number: number
-  nav: ReactNode
-  onPassed: (id: string) => void
-}) {
+function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPassed: (id: string) => void }) {
+  const { level } = stage
   const { fitView } = useReactFlow()
   /** Id of a just-added node to bring into view once React Flow has measured it. */
   const pendingFit = useRef<string | null>(null)
-  const [initial] = useState(() => loadDesign(level))
+  const [initial] = useState(() => loadDesign(stage))
   const [nodes, setNodes, onNodesChange] = useNodesState<ComponentNode>(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges)
   const [run, setRun] = useState<{ ticks: TickResult[]; summary: RunSummary } | null>(null)
@@ -475,7 +508,7 @@ function Board({
   }, [])
 
   const reset = () => {
-    const fresh = freshDesign()
+    const fresh = freshDesign(stage)
     setNodes(fresh.nodes)
     setEdges(fresh.edges)
     setUndoStack([])
@@ -542,14 +575,25 @@ function Board({
         <section className="parts" aria-labelledby="parts-title">
           <h2 id="parts-title">Peças</h2>
           <ul>
-            {PALETTE.map((kind) => (
-              <li key={kind}>
-                <button className="part" onClick={() => addComponent(kind)} disabled={!editable}>
+            {PALETTE.map((kind) => {
+              const unlock = pieceUnlock(kind, stage.companyIndex)
+              return (
+              <li key={kind} className={unlock.unlocked ? undefined : 'is-locked'}>
+                <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked}>
                   <KindIcon kind={kind} size={22} />
-                  <span className="part__name">{SPECS[kind].label}</span>
-                  <span className="part__spec">
-                    {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
+                  <span className="part__name">
+                    {SPECS[kind].label}
+                    {!unlock.unlocked && <LockIcon />}
                   </span>
+                  {unlock.unlocked ? (
+                    <span className="part__spec">
+                      {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
+                    </span>
+                  ) : (
+                    <span className="part__spec">
+                      {unlock.by ? `Bloqueada até a empresa ${COMPANIES.indexOf(unlock.by) + 1}, ${unlock.by.name}.` : 'Bloqueada. Chega numa próxima empresa.'}
+                    </span>
+                  )}
                   <span className="part__desc">{SPECS[kind].description}</span>
                 </button>
                 <button
@@ -563,7 +607,8 @@ function Board({
                   <InfoIcon />
                 </button>
               </li>
-            ))}
+              )
+            })}
           </ul>
           <p className="help">
             Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar.
@@ -743,7 +788,7 @@ function Board({
           <table className="sheet">
             <caption>
               <span className="sheet__n">
-                Folha {number}/{LEVELS.length}
+                Folha {stage.number}/{stage.company.levels.length + 1}
               </span>
               <span className="sheet__title">{level.title}</span>
             </caption>

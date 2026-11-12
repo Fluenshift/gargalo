@@ -21,13 +21,13 @@ export const LEVELS: Level[] = [
     mix: { static: 0.1, read: 0.8, write: 0.1 },
     traffic: [{ from: 0, rps: 1800 }],
     failures: [],
-    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 550 },
+    goals: { minAvailability: 0.99, maxP99Ms: 330, maxCost: 550 },
   },
   {
     id: 'black-friday',
     title: 'Black Friday',
     briefing:
-      'Às 20s o tráfego triplica, e no pico um servidor cai. Metade das requisições é imagem e CSS. Sobreviva à noite sem quebrar o caixa.',
+      'O time anterior deixou um load balancer com três servidores ligados direto no banco. Às 20s o tráfego triplica, e no pico um servidor cai. Metade das requisições é imagem e CSS. Sobreviva à noite sem quebrar o caixa.',
     durationS: 60,
     mix: { static: 0.5, read: 0.4, write: 0.1 },
     traffic: [
@@ -37,5 +37,24 @@ export const LEVELS: Level[] = [
     ],
     failures: [{ kind: 'server', index: 0, from: 25, to: 40 }],
     goals: { minAvailability: 0.985, maxP99Ms: 350, maxCost: 700 },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'lb', kind: 'lb' },
+        { id: 'server-1', kind: 'server' },
+        { id: 'server-2', kind: 'server' },
+        { id: 'server-3', kind: 'server' },
+        { id: 'db', kind: 'db' },
+      ],
+      edges: [
+        { source: 'client', target: 'lb' },
+        { source: 'lb', target: 'server-1' },
+        { source: 'lb', target: 'server-2' },
+        { source: 'lb', target: 'server-3' },
+        { source: 'server-1', target: 'db' },
+        { source: 'server-2', target: 'db' },
+        { source: 'server-3', target: 'db' },
+      ],
+    },
   },
 ]

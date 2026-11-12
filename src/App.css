@@ -134,7 +134,7 @@ ul {
   flex-direction: column;
 }
 
-.levels button {
+.levels > button {
   display: grid;
   grid-template-columns: 24px 1fr auto;
   align-items: baseline;
@@ -145,11 +145,11 @@ ul {
   padding: 6px 10px 6px 8px;
 }
 
-.levels button:hover {
+.levels > button:hover {
   background: rgba(28, 42, 46, 0.06);
 }
 
-.levels button.is-current {
+.levels > button.is-current {
   border-left-color: var(--ink);
   background: var(--tile);
   font-weight: 700;
@@ -163,6 +163,95 @@ ul {
 .tick {
   color: var(--ok);
   font-weight: 800;
+}
+
+.levels__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.levels__head h2 {
+  font-size: 15px;
+  font-weight: 700;
+  font-stretch: 112%;
+}
+
+.levels__where {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.levels__map {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.levels__map:hover {
+  text-decoration-thickness: 2px;
+}
+
+.levels > button:disabled {
+  opacity: 1;
+  color: var(--ink-soft);
+}
+
+.levels > button:disabled:hover {
+  background: none;
+}
+
+.levels > button.is-boss {
+  margin-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+/* The boss tag: a small stamp next to the level name. */
+.levels__boss {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 1.5px solid currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: 2px;
+}
+
+.lock {
+  flex: none;
+  vertical-align: -2px;
+  color: var(--ink-soft);
+}
+
+.parts li.is-locked .part {
+  opacity: 1;
+  color: var(--ink-soft);
+}
+
+.parts li.is-locked .kind-icon {
+  opacity: 0.45;
+}
+
+.parts li.is-locked .part__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.parts li.is-locked .part__spec {
+  color: var(--ink);
 }
 
 .brief {
@@ -962,6 +1051,250 @@ ul {
   margin-top: 4px;
 }
 
+/* Career map: each company a title block, joined left to right by promotions.
+   Companies not reached yet are drawn in hidden lines (dashed), as on a drawing. */
+
+.career {
+  min-height: 100vh;
+  padding: 32px 40px 48px;
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.career__head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 24px;
+  max-width: 1200px;
+  margin-bottom: 36px;
+}
+
+.career__brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  font-stretch: 125%;
+  font-size: 20px;
+}
+
+.career__head h1 {
+  grid-column: 1;
+  font-size: 40px;
+  line-height: 1.05;
+  font-weight: 800;
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+}
+
+.career__head h1:focus {
+  outline: none;
+}
+
+.career__lede {
+  grid-column: 1;
+  max-width: 62ch;
+  color: var(--ink-soft);
+}
+
+.career__back {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: start;
+}
+
+.career__track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 56px;
+}
+
+.company {
+  position: relative;
+  flex: 0 1 400px;
+  min-width: 0;
+  background: var(--tile);
+  border: 1.5px solid var(--ink);
+}
+
+/* The promotion: a dimension-style line from the previous company. */
+.company + .company::before {
+  content: '';
+  position: absolute;
+  top: 34px;
+  right: 100%;
+  width: 56px;
+  border-top: 1.5px solid var(--ink);
+}
+
+.company + .company::after {
+  content: '';
+  position: absolute;
+  top: 29px;
+  left: -8px;
+  border: 6px solid transparent;
+  border-left: 8px solid var(--ink);
+  border-right: none;
+}
+
+.company.is-future {
+  background: none;
+  border-style: dashed;
+  color: var(--ink-soft);
+}
+
+.company.is-future::before {
+  border-top-style: dashed;
+}
+
+.company__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.company.is-future .company__head {
+  border-bottom-style: dashed;
+}
+
+.company__head h2 {
+  display: flex;
+  flex-direction: column;
+}
+
+.company__n {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.company__name {
+  font-size: 26px;
+  font-weight: 800;
+  font-stretch: 125%;
+  line-height: 1.05;
+}
+
+.company__state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.company__budget {
+  padding: 10px 14px 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.company__levels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--ink);
+}
+
+.company__levels li + li {
+  border-top: 1px solid var(--line);
+}
+
+.company__levels li.is-boss {
+  border-top: 1.5px solid var(--ink);
+}
+
+.step {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  column-gap: 6px;
+  align-items: baseline;
+  text-align: left;
+  background: none;
+  border: none;
+  border-left: 4px solid transparent;
+  padding: 10px 14px 10px 10px;
+}
+
+.step:hover:not(:disabled) {
+  background: #fff;
+}
+
+.step:disabled {
+  opacity: 1;
+  color: var(--ink-soft);
+}
+
+.step.is-current {
+  border-left-color: var(--ink);
+}
+
+.step__n {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.step__title {
+  font-weight: 700;
+}
+
+.is-boss .step__title {
+  font-size: 18px;
+  font-stretch: 112%;
+}
+
+.step:disabled .step__title {
+  font-weight: 600;
+}
+
+.step__status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.step__why {
+  grid-column: 2 / -1;
+  font-size: 13px;
+}
+
+.company__pieces {
+  padding: 10px 14px 14px;
+  border-top: 1.5px solid var(--ink);
+}
+
+.company__pieces h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 0 0 6px;
+}
+
+.company__pieces ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.company__pieces li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* Narrower laptops: keep the meters on one row so the canvas keeps its height. */
 @media (max-width: 1400px) {
   .meters {
@@ -1058,6 +1391,60 @@ ul {
   .scrub input {
     max-width: none;
     width: 100%;
+  }
+
+  .career {
+    padding: 20px 16px 32px;
+  }
+
+  .career__head {
+    grid-template-columns: 1fr;
+    margin-bottom: 24px;
+  }
+
+  .career__head h1 {
+    font-size: 32px;
+  }
+
+  .career__back {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: 10px;
+  }
+
+  .career__track {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 40px;
+  }
+
+  .company {
+    flex: none;
+  }
+
+  /* Promotions run downwards on a phone. */
+  .company + .company::before {
+    top: auto;
+    right: auto;
+    bottom: 100%;
+    left: 34px;
+    width: 0;
+    height: 40px;
+    border-top: none;
+    border-left: 1.5px solid var(--ink);
+  }
+
+  .company.is-future::before {
+    border-left-style: dashed;
+  }
+
+  .company + .company::after {
+    top: -8px;
+    left: 29px;
+    border: 6px solid transparent;
+    border-top: 8px solid var(--ink);
+    border-bottom: none;
   }
 
   .trash {

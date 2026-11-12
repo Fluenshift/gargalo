@@ -152,6 +152,11 @@ export interface Level {
   traffic: TrafficPhase[]
   failures: Failure[]
   goals: Goals
+  /**
+   * What is already on the drawing when the level opens (the previous team's work).
+   * Without it, the company's starting architecture, or just the users.
+   */
+  start?: Architecture
 }
 
 export function canConnect(arch: Architecture, sourceId: string, targetId: string): boolean {
