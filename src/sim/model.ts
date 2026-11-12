@@ -2,6 +2,16 @@
 
 export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db'
 export type RequestClass = 'static' | 'read' | 'write'
+/** Requests per second of each class. */
+export type ClassLoad = Record<RequestClass, number>
+/** What a node keeps from one simulated second to the next (a backlog, a lag). */
+export type NodeState = Record<string, number>
+
+export interface RouteTarget {
+  id: string
+  kind: Kind
+  down: boolean
+}
 
 export interface Spec {
   label: string
@@ -18,6 +28,19 @@ export interface Spec {
   /** Maximum number of outgoing connections. */
   maxOut: number
   description: string
+  /** Traffic from the users enters the graph here. */
+  entry?: boolean
+  /**
+   * Which targets get traffic of class `c`; the forwarded load is split evenly
+   * among them. Without it, every target gets an equal share.
+   */
+  route?: (targets: RouteTarget[], c: RequestClass) => RouteTarget[]
+  /**
+   * Decides what the node handles this second, before capacity is applied,
+   * from what arrived and the state it kept from the previous second.
+   * Without it, the node handles exactly what arrived and keeps no state.
+   */
+  step?: (arriving: ClassLoad, state: NodeState | undefined) => { load: ClassLoad; state: NodeState }
 }
 
 export const SPECS: Record<Kind, Spec> = {
@@ -30,6 +53,7 @@ export const SPECS: Record<Kind, Spec> = {
     targets: ['cdn', 'lb', 'server'],
     maxOut: 1,
     description: 'De onde vem o tráfego. O DNS só aponta para um lugar.',
+    entry: true,
   },
   cdn: {
     label: 'CDN',
@@ -50,6 +74,7 @@ export const SPECS: Record<Kind, Spec> = {
     targets: ['server'],
     maxOut: 16,
     description: 'Divide o tráfego igualmente entre servidores saudáveis (health check).',
+    route: (targets) => targets.filter((t) => !t.down),
   },
   server: {
     label: 'Servidor',
@@ -140,8 +165,8 @@ export function canConnect(arch: Architecture, sourceId: string, targetId: strin
   return out.length < spec.maxOut
 }
 
-export function totalCost(arch: Architecture): number {
-  return arch.nodes.reduce((sum, n) => sum + SPECS[n.kind].cost, 0)
+export function totalCost(arch: Architecture, pieces: Record<string, Spec> = SPECS): number {
+  return arch.nodes.reduce((sum, n) => sum + pieces[n.kind].cost, 0)
 }
 
 export function rpsAt(level: Level, t: number): number {
