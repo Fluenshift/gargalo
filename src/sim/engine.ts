@@ -7,9 +7,12 @@
 //  2. A sampling pass: individual requests walk the same graph and pick up
 //     latency at each node (base + exponential queueing delay that grows with
 //     utilization, as in an M/M/1 queue). Their latencies give the p99.
+//
+// What is specific to a kind of piece (routing, state carried between seconds)
+// lives in its Spec, so the engine has no per-kind branches.
 
 import { SPECS, rpsAt, totalCost } from './model'
-import type { Architecture, ArchNode, Level, RequestClass } from './model'
+import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec } from './model'
 
 export type FailureReason = 'overload' | 'down' | 'noRoute'
 
@@ -98,11 +101,18 @@ function sampleClass(level: Level, rng: Rng): RequestClass {
   return 'read'
 }
 
+/**
+ * Simulates second `t`. `state` holds what each node carries to the next
+ * second; it is read and updated in place, so pass the same map to every tick
+ * of a run.
+ */
 export function simulateTick(
   arch: Architecture,
   level: Level,
   t: number,
   rng: Rng,
+  state: Map<string, NodeState> = new Map(),
+  pieces: Record<string, Spec> = SPECS,
 ): TickResult {
   const rps = rpsAt(level, t)
   // More samples in busier seconds, so the run-wide p99 is weighted by traffic.
@@ -111,16 +121,17 @@ export function simulateTick(
   for (const e of arch.edges) children.get(e.source)?.push(e.target)
 
   const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t)]))
-  const routable = (node: ArchNode) => {
-    const targets = children.get(node.id) ?? []
-    // Load balancers health-check their targets; everything else forwards blindly.
-    return node.kind === 'lb' ? targets.filter((id) => !down.get(id)) : targets
+  const byId = new Map(arch.nodes.map((n) => [n.id, n]))
+  const routable = (node: ArchNode, c: RequestClass): string[] => {
+    const targets = (children.get(node.id) ?? []).map((id) => ({ id, kind: byId.get(id)!.kind, down: down.get(id)! }))
+    const route = pieces[node.kind].route
+    return (route ? route(targets, c) : targets).map((target) => target.id)
   }
 
-  const arriving = new Map<string, Record<RequestClass, number>>(
+  const arriving = new Map<string, ClassLoad>(
     arch.nodes.map((n) => [n.id, { static: 0, read: 0, write: 0 }]),
   )
-  const client = arch.nodes.find((n) => n.kind === 'client')
+  const client = arch.nodes.find((n) => pieces[n.kind].entry)
   if (client) for (const c of CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
 
   const failed = emptyFailures()
@@ -130,8 +141,13 @@ export function simulateTick(
   let served = 0
 
   for (const node of topoOrder(arch)) {
-    const spec = SPECS[node.kind]
-    const a = arriving.get(node.id)!
+    const spec = pieces[node.kind]
+    let a = arriving.get(node.id)!
+    if (spec.step) {
+      const next = spec.step(a, state.get(node.id))
+      a = next.load
+      state.set(node.id, next.state)
+    }
     const load = a.static + a.read + a.write
     const isNodeDown = down.get(node.id)!
     const pass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
@@ -144,13 +160,13 @@ export function simulateTick(
     }
     failed[isNodeDown ? 'down' : 'overload'] += load * (1 - pass)
 
-    const targets = routable(node)
     for (const c of CLASSES) {
       const survivors = a[c] * pass
       const endsHere = survivors * (spec.serves[c] ?? 0)
       served += endsHere
       const forward = survivors - endsHere
       if (forward <= 0) continue
+      const targets = routable(node, c)
       if (targets.length === 0) {
         failed.noRoute += forward
         continue
@@ -165,7 +181,6 @@ export function simulateTick(
   }
 
   // Sampling pass for latency.
-  const byId = new Map(arch.nodes.map((n) => [n.id, n]))
   const latencies: number[] = []
   if (client && rps > 0) {
     for (let i = 0; i < samples; i++) {
@@ -174,7 +189,7 @@ export function simulateTick(
       let latency = 0
       while (node) {
         if (rng() >= (passRate.get(node.id) ?? 0)) break
-        const spec = SPECS[node.kind]
+        const spec = pieces[node.kind]
         const rho = Math.min(nodes[node.id].utilization, MAX_UTILIZATION_FOR_LATENCY)
         const queueMean = (spec.baseLatencyMs * rho) / (1 - rho)
         latency += spec.baseLatencyMs - queueMean * Math.log(1 - rng())
@@ -182,7 +197,7 @@ export function simulateTick(
           latencies.push(latency)
           break
         }
-        const targets = routable(node)
+        const targets = routable(node, c)
         node = targets.length ? byId.get(targets[Math.floor(rng() * targets.length)]) : undefined
       }
     }
@@ -197,14 +212,19 @@ export function percentile(values: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]
 }
 
-export function summarize(arch: Architecture, level: Level, ticks: TickResult[]): RunSummary {
+export function summarize(
+  arch: Architecture,
+  level: Level,
+  ticks: TickResult[],
+  pieces: Record<string, Spec> = SPECS,
+): RunSummary {
   const total = ticks.reduce((s, t) => s + t.rps, 0)
   const served = ticks.reduce((s, t) => s + t.served, 0)
   const failed = emptyFailures()
   for (const tick of ticks) for (const r of Object.keys(failed) as FailureReason[]) failed[r] += tick.failed[r]
   const availability = total === 0 ? 1 : served / total
   const p99Ms = percentile(ticks.flatMap((t) => t.latencies), 0.99)
-  const cost = totalCost(arch)
+  const cost = totalCost(arch, pieces)
   const passed = {
     availability: availability >= level.goals.minAvailability,
     p99: p99Ms <= level.goals.maxP99Ms,
@@ -215,9 +235,10 @@ export function summarize(arch: Architecture, level: Level, ticks: TickResult[])
   return { availability, p99Ms, cost, failed, passed }
 }
 
-export function runLevel(arch: Architecture, level: Level, seed = 1) {
+export function runLevel(arch: Architecture, level: Level, seed = 1, pieces: Record<string, Spec> = SPECS) {
   const rng = mulberry32(seed)
+  const state = new Map<string, NodeState>()
   const ticks: TickResult[] = []
-  for (let t = 0; t < level.durationS; t++) ticks.push(simulateTick(arch, level, t, rng))
-  return { ticks, summary: summarize(arch, level, ticks) }
+  for (let t = 0; t < level.durationS; t++) ticks.push(simulateTick(arch, level, t, rng, state, pieces))
+  return { ticks, summary: summarize(arch, level, ticks, pieces) }
 }
