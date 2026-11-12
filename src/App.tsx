@@ -160,7 +160,8 @@ function Board({
   const [run, setRun] = useState<{ ticks: TickResult[]; summary: RunSummary } | null>(null)
   /** How many simulated seconds are on screen; scrubbable once the run ends. */
   const [shown, setShown] = useState(0)
-  const [running, setRunning] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const running = playing && run !== null && shown < run.ticks.length
 
   const finished = run !== null && !running
   const tick = run && shown > 0 ? run.ticks[shown - 1] : undefined
@@ -183,10 +184,6 @@ function Board({
   }, [running])
 
   useEffect(() => {
-    if (running && run && shown >= run.ticks.length) setRunning(false)
-  }, [running, run, shown])
-
-  useEffect(() => {
     if (finished && run.summary.passed.all) onPassed(level.id)
   }, [finished, run, onPassed, level.id])
 
@@ -194,7 +191,7 @@ function Board({
   const clearRun = useCallback(() => {
     setRun(null)
     setShown(0)
-    setRunning(false)
+    setPlaying(false)
   }, [])
 
   const isValidConnection: IsValidConnection = useCallback(
@@ -231,7 +228,7 @@ function Board({
   const start = () => {
     setRun(runLevel(arch, level, Date.now() & 0xffff))
     setShown(0)
-    setRunning(true)
+    setPlaying(true)
   }
 
   const displayNodes = useMemo(
