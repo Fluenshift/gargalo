@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { LEVELS } from '../levels'
-import { mulberry32, runLevel, simulateTick } from './engine'
+import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
 import { SPECS, canConnect } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
 
@@ -76,6 +76,36 @@ describe('simulateTick', () => {
   it('is deterministic for a seed', () => {
     const a = fanOut(3, 'db', [['client', 'lb']])
     expect(runLevel(a, steady, 7).summary).toEqual(runLevel(a, steady, 7).summary)
+  })
+})
+
+describe('latency percentiles', () => {
+  it('reads p50, p95 and p99 from the samples', () => {
+    const values = Array.from({ length: 100 }, (_, i) => 100 - i)
+    expect(latencyPercentiles(values)).toEqual({ p50Ms: 51, p95Ms: 96, p99Ms: 100 })
+  })
+
+  it('is zero without samples', () => {
+    expect(latencyPercentiles([])).toEqual({ p50Ms: 0, p95Ms: 0, p99Ms: 0 })
+  })
+
+  it('are ordered in every second and for the run', () => {
+    const a = arch([['client', 'server'], ['server', 'db']])
+    const { ticks, summary } = runLevel(a, steady, 3)
+    for (const p of [...ticks, summary]) {
+      expect(p.p50Ms).toBeGreaterThan(0)
+      expect(p.p50Ms).toBeLessThanOrEqual(p.p95Ms)
+      expect(p.p95Ms).toBeLessThanOrEqual(p.p99Ms)
+    }
+    expect(summary.p99Ms).toBe(latencyPercentiles(ticks.flatMap((t) => t.latencies)).p99Ms)
+  })
+
+  it('gives each node its mean latency, growing with utilization', () => {
+    const a = arch([['client', 'server'], ['server', 'db']])
+    const light = simulateTick(a, { ...steady, traffic: [{ from: 0, rps: 40 }] }, 0, mulberry32(1))
+    const heavy = simulateTick(a, { ...steady, traffic: [{ from: 0, rps: 380 }] }, 0, mulberry32(1))
+    expect(light.nodes.server.latencyMs).toBeGreaterThanOrEqual(SPECS.server.baseLatencyMs)
+    expect(heavy.nodes.server.latencyMs).toBeGreaterThan(light.nodes.server.latencyMs * 2)
   })
 })
 

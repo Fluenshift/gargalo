@@ -37,7 +37,8 @@ import type { ComponentNode } from './NodeCard'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { runLevel } from './sim/engine'
-import type { RunSummary, TickResult } from './sim/engine'
+import type { FailureReason, RunSummary, TickResult } from './sim/engine'
+import { costPerMillion, mostSaturated } from './sim/metrics'
 import { SPECS, canConnect, totalCost } from './sim/model'
 import type { Architecture, Kind, Level } from './sim/model'
 
@@ -112,6 +113,20 @@ function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
 
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1)}%`
 const ms = (n: number) => `${Math.round(n)} ms`
+const money = (n: number) => `$${n.toFixed(2).replace('.', ',')}`
+const count = (n: number) => Math.round(n).toLocaleString('pt-BR')
+
+const REASONS: [FailureReason, string][] = [
+  ['overload', 'sobrecarga'],
+  ['down', 'fora do ar'],
+  ['noRoute', 'sem rota'],
+]
+
+/** "120 por sobrecarga, 30 sem rota", or undefined when nothing was lost. */
+function lostByReason(failed: Record<FailureReason, number>, unit = ''): string | undefined {
+  const parts = REASONS.filter(([r]) => failed[r] >= 0.5).map(([r, name]) => `${count(failed[r])}${unit} por ${name}`)
+  return parts.length ? parts.join(', ') : undefined
+}
 
 function hints(summary: RunSummary, ticks: TickResult[]): string[] {
   const total = ticks.reduce((s, t) => s + t.rps, 0) || 1
@@ -480,6 +495,9 @@ function Board({
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
   const measured = finished ? run.summary : undefined
+  const saturated = tick && mostSaturated(tick)
+  const perMillion = costPerMillion(cost, level)
+  const selectNode = (id: string) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
 
   return (
     <div className="app">
@@ -609,11 +627,19 @@ function Board({
           </div>
 
           <div className="meters">
-            <Meter name="Tráfego" value={tick ? `${Math.round(tick.rps).toLocaleString('pt-BR')} req/s` : '—'} />
+            <Meter name="Tráfego" value={tick ? `${count(tick.rps)} req/s` : '—'}>
+              {saturated && (
+                <button className="meter__link" onClick={() => selectNode(saturated)}>
+                  Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label}{' '}
+                  {Math.round(tick!.nodes[saturated].utilization * 100)}%
+                </button>
+              )}
+            </Meter>
             <Meter
               name="Disponibilidade"
               value={tick ? pct(tick.rps ? tick.served / tick.rps : 1) : '—'}
               bad={!!tick && tick.rps > 0 && tick.served / tick.rps < g.minAvailability}
+              sub={tick && lostByReason(tick.failed, '/s') && `Perdendo ${lostByReason(tick.failed, '/s')}`}
             >
               <Sparkline
                 label="Disponibilidade por segundo"
@@ -624,7 +650,12 @@ function Board({
                 max={1}
               />
             </Meter>
-            <Meter name="p99" value={tick ? ms(tick.p99Ms) : '—'} bad={!!tick && tick.p99Ms > g.maxP99Ms}>
+            <Meter
+              name="Latência p99"
+              value={tick ? ms(tick.p99Ms) : '—'}
+              bad={!!tick && tick.p99Ms > g.maxP99Ms}
+              sub={tick && `p50 ${ms(tick.p50Ms)}, p95 ${ms(tick.p95Ms)}`}
+            >
               <Sparkline
                 label="p99 por segundo"
                 values={visible.map((t) => t.p99Ms)}
@@ -645,7 +676,11 @@ function Board({
                 min={1}
                 max={run.ticks.length}
                 value={shown}
-                onChange={(e) => setShown(Number(e.target.value))}
+                onChange={(e) => {
+                  // Scrubbing back must not resume playback from there.
+                  setPlaying(false)
+                  setShown(Number(e.target.value))
+                }}
               />
             </label>
           )}
@@ -680,6 +715,11 @@ function Board({
                 ok={measured?.passed.p99}
               />
               <GoalRow name="Custo mensal" required={`≤ $${g.maxCost}`} value={`$${cost}`} ok={cost <= g.maxCost} />
+              <tr>
+                <th scope="row">Custo por 1 mi de req.</th>
+                <td>—</td>
+                <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
+              </tr>
             </tbody>
           </table>
         </footer>
@@ -717,11 +757,25 @@ function GoalRow({ name, required, value, ok }: { name: string; required: string
   )
 }
 
-function Meter({ name, value, bad, children }: { name: string; value: string; bad?: boolean; children?: ReactNode }) {
+function Meter({
+  name,
+  value,
+  bad,
+  sub,
+  children,
+}: {
+  name: string
+  value: string
+  bad?: boolean
+  /** A smaller line under the value. */
+  sub?: ReactNode
+  children?: ReactNode
+}) {
   return (
     <div className={`meter${bad ? ' is-bad' : ''}`}>
       <span className="meter__name">{name}</span>
       <span className="meter__value">{value}</span>
+      {sub && <span className="meter__sub">{sub}</span>}
       {children}
     </div>
   )
@@ -735,6 +789,9 @@ function Result({ summary, ticks }: { summary: RunSummary; ticks: TickResult[] }
           ? 'Fase concluída. As três metas foram cumpridas.'
           : 'Ainda não. Veja no selo da folha qual meta falhou.'}
       </h2>
+      {lostByReason(summary.failed) && (
+        <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
+      )}
       {hints(summary, ticks).map((h) => (
         <p key={h} className="hint">
           {h}
