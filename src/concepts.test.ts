@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CONCEPTS, GLOSSARY, splitTerms } from './concepts'
 import type { Segment } from './concepts'
+import { LEVELS } from './levels'
 import { SPECS } from './sim/model'
 import type { Kind } from './sim/model'
 
@@ -42,6 +43,27 @@ describe('GLOSSARY', () => {
     for (const t of ['p99', 'throughput', 'req/s', 'health check', 'utilização', 'latência', 'disponibilidade',
       'escalar horizontalmente', 'ponto único de falha', 'backpressure', 'backlog', 'consistência eventual']) {
       expect(names).toContain(t)
+    }
+  })
+})
+
+// What each level teaches: a piece (explained in CONCEPTS) or a term (in GLOSSARY).
+const LEVEL_CONCEPTS: Record<string, string[]> = {
+  'colocar-no-ar': ['db', 'sem-estado'],
+  'primeiro-deploy': ['lb', 'escalar-horizontalmente'],
+  'banco-nao-aguenta': ['cache', 'miss'],
+  'imagens-pesadas': ['cdn', 'estaticos'],
+  'caiu-de-madrugada': ['redundancia', 'ponto-unico', 'health-check'],
+  'materia-na-tv': ['folga'],
+}
+
+describe('level concepts', () => {
+  it('every level teaches something the concepts module explains', () => {
+    const known = new Set([...Object.keys(CONCEPTS), ...GLOSSARY.map((e) => e.id)])
+    for (const level of LEVELS) {
+      const taught = LEVEL_CONCEPTS[level.id]
+      expect(taught, level.id).toBeDefined()
+      for (const id of taught) expect(known.has(id), `${level.id}: ${id}`).toBe(true)
     }
   })
 })

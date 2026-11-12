@@ -12,7 +12,7 @@ import {
   startArchitecture,
 } from './career'
 import type { Company } from './career'
-import { LEVELS } from './levels'
+import { BLACK_FRIDAY, LEVELS } from './levels'
 import type { Level } from './sim/model'
 
 const lvl = (id: string): Level => ({ ...LEVELS[0], id, title: id })
@@ -26,10 +26,20 @@ const career: Company[] = [
 const storage = (entries: Record<string, string>) => (key: string) => entries[key] ?? null
 
 describe('career data', () => {
-  it('the three original levels are the Startup, with Black Friday as its boss', () => {
+  it('the Startup has five levels and the TV report as its boss', () => {
     expect(COMPANIES[0].name).toBe('Startup')
-    expect(COMPANIES[0].levels.map((l) => l.id)).toEqual(['primeiro-deploy', 'banco-nao-aguenta'])
-    expect(COMPANIES[0].boss.id).toBe('black-friday')
+    expect(COMPANIES[0].levels.map((l) => l.id)).toEqual([
+      'colocar-no-ar',
+      'primeiro-deploy',
+      'banco-nao-aguenta',
+      'imagens-pesadas',
+      'caiu-de-madrugada',
+    ])
+    expect(COMPANIES[0].boss.id).toBe('materia-na-tv')
+  })
+
+  it('Black Friday is out of the career until its company exists', () => {
+    expect(stages().some((s) => s.level.id === BLACK_FRIDAY.id)).toBe(false)
   })
 
   it('every level belongs to exactly one company', () => {
@@ -74,6 +84,14 @@ describe('unlock rules', () => {
     expect(pieceUnlock('cdn', 1, career)).toEqual({ unlocked: false, by: undefined })
   })
 
+  it('a level added before one already passed does not lock the rest', () => {
+    const three: Company[] = [{ ...career[0], levels: [lvl('new'), lvl('a1'), lvl('a2')] }, career[1]]
+    expect(levelStatus('new', ['a1'], three)).toBe('open')
+    expect(levelStatus('a2', ['a1'], three)).toBe('open')
+    expect(levelStatus('a-boss', ['a1'], three)).toBe('locked')
+    expect(levelStatus('a-boss', ['a1', 'a2'], three)).toBe('open')
+  })
+
   it('unknown levels are locked', () => {
     expect(levelStatus('nope', ['a1'], career)).toBe('locked')
   })
@@ -99,28 +117,50 @@ describe('starting architecture', () => {
   })
 
   it('Black Friday starts from the previous team’s design', () => {
-    const stage = stages().find((s) => s.isBoss)!
-    expect(startArchitecture(stage).nodes.map((n) => n.kind)).toEqual(['client', 'lb', 'server', 'server', 'server', 'db'])
+    expect(startArchitecture({ company, level: BLACK_FRIDAY }).nodes.map((n) => n.kind)).toEqual([
+      'client',
+      'lb',
+      'server',
+      'server',
+      'server',
+      'db',
+    ])
   })
 })
 
 describe('progress migration', () => {
   it('a new player starts at the first level', () => {
-    expect(loadProgress(storage({}))).toEqual({ passed: [], current: 'primeiro-deploy' })
+    expect(loadProgress(storage({}))).toEqual({ passed: [], current: 'colocar-no-ar' })
   })
 
   it('keeps the passed list saved before career mode', () => {
     const p = loadProgress(storage({ [PASSED_KEY]: '["primeiro-deploy","banco-nao-aguenta"]' }))
     expect(p.passed).toEqual(['primeiro-deploy', 'banco-nao-aguenta'])
-    expect(p.current).toBe('black-friday')
-    expect(levelStatus('black-friday', p.passed)).toBe('open')
+    expect(levelStatus('primeiro-deploy', p.passed)).toBe('done')
+    expect(levelStatus('banco-nao-aguenta', p.passed)).toBe('done')
+  })
+
+  it('a player who beat the old three levels finds the new ones open, Black Friday kept', () => {
+    const p = loadProgress(
+      storage({
+        [PASSED_KEY]: '["primeiro-deploy","banco-nao-aguenta","black-friday"]',
+        [CURRENT_KEY]: JSON.stringify('black-friday'),
+      }),
+    )
+    expect(p.passed).toContain('black-friday')
+    expect(levelStatus('colocar-no-ar', p.passed)).toBe('open')
+    expect(levelStatus('imagens-pesadas', p.passed)).toBe('open')
+    expect(levelStatus('caiu-de-madrugada', p.passed)).toBe('locked')
+    expect(levelStatus('materia-na-tv', p.passed)).toBe('locked')
+    expect(p.current).toBe('colocar-no-ar')
   })
 
   it('a level passed out of order stays done, and the skipped ones stay playable', () => {
-    const p = loadProgress(storage({ [PASSED_KEY]: '["black-friday"]' }))
-    expect(levelStatus('black-friday', p.passed)).toBe('done')
+    const p = loadProgress(storage({ [PASSED_KEY]: '["banco-nao-aguenta"]' }))
+    expect(levelStatus('banco-nao-aguenta', p.passed)).toBe('done')
     expect(levelStatus('primeiro-deploy', p.passed)).toBe('open')
-    expect(p.current).toBe('primeiro-deploy')
+    expect(levelStatus('colocar-no-ar', p.passed)).toBe('open')
+    expect(p.current).toBe('colocar-no-ar')
   })
 
   it('ignores corrupt or foreign data instead of crashing', () => {
@@ -132,18 +172,18 @@ describe('progress migration', () => {
   })
 
   it('reopens the level on screen only if it is still playable', () => {
-    const passed = '["primeiro-deploy"]'
-    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('primeiro-deploy') })).current).toBe('primeiro-deploy')
-    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('black-friday') })).current).toBe('banco-nao-aguenta')
-    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('apagada') })).current).toBe('banco-nao-aguenta')
+    const passed = '["colocar-no-ar"]'
+    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('colocar-no-ar') })).current).toBe('colocar-no-ar')
+    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('materia-na-tv') })).current).toBe('primeiro-deploy')
+    expect(loadProgress(storage({ [PASSED_KEY]: passed, [CURRENT_KEY]: JSON.stringify('apagada') })).current).toBe('primeiro-deploy')
   })
 
   it('ignores a corrupt level on screen', () => {
-    expect(loadProgress(storage({ [PASSED_KEY]: '["primeiro-deploy"]', [CURRENT_KEY]: 'primeiro-deploy' })).current).toBe('banco-nao-aguenta')
-    expect(loadProgress(storage({ [CURRENT_KEY]: '42' })).current).toBe('primeiro-deploy')
+    expect(loadProgress(storage({ [PASSED_KEY]: '["colocar-no-ar"]', [CURRENT_KEY]: 'colocar-no-ar' })).current).toBe('primeiro-deploy')
+    expect(loadProgress(storage({ [CURRENT_KEY]: '42' })).current).toBe('colocar-no-ar')
   })
 
   it('points at the last level when everything is done', () => {
-    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('black-friday')
+    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('materia-na-tv')
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LEVELS } from '../levels'
+import { BLACK_FRIDAY, LEVELS } from '../levels'
 import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
 import { QUEUE_MAX_BACKLOG, SPECS, canConnect } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
@@ -32,7 +32,7 @@ const steady: Level = {
   goals: { minAvailability: 0.99, maxP99Ms: 1000, maxCost: 10_000 },
 }
 
-const byId = (id: string) => LEVELS.find((l) => l.id === id)!
+const byId = (id: string) => [...LEVELS, BLACK_FRIDAY].find((l) => l.id === id)!
 
 describe('simulateTick', () => {
   it('drops the load above a node capacity', () => {
@@ -246,10 +246,28 @@ describe('canConnect', () => {
 
 describe('levels', () => {
   const cases: [string, boolean, Architecture][] = [
+    // A server alone keeps nothing: reads and writes have nowhere to go.
+    ['colocar-no-ar', false, arch([['client', 'server']])],
+    // Built for traffic that has not come yet: over the budget.
+    ['colocar-no-ar', false, fanOut(2, 'db', [['client', 'lb']])],
+    ['colocar-no-ar', true, arch([['client', 'server'], ['server', 'db']])],
     ['primeiro-deploy', false, arch([['client', 'server'], ['server', 'db']])],
     ['primeiro-deploy', true, fanOut(4, 'db', [['client', 'lb']])],
     ['banco-nao-aguenta', false, fanOut(6, 'db', [['client', 'lb']])],
     ['banco-nao-aguenta', true, fanOut(7, 'cache', [['client', 'lb'], ['cache', 'db']])],
+    // Servers for the images: as many as the budget pays still drop half the traffic.
+    ['imagens-pesadas', false, fanOut(4, 'cache', [['client', 'lb'], ['cache', 'db']])],
+    ['imagens-pesadas', true, fanOut(4, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    // One server, alone or behind a balancer, is a single point of failure.
+    ['caiu-de-madrugada', false, arch([['client', 'server'], ['server', 'db']])],
+    ['caiu-de-madrugada', false, fanOut(1, 'db', [['client', 'lb']])],
+    ['caiu-de-madrugada', true, fanOut(2, 'db', [['client', 'lb']])],
+    // Six servers hold the peak, but when one falls the other five run too hot.
+    ['materia-na-tv', false, fanOut(6, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    // No CDN: the images alone sink the servers.
+    ['materia-na-tv', false, fanOut(9, 'cache', [['client', 'lb'], ['cache', 'db']])],
+    ['materia-na-tv', true, fanOut(7, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    // Out of the career until the E-commerce company (#15); kept tuned for it.
     ['black-friday', false, fanOut(10, 'cache', [['client', 'lb'], ['cache', 'db']])],
     ['black-friday', true, fanOut(8, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
   ]
