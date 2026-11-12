@@ -90,6 +90,12 @@ ul {
   min-height: 0;
 }
 
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
 .canvas {
   position: relative;
   min-height: 0;
@@ -176,10 +182,13 @@ ul {
 
 .parts li {
   border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: flex-start;
 }
 
 .part {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: 30px 1fr;
   column-gap: 8px;
@@ -203,6 +212,29 @@ ul {
   margin-top: 1px;
 }
 
+.part__info {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 6px 0 0 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-soft);
+}
+
+.part__info:hover {
+  color: var(--ink);
+  background: var(--tile);
+}
+
+.part__info.is-open {
+  color: var(--tile);
+  background: var(--ink);
+}
+
 .part__name {
   font-weight: 700;
 }
@@ -222,6 +254,194 @@ ul {
   font-size: 13px;
   color: var(--ink-soft);
   margin-top: 10px;
+}
+
+/* Concepts panel: a detail sheet docked to the right of the drawing */
+
+.inspector {
+  position: relative;
+  width: 340px;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1.5px solid var(--ink);
+  background: var(--tile);
+  padding: 18px 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 14px;
+}
+
+.inspector__head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1.5px solid var(--ink);
+}
+
+.inspector__head h2 {
+  font-size: 20px;
+  font-weight: 700;
+  font-stretch: 112%;
+  line-height: 1.15;
+}
+
+.inspector__head h2:focus {
+  outline: none;
+}
+
+.inspector__head h2:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.inspector__spec {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.inspector__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  background: none;
+  align-self: start;
+}
+
+.inspector__close:hover {
+  background: var(--ink);
+  color: var(--tile);
+}
+
+.inspector svg path {
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.inspector h3 {
+  font-size: 13px;
+  font-weight: 700;
+  font-stretch: 112%;
+  margin: 0 0 3px;
+}
+
+.inspector p {
+  max-width: 60ch;
+}
+
+/* Gains against costs, ruled like a two-column ledger. */
+.ledger {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+}
+
+.ledger > div {
+  padding: 8px 10px 10px 0;
+}
+
+.ledger > div + div {
+  padding: 8px 0 10px 10px;
+  border-left: 1px solid var(--ink);
+}
+
+.ledger li,
+.mistakes li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13px;
+}
+
+.ledger li + li,
+.mistakes li + li {
+  margin-top: 5px;
+}
+
+.ledger li::before,
+.mistakes li::before {
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+}
+
+.ledger > div:first-child li::before {
+  content: '+';
+}
+
+.ledger > div + div li::before {
+  content: '−';
+}
+
+.mistakes li::before {
+  content: '×';
+}
+
+.inspector__run {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.term {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.term:hover,
+.term.is-open {
+  text-decoration-style: solid;
+  color: var(--focus);
+}
+
+/* The open term's definition, pinned to the bottom of the sheet. */
+.definition {
+  position: sticky;
+  bottom: 0;
+  margin: auto -20px 0;
+  padding: 0 20px;
+  background: var(--ink);
+  color: var(--tile);
+  font-size: 13px;
+}
+
+.definition:not(:empty) {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 20px 14px;
+}
+
+.definition dfn {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.definition__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: auto;
+  border: 1px solid var(--tile);
+  border-radius: 3px;
+  background: none;
+  color: var(--tile);
+}
+
+.definition__close:focus-visible {
+  outline-color: var(--tile);
 }
 
 /* Canvas nodes */
@@ -724,6 +944,33 @@ ul {
 
   .canvas {
     height: 60vh;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  /* Bottom sheet over the page; the drawing keeps its full width. */
+  .inspector {
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 70vh;
+    border-left: none;
+    border-top: 1.5px solid var(--ink);
+    box-shadow: 0 -6px 0 rgba(28, 42, 46, 0.12);
+    padding: 16px 16px 0;
+  }
+
+  .definition {
+    margin: auto -16px 0;
+  }
+
+  .definition:not(:empty) {
+    padding: 12px 16px 14px;
   }
 
   .sheet,
