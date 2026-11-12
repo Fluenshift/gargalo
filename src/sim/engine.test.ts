@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { LEVELS } from '../levels'
 import { mulberry32, runLevel, simulateTick } from './engine'
-import { canConnect } from './model'
-import type { Architecture, Kind, Level } from './model'
+import { SPECS, canConnect } from './model'
+import type { Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
 function arch(edges: [string, string][], extra: string[] = []): Architecture {
@@ -76,6 +76,41 @@ describe('simulateTick', () => {
   it('is deterministic for a seed', () => {
     const a = fanOut(3, 'db', [['client', 'lb']])
     expect(runLevel(a, steady, 7).summary).toEqual(runLevel(a, steady, 7).summary)
+  })
+})
+
+describe('custom pieces', () => {
+  // A toy piece that only exists here: it handles up to 200 writes/s and keeps
+  // the rest for the next second instead of dropping them.
+  const buffer: Spec = {
+    label: 'Buffer',
+    capacity: 200,
+    baseLatencyMs: 1,
+    cost: 10,
+    serves: {},
+    targets: ['db'],
+    maxOut: 1,
+    description: '',
+    step: (arriving, state) => {
+      const total = arriving.write + (state?.backlog ?? 0)
+      const load = Math.min(total, 200)
+      return { load: { ...arriving, write: load }, state: { backlog: total - load } }
+    },
+  }
+  const burst: Level = {
+    ...steady,
+    durationS: 2,
+    mix: { static: 0, read: 0, write: 1 },
+    traffic: [{ from: 0, rps: 300 }, { from: 1, rps: 0 }],
+  }
+
+  it('runs through the engine and carries load to the next second', () => {
+    const { ticks, summary } = runLevel(arch([['client', 'buffer'], ['buffer', 'db']]), burst, 1, { ...SPECS, buffer })
+    expect(ticks[0].nodes.db.load).toBeCloseTo(200)
+    expect(ticks[1].nodes.db.load).toBeCloseTo(100)
+    expect(summary.failed.overload).toBe(0)
+    expect(summary.availability).toBeCloseTo(1)
+    expect(summary.cost).toBe(SPECS.db.cost + 10)
   })
 })
 
