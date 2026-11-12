@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -11,14 +11,30 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection } from '@xyflow/react'
+import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnNodeDrag } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
+import { ContextMenu } from './ContextMenu'
+import type { MenuItem } from './ContextMenu'
+import {
+  applyRemoval,
+  eventPoint,
+  isEmptyRemoval,
+  planRemoval,
+  pointInRect,
+  pushBounded,
+  removalMessage,
+  undoRemoval,
+} from './editing'
+import type { Removal } from './editing'
+import { EditorContext } from './editorContext'
+import type { Editor } from './editorContext'
 import { KindIcon } from './KindIcon'
 import { LEVELS } from './levels'
 import { NodeCard } from './NodeCard'
 import type { ComponentNode } from './NodeCard'
+import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { runLevel } from './sim/engine'
 import type { RunSummary, TickResult } from './sim/engine'
@@ -26,9 +42,25 @@ import { SPECS, canConnect, totalCost } from './sim/model'
 import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
+const edgeTypes = { removable: RemovableEdge }
 const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db']
 const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020 }
 const TICK_MS = 120
+const TOAST_MS = 6000
+const LONG_PRESS_MS = 550
+
+type BoardRemoval = Removal<ComponentNode, Edge>
+
+interface MenuState {
+  x: number
+  y: number
+  target: { node: ComponentNode } | { edge: Edge }
+  /** Where focus goes back to when the menu closes. */
+  opener: HTMLElement | null
+}
+
+const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 const designKey = (level: Level) => `gargalo:design:${level.id}`
 const PASSED_KEY = 'gargalo:passed'
@@ -195,6 +227,189 @@ function Board({
     setPlaying(false)
   }, [])
 
+  // Removal, undo and the context menu. Every removal goes through `commitRemoval`.
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  useEffect(() => {
+    nodesRef.current = nodes
+    edgesRef.current = edges
+  }, [nodes, edges])
+  const [undoStack, setUndoStack] = useState<BoardRemoval[]>([])
+  const [toast, setToast] = useState<BoardRemoval | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [overTrash, setOverTrash] = useState(false)
+  const trashRef = useRef<HTMLDivElement>(null)
+  const dragStart = useRef(new Map<string, { x: number; y: number }>())
+
+  const commitRemoval = useCallback(
+    (removal: BoardRemoval) => {
+      if (isEmptyRemoval(removal)) return
+      const after = applyRemoval(nodesRef.current, edgesRef.current, removal)
+      setNodes(after.nodes)
+      setEdges(after.edges)
+      setUndoStack((st) => pushBounded(st, removal))
+      setToast(removal)
+      clearRun()
+    },
+    [setNodes, setEdges, clearRun],
+  )
+
+  const remove = useCallback(
+    (nodeIds: string[], edgeIds: string[] = []) => {
+      if (!editable) return
+      commitRemoval(planRemoval(nodesRef.current, edgesRef.current, nodeIds, edgeIds))
+    },
+    [editable, commitRemoval],
+  )
+
+  const undo = useCallback(() => {
+    if (!editable) return
+    const last = undoStack.at(-1)
+    if (!last) return
+    const back = undoRemoval(nodesRef.current, edgesRef.current, last)
+    setNodes(back.nodes)
+    setEdges(back.edges)
+    setUndoStack((st) => st.slice(0, -1))
+    setToast(null)
+    clearRun()
+  }, [editable, undoStack, setNodes, setEdges, clearRun])
+
+  useEffect(() => {
+    if (!toast) return
+    const id = setTimeout(() => setToast(null), TOAST_MS)
+    return () => clearTimeout(id)
+  }, [toast])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
+      if (isTyping(e.target)) return
+      e.preventDefault()
+      undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo])
+
+  const editor: Editor = useMemo(() => ({ editable, remove }), [editable, remove])
+
+  /** React Flow's Delete/Backspace: do the removal ourselves so it can be undone. */
+  const onBeforeDelete: OnBeforeDelete<ComponentNode, Edge> = useCallback(
+    async ({ nodes: ns, edges: es }) => {
+      remove(
+        ns.map((n) => n.id),
+        es.map((e) => e.id),
+      )
+      return false
+    },
+    [remove],
+  )
+
+  const isOverTrash = (event: Event | { clientX: number; clientY: number }) => {
+    const p = eventPoint(event)
+    const rect = trashRef.current?.getBoundingClientRect()
+    return !!p && !!rect && pointInRect(p.x, p.y, rect)
+  }
+
+  const onNodeDragStart: OnNodeDrag<ComponentNode> = (_e, _node, dragged) => {
+    dragStart.current = new Map(dragged.map((n) => [n.id, { ...n.position }]))
+    setDragging(dragged.some((n) => n.deletable !== false))
+  }
+
+  const onNodeDrag: OnNodeDrag<ComponentNode> = (event, _node, dragged) => {
+    const removable = dragged.some((n) => n.deletable !== false)
+    setOverTrash(editable && removable && isOverTrash(event))
+  }
+
+  const onNodeDragStop: OnNodeDrag<ComponentNode> = (event, _node, dragged) => {
+    const drop = editable && isOverTrash(event)
+    setOverTrash(false)
+    setDragging(false)
+    if (!drop) return
+    // Undo should put pieces back where they were before the drag, not on the trash.
+    const before = nodesRef.current.map((n) => {
+      const pos = dragStart.current.get(n.id)
+      return pos ? { ...n, position: pos } : n
+    })
+    commitRemoval(
+      planRemoval(
+        before,
+        edgesRef.current,
+        dragged.map((n) => n.id),
+      ),
+    )
+  }
+
+  const openMenu = (x: number, y: number, target: MenuState['target'], opener: Element | null) => {
+    if (!editable) return
+    if ('node' in target && target.node.deletable === false) return
+    // Keyboard-opened menus (Shift+F10) report 0,0: open at the element instead.
+    if (x === 0 && y === 0 && opener) {
+      const r = opener.getBoundingClientRect()
+      x = r.left + r.width / 2
+      y = r.top + r.height / 2
+    }
+    setMenu({ x, y, target, opener: opener instanceof HTMLElement ? opener : null })
+  }
+
+  const closeMenu = useCallback(() => {
+    setMenu((m) => {
+      if (m?.opener?.isConnected) m.opener.focus()
+      return null
+    })
+  }, [])
+
+  const duplicate = (node: ComponentNode) => {
+    clearRun()
+    const id = `${node.data.kind}-${Date.now().toString(36)}`
+    setNodes((ns) => [
+      ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
+      {
+        id,
+        type: 'component',
+        position: { x: node.position.x + 32, y: node.position.y + 32 },
+        data: { kind: node.data.kind },
+        selected: true,
+      },
+    ])
+  }
+
+  const menuItems = (target: MenuState['target']): MenuItem[] =>
+    'node' in target
+      ? [
+          { label: 'Duplicar', onSelect: () => duplicate(target.node) },
+          { label: 'Remover', onSelect: () => remove([target.node.id]) },
+        ]
+      : [{ label: 'Remover', onSelect: () => remove([], [target.edge.id]) }]
+
+  // Long-press opens the menu on touch screens that never fire contextmenu (iOS).
+  const longPress = useRef<{ timer: number; x: number; y: number } | null>(null)
+  const cancelLongPress = () => {
+    if (longPress.current) clearTimeout(longPress.current.timer)
+    longPress.current = null
+  }
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    cancelLongPress()
+    if (e.pointerType !== 'touch' || !editable) return
+    const el = e.target as Element
+    const nodeEl = el.closest<HTMLElement>('.react-flow__node')
+    const edgeEl = el.closest<HTMLElement>('.react-flow__edge')
+    const { clientX: x, clientY: y } = e
+    const timer = window.setTimeout(() => {
+      longPress.current = null
+      const node = nodeEl && nodesRef.current.find((n) => n.id === nodeEl.dataset.id)
+      const edge = edgeEl && edgesRef.current.find((ed) => ed.id === edgeEl.dataset.id)
+      if (node) openMenu(x, y, { node }, nodeEl)
+      else if (edge) openMenu(x, y, { edge }, null)
+    }, LONG_PRESS_MS)
+    longPress.current = { timer, x, y }
+  }
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const lp = longPress.current
+    if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 8) cancelLongPress()
+  }
+
   const isValidConnection: IsValidConnection = useCallback(
     (c) => canConnect(arch, c.source, c.target),
     [arch],
@@ -223,10 +438,13 @@ function Board({
     const fresh = freshDesign()
     setNodes(fresh.nodes)
     setEdges(fresh.edges)
+    setUndoStack([])
+    setToast(null)
     clearRun()
   }
 
   const start = () => {
+    setMenu(null)
     setRun(runLevel(arch, level, Date.now() & 0xffff))
     setShown(0)
     setPlaying(true)
@@ -237,9 +455,18 @@ function Board({
     [nodes, tick],
   )
   const displayEdges = useMemo(() => {
-    if (!tick) return edges
+    const labelOf = (id: string) => {
+      const n = nodes.find((x) => x.id === id)
+      return n ? SPECS[n.data.kind].label : id
+    }
+    const base = edges.map((e) => ({
+      ...e,
+      type: 'removable',
+      ariaLabel: `Ligação de ${labelOf(e.source)} para ${labelOf(e.target)}`,
+    }))
+    if (!tick) return base
     const peak = Math.max(1, ...Object.values(tick.edges))
-    return edges.map((e) => {
+    return base.map((e) => {
       const rps = tick.edges[`${e.source}->${e.target}`] ?? 0
       return {
         ...e,
@@ -248,7 +475,7 @@ function Board({
         style: { strokeWidth: 1.5 + 6 * (rps / peak), opacity: rps > 0 ? 1 : 0.35 },
       }
     })
-  }, [edges, tick])
+  }, [nodes, edges, tick])
 
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
@@ -287,34 +514,88 @@ function Board({
           </ul>
           <p className="help">
             Clique numa peça para pôr no desenho. Arraste da bolinha direita de um componente até outro para ligar.
-            Selecione e aperte Delete para remover.
+            Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
+            direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
         </section>
       </aside>
 
       <main className="stage">
-        <div className="canvas">
-          <ReactFlow
-            nodes={displayNodes}
-            edges={displayEdges}
-            nodeTypes={nodeTypes}
-            onNodesChange={onNodesChange}
-            onEdgesChange={(changes) => {
-              if (editable) onEdgesChange(changes)
-            }}
-            onConnect={onConnect}
-            isValidConnection={isValidConnection}
-            nodesConnectable={editable}
-            deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
-            onNodesDelete={clearRun}
-            onEdgesDelete={clearRun}
-            fitView
-            fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-            minZoom={0.2}
-          >
-            <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
-            <Controls showInteractive={false} position="top-left" />
-          </ReactFlow>
+        <div
+          className="canvas"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={cancelLongPress}
+          onPointerCancel={cancelLongPress}
+        >
+          <EditorContext.Provider value={editor}>
+            <ReactFlow
+              nodes={displayNodes}
+              edges={displayEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={(changes) => {
+                if (editable) onEdgesChange(changes)
+              }}
+              onConnect={onConnect}
+              isValidConnection={isValidConnection}
+              nodesConnectable={editable}
+              nodesDraggable={editable}
+              deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+              onBeforeDelete={onBeforeDelete}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
+              onNodeDragStop={onNodeDragStop}
+              onNodeContextMenu={(e, node) => {
+                e.preventDefault()
+                openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
+              }}
+              onEdgeContextMenu={(e, edge) => {
+                e.preventDefault()
+                openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
+              }}
+              onMoveStart={() => setMenu(null)}
+              fitView
+              fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+              minZoom={0.2}
+            >
+              <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
+              <Controls showInteractive={false} position="top-left" />
+            </ReactFlow>
+          </EditorContext.Provider>
+
+          {editable && (
+            <div
+              ref={trashRef}
+              className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
+              aria-hidden
+            >
+              <TrashIcon />
+              <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
+            </div>
+          )}
+
+          <div className="toast-slot" role="status" aria-live="polite">
+            {toast && (
+              <div className="toast">
+                <span>{removalMessage(toast)}</span>
+                <button type="button" onClick={undo} disabled={!editable}>
+                  Desfazer
+                </button>
+              </div>
+            )}
+          </div>
+
+          {menu && editable && (
+            <ContextMenu
+              x={menu.x}
+              y={menu.y}
+              label={'node' in menu.target ? 'Ações da peça' : 'Ações da ligação'}
+              items={menuItems(menu.target)}
+              onClose={closeMenu}
+            />
+          )}
         </div>
 
         <footer className="console">
@@ -404,6 +685,21 @@ function Board({
         </footer>
       </main>
     </div>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg className="trash__icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+      <path
+        d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
