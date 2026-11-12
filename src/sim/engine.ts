@@ -6,7 +6,7 @@
 //     ends the requests it serves, and splits the rest among its targets.
 //  2. A sampling pass: individual requests walk the same graph and pick up
 //     latency at each node (base + exponential queueing delay that grows with
-//     utilization, as in an M/M/1 queue). Their latencies give the p99.
+//     utilization, as in an M/M/1 queue). Their latencies give p50, p95, p99.
 //
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
@@ -21,23 +21,30 @@ export interface NodeStats {
   utilization: number
   dropRate: number
   down: boolean
+  /** Mean time a request spends at this node (service + queueing), in ms. 0 while down. */
+  latencyMs: number
 }
 
-export interface TickResult {
+/** Latency percentiles, in ms. */
+export interface Percentiles {
+  p50Ms: number
+  p95Ms: number
+  p99Ms: number
+}
+
+export interface TickResult extends Percentiles {
   t: number
   rps: number
   served: number
   failed: Record<FailureReason, number>
-  p99Ms: number
   nodes: Record<string, NodeStats>
   /** Requests per second on each edge, keyed `${source}->${target}`. */
   edges: Record<string, number>
   latencies: number[]
 }
 
-export interface RunSummary {
+export interface RunSummary extends Percentiles {
   availability: number
-  p99Ms: number
   cost: number
   failed: Record<FailureReason, number>
   passed: { availability: boolean; p99: boolean; cost: boolean; all: boolean }
@@ -152,11 +159,13 @@ export function simulateTick(
     const isNodeDown = down.get(node.id)!
     const pass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
     passRate.set(node.id, pass)
+    const utilization = spec.capacity === Infinity ? 0 : load / spec.capacity
     nodes[node.id] = {
       load,
-      utilization: spec.capacity === Infinity ? 0 : load / spec.capacity,
+      utilization,
       dropRate: 1 - pass,
       down: isNodeDown,
+      latencyMs: isNodeDown ? 0 : spec.baseLatencyMs + queueMeanMs(spec, utilization),
     }
     failed[isNodeDown ? 'down' : 'overload'] += load * (1 - pass)
 
@@ -190,9 +199,7 @@ export function simulateTick(
       while (node) {
         if (rng() >= (passRate.get(node.id) ?? 0)) break
         const spec = pieces[node.kind]
-        const rho = Math.min(nodes[node.id].utilization, MAX_UTILIZATION_FOR_LATENCY)
-        const queueMean = (spec.baseLatencyMs * rho) / (1 - rho)
-        latency += spec.baseLatencyMs - queueMean * Math.log(1 - rng())
+        latency += spec.baseLatencyMs - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
         if (rng() < (spec.serves[c] ?? 0)) {
           latencies.push(latency)
           break
@@ -203,13 +210,20 @@ export function simulateTick(
     }
   }
 
-  return { t, rps, served, failed, p99Ms: percentile(latencies, 0.99), nodes, edges, latencies }
+  return { t, rps, served, failed, ...latencyPercentiles(latencies), nodes, edges, latencies }
 }
 
-export function percentile(values: number[], p: number): number {
-  if (values.length === 0) return 0
+/** Mean queueing delay of an M/M/1 queue at this utilization, capped so it stays finite. */
+function queueMeanMs(spec: Spec, utilization: number): number {
+  const rho = Math.min(utilization, MAX_UTILIZATION_FOR_LATENCY)
+  return (spec.baseLatencyMs * rho) / (1 - rho)
+}
+
+/** p50, p95 and p99 of `values`, sorting once. */
+export function latencyPercentiles(values: number[]): Percentiles {
   const sorted = [...values].sort((x, y) => x - y)
-  return sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]
+  const at = (p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : 0)
+  return { p50Ms: at(0.5), p95Ms: at(0.95), p99Ms: at(0.99) }
 }
 
 export function summarize(
@@ -223,16 +237,16 @@ export function summarize(
   const failed = emptyFailures()
   for (const tick of ticks) for (const r of Object.keys(failed) as FailureReason[]) failed[r] += tick.failed[r]
   const availability = total === 0 ? 1 : served / total
-  const p99Ms = percentile(ticks.flatMap((t) => t.latencies), 0.99)
+  const latency = latencyPercentiles(ticks.flatMap((t) => t.latencies))
   const cost = totalCost(arch, pieces)
   const passed = {
     availability: availability >= level.goals.minAvailability,
-    p99: p99Ms <= level.goals.maxP99Ms,
+    p99: latency.p99Ms <= level.goals.maxP99Ms,
     cost: cost <= level.goals.maxCost,
     all: false,
   }
   passed.all = passed.availability && passed.p99 && passed.cost
-  return { availability, p99Ms, cost, failed, passed }
+  return { availability, ...latency, cost, failed, passed }
 }
 
 export function runLevel(arch: Architecture, level: Level, seed = 1, pieces: Record<string, Spec> = SPECS) {
