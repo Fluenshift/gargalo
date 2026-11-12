@@ -8,6 +8,10 @@
 //     latency at each node (base + exponential queueing delay that grows with
 //     utilization, as in an M/M/1 queue). Their latencies give p50, p95, p99.
 //
+// A piece may acknowledge a class (a queue answers writes on acceptance). From
+// there on the flow pass tracks that load as async work: it no longer counts
+// for availability or latency, and losing it is reported apart.
+//
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
@@ -23,6 +27,21 @@ export interface NodeStats {
   down: boolean
   /** Mean time a request spends at this node (service + queueing), in ms. 0 while down. */
   latencyMs: number
+  /** Requests waiting inside the node at the end of the second (pieces that hold a backlog). */
+  backlog?: number
+  /** How long a request accepted now waits before it moves on, in ms (pieces that hold a backlog). */
+  waitMs?: number
+}
+
+/**
+ * Work the user is no longer waiting for: what a piece acknowledged (a write
+ * put in a queue) and still flowed on, per second.
+ */
+export interface AsyncWork {
+  /** Reached the place where it ends. */
+  done: number
+  /** Lost after the user was answered. */
+  lost: number
 }
 
 /** Latency percentiles, in ms. */
@@ -37,6 +56,7 @@ export interface TickResult extends Percentiles {
   rps: number
   served: number
   failed: Record<FailureReason, number>
+  async: AsyncWork
   nodes: Record<string, NodeStats>
   /** Requests per second on each edge, keyed `${source}->${target}`. */
   edges: Record<string, number>
@@ -47,6 +67,12 @@ export interface RunSummary extends Percentiles {
   availability: number
   cost: number
   failed: Record<FailureReason, number>
+  async: AsyncWork
+  /**
+   * Requests still waiting in some backlog when the run ends. Acknowledged ones
+   * were already answered; the others never were, so they lower availability.
+   */
+  backlogAtEnd: number
   passed: { availability: boolean; p99: boolean; cost: boolean; all: boolean }
 }
 
@@ -135,54 +161,86 @@ export function simulateTick(
     return (route ? route(targets, c) : targets).map((target) => target.id)
   }
 
-  const arriving = new Map<string, ClassLoad>(
-    arch.nodes.map((n) => [n.id, { static: 0, read: 0, write: 0 }]),
-  )
+  const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0 })
+  const arriving = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
+  // The part of `arriving` some piece upstream already answered to the user.
+  const acked = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
   const client = arch.nodes.find((n) => pieces[n.kind].entry)
   if (client) for (const c of CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
 
   const failed = emptyFailures()
+  const async: AsyncWork = { done: 0, lost: 0 }
   const nodes: Record<string, NodeStats> = {}
   const edges: Record<string, number> = {}
   const passRate = new Map<string, number>()
   let served = 0
+  // Splits a loss between the users still waiting (`waiting` share) and acknowledged work.
+  const lose = (amount: number, waiting: number, reason: FailureReason) => {
+    failed[reason] += amount * waiting
+    async.lost += amount * (1 - waiting)
+  }
 
   for (const node of topoOrder(arch)) {
     const spec = pieces[node.kind]
-    let a = arriving.get(node.id)!
-    if (spec.step) {
-      const next = spec.step(a, state.get(node.id))
+    const arrived = arriving.get(node.id)!
+    const ack = acked.get(node.id)!
+    const isNodeDown = down.get(node.id)!
+    let a = arrived
+    let dropped = zero()
+    let extra: Pick<NodeStats, 'backlog' | 'waitMs'> = {}
+    // A crashed piece takes nothing in; whatever it holds waits for it to come back.
+    if (spec.step && !isNodeDown) {
+      const downstreamCapacity = (children.get(node.id) ?? [])
+        .filter((id) => !down.get(id))
+        .reduce((sum, id) => sum + pieces[byId.get(id)!.kind].capacity, 0)
+      const next = spec.step(arrived, state.get(node.id), { downstreamCapacity })
       a = next.load
+      dropped = next.dropped ?? dropped
       state.set(node.id, next.state)
+      if (next.backlog !== undefined) extra = { backlog: next.backlog, waitMs: next.waitMs }
     }
     const load = a.static + a.read + a.write
-    const isNodeDown = down.get(node.id)!
     const pass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
-    passRate.set(node.id, pass)
+    const totalArrived = arrived.static + arrived.read + arrived.write
+    const totalDropped = dropped.static + dropped.read + dropped.write
+    // Share of what arrived that gets through: refused at the door, then cut at capacity.
+    const through = pass * (totalArrived > 0 ? 1 - totalDropped / totalArrived : 1)
+    passRate.set(node.id, through)
     const utilization = spec.capacity === Infinity ? 0 : load / spec.capacity
     nodes[node.id] = {
       load,
       utilization,
-      dropRate: 1 - pass,
+      dropRate: 1 - through,
       down: isNodeDown,
       latencyMs: isNodeDown ? 0 : spec.baseLatencyMs + queueMeanMs(spec, utilization),
+      ...extra,
     }
-    failed[isNodeDown ? 'down' : 'overload'] += load * (1 - pass)
 
     for (const c of CLASSES) {
+      // Share of this class whose users are still waiting for an answer.
+      const waiting = arrived[c] > 0 ? 1 - ack[c] / arrived[c] : 1
+      lose(dropped[c], waiting, 'overload')
+      // Past an acknowledging piece nobody waits: the user got the answer on acceptance.
+      const acknowledges = !isNodeDown && (spec.acknowledges?.includes(c) ?? false)
+      if (acknowledges) served += (arrived[c] - dropped[c]) * waiting
+      const outWaiting = acknowledges ? 0 : waiting
+
+      lose(a[c] * (1 - pass), outWaiting, isNodeDown ? 'down' : 'overload')
       const survivors = a[c] * pass
       const endsHere = survivors * (spec.serves[c] ?? 0)
-      served += endsHere
+      served += endsHere * outWaiting
+      async.done += endsHere * (1 - outWaiting)
       const forward = survivors - endsHere
       if (forward <= 0) continue
       const targets = routable(node, c)
       if (targets.length === 0) {
-        failed.noRoute += forward
+        lose(forward, outWaiting, 'noRoute')
         continue
       }
       for (const target of targets) {
         const share = forward / targets.length
         arriving.get(target)![c] += share
+        acked.get(target)![c] += share * (1 - outWaiting)
         const key = `${node.id}->${target}`
         edges[key] = (edges[key] ?? 0) + share
       }
@@ -200,7 +258,7 @@ export function simulateTick(
         if (rng() >= (passRate.get(node.id) ?? 0)) break
         const spec = pieces[node.kind]
         latency += spec.baseLatencyMs - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
-        if (rng() < (spec.serves[c] ?? 0)) {
+        if (spec.acknowledges?.includes(c) || rng() < (spec.serves[c] ?? 0)) {
           latencies.push(latency)
           break
         }
@@ -210,7 +268,7 @@ export function simulateTick(
     }
   }
 
-  return { t, rps, served, failed, ...latencyPercentiles(latencies), nodes, edges, latencies }
+  return { t, rps, served, failed, async, ...latencyPercentiles(latencies), nodes, edges, latencies }
 }
 
 /** Mean queueing delay of an M/M/1 queue at this utilization, capped so it stays finite. */
@@ -236,6 +294,12 @@ export function summarize(
   const served = ticks.reduce((s, t) => s + t.served, 0)
   const failed = emptyFailures()
   for (const tick of ticks) for (const r of Object.keys(failed) as FailureReason[]) failed[r] += tick.failed[r]
+  const async: AsyncWork = {
+    done: ticks.reduce((s, t) => s + t.async.done, 0),
+    lost: ticks.reduce((s, t) => s + t.async.lost, 0),
+  }
+  const last = ticks.at(-1)
+  const backlogAtEnd = last ? Object.values(last.nodes).reduce((s, n) => s + (n.backlog ?? 0), 0) : 0
   const availability = total === 0 ? 1 : served / total
   const latency = latencyPercentiles(ticks.flatMap((t) => t.latencies))
   const cost = totalCost(arch, pieces)
@@ -246,7 +310,7 @@ export function summarize(
     all: false,
   }
   passed.all = passed.availability && passed.p99 && passed.cost
-  return { availability, ...latency, cost, failed, passed }
+  return { availability, ...latency, cost, failed, async, backlogAtEnd, passed }
 }
 
 export function runLevel(arch: Architecture, level: Level, seed = 1, pieces: Record<string, Spec> = SPECS) {

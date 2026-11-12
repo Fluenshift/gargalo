@@ -5,6 +5,7 @@ import { KindIcon } from './KindIcon'
 import { SPECS } from './sim/model'
 import type { Kind } from './sim/model'
 import type { NodeStats } from './sim/engine'
+import { waitLabel } from './sim/metrics'
 
 export type ComponentNode = Node<{ kind: Kind; stats?: NodeStats }, 'component'>
 
@@ -41,6 +42,12 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
           {finite && state !== 'down' && (
             <div className="node__bar" aria-hidden>
               <span style={{ width: `${Math.min(100, stats.utilization * 100)}%` }} />
+            </div>
+          )}
+          {stats.backlog !== undefined && state !== 'down' && (
+            <div className="node__queue">
+              fila {fmt(stats.backlog)}
+              {stats.backlog > 0 && ` · ${waitLabel(stats.waitMs ?? 0)}`}
             </div>
           )}
           {stats.dropRate > 0.001 && state !== 'down' && (

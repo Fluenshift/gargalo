@@ -109,6 +109,40 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Tratá-lo como ilimitado: é o gargalo mais comum.',
     ],
   },
+  queue: {
+    whatIs:
+      'Guarda as escritas e responde ao usuário na hora; workers consomem depois, no ritmo deles. Cabem 20.000 mensagens, e acima disso ela recusa.',
+    whenToUse: 'Quando picos de escrita passam do que o banco aguenta, mas a escrita pode terminar alguns segundos depois.',
+    gains: [
+      'Absorve picos sem dimensionar tudo para o pico.',
+      'O usuário não espera o banco: a escrita responde em milissegundos.',
+    ],
+    costs: [
+      'A escrita aceita só aparece quando um worker processa: consistência eventual.',
+      'Mais uma peça para operar, $30/mês, e os workers à parte.',
+    ],
+    mistakes: [
+      'Poucos workers: o backlog nunca esvazia e o problema só foi adiado.',
+      'Mandar leituras para a fila: quem lê precisa da resposta agora.',
+    ],
+  },
+  worker: {
+    whatIs:
+      'Processo que tira mensagens da fila e faz o trabalho, aqui gravar no banco. Processa 200 mensagens/s e custa $40/mês.',
+    whenToUse: 'Atrás de uma fila. Some workers até que eles consumam, em média, mais do que chega.',
+    gains: [
+      'Escala horizontalmente: cada worker a mais esvazia a fila mais rápido.',
+      'Trabalha fora do caminho do usuário, sem pesar na latência.',
+    ],
+    costs: [
+      'Workers demais repassam o pico inteiro ao banco, e a fila deixa de proteger.',
+      'Escrita perdida depois da fila já foi confirmada ao usuário.',
+    ],
+    mistakes: [
+      'Esquecer de ligar o worker ao banco: as mensagens saem da fila e se perdem.',
+      'Dimensionar pelo pico: basta vencer a média e ter fila para o resto.',
+    ],
+  },
 }
 
 export interface GlossaryEntry {
@@ -200,6 +234,24 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'borda',
     term: 'borda',
     definition: 'Servidores da CDN espalhados perto das pessoas, longe da origem.',
+  },
+  {
+    id: 'backlog',
+    term: 'backlog',
+    definition:
+      'O que está esperando na fila para ser processado. Cresce quando chega mais do que os workers consomem.',
+  },
+  {
+    id: 'consistencia-eventual',
+    term: 'consistência eventual',
+    definition:
+      'O dado fica certo em todo lugar depois de um tempo, não na hora. Até lá, alguém pode ver a versão antiga.',
+  },
+  {
+    id: 'assincrono',
+    term: 'assíncrono',
+    forms: ['assíncrona', 'processamento assíncrono'],
+    definition: 'Trabalho feito depois, fora do caminho da resposta. O usuário recebe o "ok" antes de terminar.',
   },
   {
     id: 'dns',

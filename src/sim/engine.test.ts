@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LEVELS } from '../levels'
 import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
-import { SPECS, canConnect } from './model'
+import { QUEUE_MAX_BACKLOG, SPECS, canConnect } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
@@ -141,6 +141,96 @@ describe('custom pieces', () => {
     expect(summary.failed.overload).toBe(0)
     expect(summary.availability).toBeCloseTo(1)
     expect(summary.cost).toBe(SPECS.db.cost + 10)
+  })
+})
+
+describe('message queue and workers', () => {
+  /** lb → `servers` servers → one queue → `workers` workers → db. */
+  const queued = (servers: number, workers: number, extra: [string, string][] = []): Architecture => {
+    const edges: [string, string][] = [['client', 'lb'], ...extra]
+    for (let i = 0; i < servers; i++) edges.push(['lb', `server#${i}`], [`server#${i}`, 'queue'])
+    for (let i = 0; i < workers; i++) edges.push(['queue', `worker#${i}`], [`worker#${i}`, 'db'])
+    return arch(edges)
+  }
+  const writes = (traffic: Level['traffic'], durationS = 60): Level => ({
+    ...steady,
+    durationS,
+    mix: { static: 0, read: 0, write: 1 },
+    traffic,
+  })
+  // 10 s at three times the usual writes, then back to normal.
+  const spike = writes([{ from: 0, rps: 600 }, { from: 10, rps: 1800 }, { from: 20, rps: 600 }])
+
+  it('absorbs a write spike the database alone would drop', () => {
+    const direct = runLevel(fanOut(5, 'db', [['client', 'lb']]), spike)
+    expect(direct.summary.failed.overload).toBeGreaterThan(0)
+    expect(direct.summary.passed.availability).toBe(false)
+
+    const { ticks, summary } = runLevel(queued(5, 5), spike)
+    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0 })
+    expect(summary.availability).toBeCloseTo(1)
+    // The database never sees the spike: the workers (5 × 200/s) cap what reaches it.
+    for (const t of ticks) expect(t.nodes.db.load).toBeLessThanOrEqual(1000 + 1e-6)
+    // The backlog builds during the spike and empties afterwards.
+    const peak = Math.max(...ticks.map((t) => t.nodes.queue.backlog!))
+    expect(peak).toBeCloseTo(800 * 10)
+    expect(summary.backlogAtEnd).toBe(0)
+    expect(summary.async.lost).toBe(0)
+    expect(summary.async.done).toBeCloseTo(spike.durationS * 600 + 10 * 1200)
+  })
+
+  it('answers writes on acceptance, so they skip the workers and the database', () => {
+    const direct = runLevel(fanOut(5, 'db', [['client', 'lb']]), writes([{ from: 0, rps: 600 }], 10))
+    const viaQueue = runLevel(queued(5, 5), writes([{ from: 0, rps: 600 }], 10))
+    expect(viaQueue.summary.p99Ms).toBeLessThan(direct.summary.p99Ms)
+  })
+
+  it('overflows when the workers are too few, and the wait grows', () => {
+    const { ticks, summary } = runLevel(queued(5, 2), writes([{ from: 0, rps: 1500 }]))
+    // 1500 in, 400 out: 1100 more per second, so the 20.000 slots fill near second 18.
+    expect(ticks[15].nodes.queue.dropRate).toBe(0)
+    expect(ticks[20].nodes.queue.backlog).toBeCloseTo(QUEUE_MAX_BACKLOG)
+    expect(ticks[20].nodes.queue.dropRate).toBeCloseTo(1100 / 1500)
+    expect(ticks[20].nodes.queue.waitMs).toBeCloseTo((QUEUE_MAX_BACKLOG / 400) * 1000)
+    expect(summary.failed.overload).toBeGreaterThan(0)
+    expect(summary.passed.availability).toBe(false)
+    expect(summary.backlogAtEnd).toBeCloseTo(QUEUE_MAX_BACKLOG)
+  })
+
+  it('never drains without workers', () => {
+    const { ticks } = runLevel(queued(2, 0), writes([{ from: 0, rps: 300 }], 5))
+    expect(ticks[4].nodes.queue.backlog).toBeCloseTo(1500)
+    expect(ticks[4].nodes.queue.waitMs).toBe(Infinity)
+  })
+
+  it('counts work lost after the answer apart from user failures', () => {
+    const a = queued(2, 2)
+    a.edges = a.edges.filter((e) => e.target !== 'db')
+    a.nodes = a.nodes.filter((n) => n.id !== 'db')
+    const { summary } = runLevel(a, writes([{ from: 0, rps: 300 }], 5))
+    expect(summary.availability).toBeCloseTo(1)
+    expect(summary.failed.noRoute).toBe(0)
+    expect(summary.async.lost).toBeCloseTo(5 * 300)
+  })
+
+  it('takes only writes; reads keep going to the database', () => {
+    const level: Level = { ...steady, mix: { static: 0, read: 0.5, write: 0.5 }, traffic: [{ from: 0, rps: 300 }] }
+    const tick = simulateTick(
+      arch([['client', 'server'], ['server', 'db'], ['server', 'queue'], ['queue', 'worker'], ['worker', 'db']]),
+      level,
+      0,
+      mulberry32(1),
+    )
+    expect(tick.edges['server->db']).toBeCloseTo(150)
+    expect(tick.edges['server->queue']).toBeCloseTo(150)
+    expect(tick.served).toBeCloseTo(300)
+  })
+
+  it('a crashed queue refuses writes and keeps its backlog for later', () => {
+    const level: Level = { ...writes([{ from: 0, rps: 300 }], 6), failures: [{ kind: 'queue', index: 0, from: 2, to: 4 }] }
+    const { ticks, summary } = runLevel(queued(1, 0), level)
+    expect(ticks[2].failed.down).toBeCloseTo(300)
+    expect(summary.backlogAtEnd).toBeCloseTo(4 * 300)
   })
 })
 
