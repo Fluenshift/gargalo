@@ -98,11 +98,24 @@ ul {
 /* Sidebar */
 
 .brand h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   font-size: 44px;
   line-height: 1;
   font-weight: 800;
   font-stretch: 125%;
   letter-spacing: -0.02em;
+}
+
+.brand-mark {
+  flex: none;
+  /* Line up the neck with the middle of the x-height. */
+  margin-top: 4px;
+}
+
+.brand-mark__neck {
+  stroke: var(--hot);
 }
 
 .brand p {

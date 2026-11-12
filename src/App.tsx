@@ -14,6 +14,7 @@ import {
 import type { Connection, Edge, IsValidConnection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
+import { BrandMark } from './BrandMark'
 import { KindIcon } from './KindIcon'
 import { LEVELS } from './levels'
 import { NodeCard } from './NodeCard'
@@ -257,7 +258,10 @@ function Board({
     <div className="app">
       <aside className="panel">
         <header className="brand">
-          <h1>gargalo</h1>
+          <h1>
+            <BrandMark size={52} />
+            gargalo
+          </h1>
           <p>Monte a arquitetura. O tráfego vem depois.</p>
         </header>
 
