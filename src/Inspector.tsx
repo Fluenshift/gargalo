@@ -1,0 +1,162 @@
+import { useEffect, useId, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { CONCEPTS, splitTerms } from './concepts'
+import type { GlossaryEntry } from './concepts'
+import { KindIcon } from './KindIcon'
+import { SPECS } from './sim/model'
+import type { Kind } from './sim/model'
+
+const fmt = (n: number) => n.toLocaleString('pt-BR')
+
+/**
+ * What a piece is, when to use it and what it trades. `children` render at the
+ * end, under "Nesta simulação", for per-piece run metrics.
+ */
+export function Inspector({
+  kind,
+  onClose,
+  focusOnOpen = false,
+  escapeCloses = true,
+  children,
+}: {
+  kind: Kind
+  onClose: () => void
+  /** Move focus to the panel when it opens or changes piece (opened from the parts list). */
+  focusOnOpen?: boolean
+  /** False while something above the panel (a menu) owns Escape. */
+  escapeCloses?: boolean
+  children?: ReactNode
+}) {
+  const spec = SPECS[kind]
+  const concept = CONCEPTS[kind]
+  const titleId = useId()
+  const defId = useId()
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const [term, setTerm] = useState<GlossaryEntry | null>(null)
+  const [termKind, setTermKind] = useState(kind)
+  // A definition belongs to the piece it was opened on.
+  if (termKind !== kind) {
+    setTermKind(kind)
+    setTerm(null)
+  }
+
+  useEffect(() => {
+    if (focusOnOpen) titleRef.current?.focus()
+  }, [kind, focusOnOpen])
+
+  useEffect(() => {
+    if (!escapeCloses) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (term) setTerm(null)
+      else onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [escapeCloses, term, onClose])
+
+  // Each glossary term is linked once per panel, in reading order.
+  const seen = new Set<string>()
+  const rich = (text: string) =>
+    splitTerms(text, seen).map((s, i) =>
+      typeof s === 'string' ? (
+        s
+      ) : (
+        <button
+          key={i}
+          type="button"
+          className={`term${term?.id === s.entry.id ? ' is-open' : ''}`}
+          aria-expanded={term?.id === s.entry.id}
+          aria-controls={defId}
+          onClick={() => setTerm((t) => (t?.id === s.entry.id ? null : s.entry))}
+        >
+          {s.text}
+        </button>
+      ),
+    )
+
+  const finite = spec.capacity !== Infinity
+
+  return (
+    <aside className="inspector" aria-labelledby={titleId}>
+      <header className="inspector__head">
+        <KindIcon kind={kind} size={30} />
+        <div>
+          <h2 id={titleId} ref={titleRef} tabIndex={-1}>
+            {spec.label}
+          </h2>
+          <p className="inspector__spec">
+            {finite
+              ? `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, $${spec.cost}/mês`
+              : 'Origem do tráfego'}
+          </p>
+        </div>
+        <button type="button" className="inspector__close" onClick={onClose} aria-label="Fechar painel" title="Fechar (Esc)">
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+            <path d="M3 3l10 10M13 3L3 13" />
+          </svg>
+        </button>
+      </header>
+
+      <section>
+        <h3>O que é</h3>
+        <p>{rich(concept.whatIs)}</p>
+      </section>
+
+      <section>
+        <h3>Quando usar</h3>
+        <p>{rich(concept.whenToUse)}</p>
+      </section>
+
+      <section className="ledger" aria-label="Tradeoffs">
+        <div>
+          <h3>Ganha</h3>
+          <ul>
+            {concept.gains.map((t) => (
+              <li key={t}>{rich(t)}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <h3>Paga</h3>
+          <ul>
+            {concept.costs.map((t) => (
+              <li key={t}>{rich(t)}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <h3>Erros comuns</h3>
+        <ul className="mistakes">
+          {concept.mistakes.map((t) => (
+            <li key={t}>{rich(t)}</li>
+          ))}
+        </ul>
+      </section>
+
+      {children && (
+        <section className="inspector__run">
+          <h3>Nesta simulação</h3>
+          {children}
+        </section>
+      )}
+
+      <div id={defId} className="definition" role="region" aria-live="polite" aria-label="Definição">
+        {term && (
+          <>
+            <p>
+              <dfn>{term.term}</dfn> {term.definition}
+            </p>
+            <button type="button" className="definition__close" onClick={() => setTerm(null)} aria-label="Fechar definição">
+              <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden>
+                <path d="M3 3l10 10M13 3L3 13" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </aside>
+  )
+}

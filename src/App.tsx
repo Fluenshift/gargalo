@@ -11,7 +11,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnNodeDrag } from '@xyflow/react'
+import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
@@ -30,9 +30,11 @@ import {
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
 import type { Editor } from './editorContext'
+import { Inspector } from './Inspector'
 import { KindIcon } from './KindIcon'
 import { LEVELS } from './levels'
 import { NodeCard } from './NodeCard'
+import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
@@ -449,6 +451,29 @@ function Board({
     pendingFit.current = id
   }
 
+  // Concepts panel: the single selected piece, or a kind opened from the parts list.
+  const [listInfo, setListInfo] = useState<{ kind: Kind; opener: HTMLElement } | null>(null)
+  const selected = nodes.filter((n) => n.selected)
+  const inspected = listInfo?.kind ?? (selected.length === 1 ? selected[0].data.kind : null)
+
+  const openInfo = (kind: Kind, opener: HTMLElement) => {
+    setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)))
+    setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))
+    setListInfo({ kind, opener })
+  }
+
+  const closeInfo = useCallback(() => {
+    setListInfo((info) => {
+      if (info?.opener.isConnected) info.opener.focus()
+      return null
+    })
+    setNodes((ns) => (ns.some((n) => n.selected) ? ns.map((n) => (n.selected ? { ...n, selected: false } : n)) : ns))
+  }, [setNodes])
+
+  const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: picked }) => {
+    if (picked.length > 0) setListInfo(null)
+  }, [])
+
   const reset = () => {
     const fresh = freshDesign()
     setNodes(fresh.nodes)
@@ -527,11 +552,21 @@ function Board({
                   </span>
                   <span className="part__desc">{SPECS[kind].description}</span>
                 </button>
+                <button
+                  type="button"
+                  className={`part__info${listInfo?.kind === kind ? ' is-open' : ''}`}
+                  aria-label={`Sobre ${SPECS[kind].label}`}
+                  aria-pressed={listInfo?.kind === kind}
+                  title={`Sobre ${SPECS[kind].label}`}
+                  onClick={(e) => (listInfo?.kind === kind ? closeInfo() : openInfo(kind, e.currentTarget))}
+                >
+                  <InfoIcon />
+                </button>
               </li>
             ))}
           </ul>
           <p className="help">
-            Clique numa peça para pôr no desenho. Arraste da bolinha direita de um componente até outro para ligar.
+            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar.
             Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
             direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
@@ -539,80 +574,98 @@ function Board({
       </aside>
 
       <main className="stage">
-        <div
-          className="canvas"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={cancelLongPress}
-          onPointerCancel={cancelLongPress}
-        >
-          <EditorContext.Provider value={editor}>
-            <ReactFlow
-              nodes={displayNodes}
-              edges={displayEdges}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              onNodesChange={onNodesChange}
-              onEdgesChange={(changes) => {
-                if (editable) onEdgesChange(changes)
-              }}
-              onConnect={onConnect}
-              isValidConnection={isValidConnection}
-              nodesConnectable={editable}
-              nodesDraggable={editable}
-              deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
-              onBeforeDelete={onBeforeDelete}
-              onNodeDragStart={onNodeDragStart}
-              onNodeDrag={onNodeDrag}
-              onNodeDragStop={onNodeDragStop}
-              onNodeContextMenu={(e, node) => {
-                e.preventDefault()
-                openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
-              }}
-              onEdgeContextMenu={(e, edge) => {
-                e.preventDefault()
-                openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
-              }}
-              onMoveStart={() => setMenu(null)}
-              fitView
-              fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
-              minZoom={0.2}
-            >
-              <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
-              <Controls showInteractive={false} position="top-left" />
-            </ReactFlow>
-          </EditorContext.Provider>
+        <div className="workspace">
+          <div
+            className="canvas"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={cancelLongPress}
+            onPointerCancel={cancelLongPress}
+          >
+            <EditorContext.Provider value={editor}>
+              <ReactFlow
+                nodes={displayNodes}
+                edges={displayEdges}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                onNodesChange={onNodesChange}
+                onEdgesChange={(changes) => {
+                  if (editable) onEdgesChange(changes)
+                }}
+                onConnect={onConnect}
+                isValidConnection={isValidConnection}
+                nodesConnectable={editable}
+                nodesDraggable={editable}
+                deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+                onBeforeDelete={onBeforeDelete}
+                onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
+                onNodeDragStop={onNodeDragStop}
+                onNodeContextMenu={(e, node) => {
+                  e.preventDefault()
+                  openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
+                }}
+                onEdgeContextMenu={(e, edge) => {
+                  e.preventDefault()
+                  openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
+                }}
+                onMoveStart={() => setMenu(null)}
+                onSelectionChange={onSelectionChange}
+                onPaneClick={() => setListInfo(null)}
+                fitView
+                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                minZoom={0.2}
+              >
+                <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
+                <Controls showInteractive={false} position="top-left" />
+              </ReactFlow>
+            </EditorContext.Provider>
 
-          {editable && (
-            <div
-              ref={trashRef}
-              className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
-              aria-hidden
-            >
-              <TrashIcon />
-              <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
-            </div>
-          )}
-
-          <div className="toast-slot" role="status" aria-live="polite">
-            {toast && (
-              <div className="toast">
-                <span>{removalMessage(toast)}</span>
-                <button type="button" onClick={undo} disabled={!editable}>
-                  Desfazer
-                </button>
+            {editable && (
+              <div
+                ref={trashRef}
+                className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
+                aria-hidden
+              >
+                <TrashIcon />
+                <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
               </div>
+            )}
+
+            <div className="toast-slot" role="status" aria-live="polite">
+              {toast && (
+                <div className="toast">
+                  <span>{removalMessage(toast)}</span>
+                  <button type="button" onClick={undo} disabled={!editable}>
+                    Desfazer
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {menu && editable && (
+              <ContextMenu
+                x={menu.x}
+                y={menu.y}
+                label={'node' in menu.target ? 'Ações da peça' : 'Ações da ligação'}
+                items={menuItems(menu.target)}
+                onClose={closeMenu}
+              />
             )}
           </div>
 
-          {menu && editable && (
-            <ContextMenu
-              x={menu.x}
-              y={menu.y}
-              label={'node' in menu.target ? 'Ações da peça' : 'Ações da ligação'}
-              items={menuItems(menu.target)}
-              onClose={closeMenu}
-            />
+          {inspected && (
+            <Inspector
+              kind={inspected}
+              onClose={closeInfo}
+              focusOnOpen={listInfo !== null}
+              escapeCloses={!menu}
+            >
+              {/* A piece picked on the canvas also shows how it did in the run on screen. */}
+              {!listInfo && selected.length === 1 && run && shown > 0 && (
+                <NodeRunStats ticks={run.ticks} nodeId={selected[0].id} shown={shown} />
+              )}
+            </Inspector>
           )}
         </div>
 
@@ -725,6 +778,16 @@ function Board({
         </footer>
       </main>
     </div>
+  )
+}
+
+function InfoIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden>
+      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M10 9v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="10" cy="6.2" r="1.1" fill="currentColor" />
+    </svg>
   )
 }
 
