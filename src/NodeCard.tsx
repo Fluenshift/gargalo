@@ -50,6 +50,12 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
               {stats.backlog > 0 && ` · ${waitLabel(stats.waitMs ?? 0)}`}
             </div>
           )}
+          {stats.lagMs !== undefined && state !== 'down' && (
+            <div className="node__queue">
+              atraso {waitLabel(stats.lagMs, 'sem primário')}
+              {Number.isFinite(stats.lagMs) && ` · ${Math.round((stats.staleRate ?? 0) * 100)}% velhas`}
+            </div>
+          )}
           {stats.dropRate > 0.001 && state !== 'down' && (
             <div className="node__drop">perdendo {Math.round(stats.dropRate * 100)}%</div>
           )}

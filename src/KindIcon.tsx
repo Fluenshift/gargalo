@@ -39,6 +39,14 @@ const PATHS: Record<Kind, ReactNode> = {
       <path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5" />
     </>
   ),
+  replica: (
+    <>
+      <path d="M4 14.5V5.5c0-1.2 2.7-2.2 6-2.2s6 1 6 2.2v1.3" />
+      <path d="M4 14.5c0 .8 1.2 1.5 3 1.9" />
+      <ellipse cx="14" cy="9.5" rx="6" ry="2.2" />
+      <path d="M8 9.5v9c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2v-9" />
+    </>
+  ),
   queue: (
     <>
       <rect x="2.5" y="7" width="15" height="10" rx="1" />

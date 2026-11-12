@@ -109,6 +109,23 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Tratá-lo como ilimitado: é o gargalo mais comum.',
     ],
   },
+  replica: {
+    whatIs:
+      'Cópia do banco que só responde leituras: 1.000 req/s por $80/mês. O primário manda cada escrita para ela, e a cópia chega com atraso.',
+    whenToUse: 'Quando as leituras passam do que um banco aguenta e o cache não basta. Ligue o banco a ela e mande as leituras para ela.',
+    gains: [
+      'Escala leitura mais barato que outro banco: o primário fica só com as escritas.',
+      'Cada réplica soma 1.000 leituras por segundo.',
+    ],
+    costs: [
+      'Quem edita o perfil pode ler a versão antiga logo depois: consistência eventual.',
+      'A cópia atrasa mais quanto mais escritas chegam e quanto mais cheia ela está.',
+    ],
+    mistakes: [
+      'Não ligar o banco à réplica: ela nunca recebe mudança e toda leitura sai velha.',
+      'Lotar a réplica de leituras: sem fôlego para aplicar as escritas, o atraso de replicação dispara.',
+    ],
+  },
   queue: {
     whatIs:
       'Guarda as escritas e responde ao usuário na hora; workers consomem depois, no ritmo deles. Cabem 20.000 mensagens, e acima disso ela recusa.',
@@ -246,6 +263,23 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'consistência eventual',
     definition:
       'O dado fica certo em todo lugar depois de um tempo, não na hora. Até lá, alguém pode ver a versão antiga.',
+  },
+  {
+    id: 'atraso-replicacao',
+    term: 'atraso de replicação',
+    definition:
+      'Tempo entre a escrita no primário e ela aparecer na réplica. Cresce com o volume de escritas e com a réplica sobrecarregada.',
+  },
+  {
+    id: 'leitura-desatualizada',
+    term: 'leitura desatualizada',
+    forms: ['leituras desatualizadas'],
+    definition: 'Leitura que devolve a versão antiga de um dado que já mudou no primário, por causa do atraso de replicação.',
+  },
+  {
+    id: 'primario',
+    term: 'primário',
+    definition: 'O banco que recebe as escritas e as repassa às réplicas.',
   },
   {
     id: 'assincrono',

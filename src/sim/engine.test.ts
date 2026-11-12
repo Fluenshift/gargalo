@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LEVELS } from '../levels'
 import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
-import { QUEUE_MAX_BACKLOG, SPECS, canConnect } from './model'
+import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, SPECS, canConnect } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
@@ -231,6 +231,83 @@ describe('message queue and workers', () => {
     const { ticks, summary } = runLevel(queued(1, 0), level)
     expect(ticks[2].failed.down).toBeCloseTo(300)
     expect(summary.backlogAtEnd).toBeCloseTo(4 * 300)
+  })
+})
+
+describe('read replicas', () => {
+  /** lb → `servers` servers, each to the primary and to every replica; the primary feeds the replicas. */
+  const replicated = (servers: number, replicas: number, feed = true): Architecture => {
+    const edges: [string, string][] = [['client', 'lb']]
+    for (let i = 0; i < servers; i++) {
+      edges.push(['lb', `server#${i}`], [`server#${i}`, 'db'])
+      for (let r = 0; r < replicas; r++) edges.push([`server#${i}`, `replica#${r}`])
+    }
+    if (feed) for (let r = 0; r < replicas; r++) edges.push(['db', `replica#${r}`])
+    return arch(edges)
+  }
+  const mixed = (rps: number, write: number, durationS = 10): Level => ({
+    ...steady,
+    durationS,
+    mix: { static: 0, read: 1 - write, write },
+    traffic: [{ from: 0, rps }],
+  })
+
+  it('sends reads to the replicas and writes to the primary, which copies them over', () => {
+    const tick = simulateTick(replicated(4, 2), mixed(1500, 0.2), 0, mulberry32(1))
+    expect(tick.nodes.db.load).toBeCloseTo(300)
+    expect(tick.nodes['replica#0'].load).toBeCloseTo(600 + 300)
+    expect(tick.edges['db->replica#1']).toBeCloseTo(300)
+    expect(tick.edges['server#0->replica#0']).toBeCloseTo(150)
+    // Replication is background work: the users got exactly what they asked for.
+    expect(tick.served).toBeCloseTo(1500)
+    expect(tick.servedByClass.read).toBeCloseTo(1200)
+    expect(tick.async.done).toBeCloseTo(2 * 300)
+  })
+
+  it('takes the reads off the primary: same traffic, one database would drop', () => {
+    expect(runLevel(fanOut(4, 'db', [['client', 'lb']]), mixed(1500, 0.2)).summary.failed.overload).toBeGreaterThan(0)
+    expect(runLevel(replicated(4, 2), mixed(1500, 0.2)).summary.failed.overload).toBe(0)
+  })
+
+  it('cache misses go to the replicas, cache writes to the primary', () => {
+    const a = arch([['client', 'server'], ['server', 'cache'], ['cache', 'db'], ['cache', 'replica'], ['db', 'replica']])
+    const tick = simulateTick(a, mixed(300, 0.5), 0, mulberry32(1))
+    expect(tick.edges['cache->replica']).toBeCloseTo(150 * 0.15)
+    expect(tick.edges['cache->db']).toBeCloseTo(150)
+  })
+
+  it('lags more, and serves more stale reads, under heavier writes', () => {
+    const light = runLevel(replicated(4, 2), mixed(1500, 0.05))
+    const heavy = runLevel(replicated(4, 2), mixed(1500, 0.2))
+    const lag = (r: typeof light) => r.ticks[5].nodes['replica#0'].lagMs!
+    expect(lag(light)).toBeGreaterThan(REPLICA_BASE_LAG_MS)
+    expect(lag(heavy)).toBeGreaterThan(lag(light) * 1.5)
+    expect(light.summary.staleReadRate).toBeLessThan(0.01)
+    expect(heavy.summary.staleReadRate).toBeGreaterThan(light.summary.staleReadRate * 5)
+    expect(heavy.summary.staleReadRate).toBeCloseTo(heavy.ticks[5].nodes['replica#0'].staleRate!)
+  })
+
+  it('falls further behind every second when reads leave no room to apply writes', () => {
+    // One replica takes 1.000 reads/s: its whole capacity.
+    const { ticks } = runLevel(replicated(4, 1), mixed(1250, 0.2))
+    const lags = ticks.map((t) => t.nodes['replica#0'].lagMs!)
+    for (let i = 1; i < lags.length; i++) expect(lags[i]).toBeGreaterThan(lags[i - 1])
+    expect(ticks.at(-1)!.nodes['replica#0'].staleRate).toBeGreaterThan(0.5)
+  })
+
+  it('a replica the primary does not feed only has old data', () => {
+    const { ticks, summary } = runLevel(replicated(4, 2, false), mixed(1500, 0.2))
+    expect(ticks[0].nodes['replica#0'].lagMs).toBe(Infinity)
+    expect(summary.staleReadRate).toBeCloseTo(1)
+  })
+
+  it('a level can cap the stale reads', () => {
+    const strict: Level = { ...mixed(1500, 0.2), goals: { ...steady.goals, maxStaleReads: 0.02 } }
+    const { summary } = runLevel(replicated(5, 2), strict)
+    expect(summary.passed.availability).toBe(true)
+    expect(summary.passed.stale).toBe(false)
+    expect(summary.passed.all).toBe(false)
+    expect(runLevel(replicated(5, 2), { ...strict, mix: { static: 0, read: 0.95, write: 0.05 } }).summary.passed.all).toBe(true)
   })
 })
 

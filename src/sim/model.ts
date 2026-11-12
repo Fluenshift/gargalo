@@ -1,6 +1,6 @@
 // Domain model: component catalogue, architecture graph and level definitions.
 
-export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db' | 'queue' | 'worker'
+export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db' | 'queue' | 'worker' | 'replica'
 export type RequestClass = 'static' | 'read' | 'write'
 /** Requests per second of each class. */
 export type ClassLoad = Record<RequestClass, number>
@@ -47,11 +47,18 @@ export interface Spec {
    * later no longer counts for availability or latency.
    */
   acknowledges?: RequestClass[]
+  /**
+   * Classes copied to every live target once they end here (a primary database
+   * replicating its writes). The copies are background work nobody waits for.
+   */
+  replicates?: RequestClass[]
 }
 
 export interface StepContext {
   /** Requests per second the live targets of this node can take, summed. */
   downstreamCapacity: number
+  /** Kinds of the pieces connected into this node. */
+  sources: Kind[]
 }
 
 export interface StepResult {
@@ -63,17 +70,35 @@ export interface StepResult {
   backlog?: number
   /** How long a request accepted now waits before it moves on, in ms. Infinity if nothing drains it. */
   waitMs?: number
+  /** How far behind the source this copy of the data is, in ms. Infinity if it never gets updates. */
+  lagMs?: number
+  /** Share of the answers given here this second that are outdated. */
+  staleRate?: number
 }
 
 const QUEUE_CAPACITY = 10_000
 /** Messages a queue holds before it starts refusing new ones. */
 export const QUEUE_MAX_BACKLOG = 20_000
 
-/** Writes go to a queue when there is one; everything else stays off queues. */
+const REPLICA_CAPACITY = 1000
+/** Replication delay of an idle replica: shipping the change over the network. */
+export const REPLICA_BASE_LAG_MS = 50
+/**
+ * Records most reads ask for. A read is stale when its record changed within
+ * the lag; with W writes/s spread over them, that happens with probability
+ * 1 − e^(−W·lag/HOT_RECORDS).
+ */
+const HOT_RECORDS = 2000
+
+/**
+ * Writes go to a queue when there is one, reads to read replicas when there are
+ * some. Reads never go to a queue and writes never to a replica.
+ */
 function splitByClass(targets: RouteTarget[], c: RequestClass): RouteTarget[] {
-  const usable = c === 'write' ? targets : targets.filter((t) => t.kind !== 'queue')
-  const queues = usable.filter((t) => t.kind === 'queue')
-  return c === 'write' && queues.length ? queues : usable
+  const write = c === 'write'
+  const usable = targets.filter((t) => t.kind !== (write ? 'replica' : 'queue'))
+  const preferred = usable.filter((t) => t.kind === (write ? 'queue' : 'replica'))
+  return preferred.length ? preferred : usable
 }
 
 export const SPECS: Record<Kind, Spec> = {
@@ -115,8 +140,8 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 30,
     cost: 50,
     serves: { static: 1 },
-    targets: ['cache', 'db', 'queue'],
-    maxOut: 2,
+    targets: ['cache', 'db', 'queue', 'replica'],
+    maxOut: 4,
     description: 'Roda a aplicação. Responde estáticos; leituras e escritas vão adiante.',
     route: splitByClass,
   },
@@ -126,9 +151,10 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 1,
     cost: 30,
     serves: { read: 0.85 },
-    targets: ['db'],
-    maxOut: 1,
+    targets: ['db', 'replica'],
+    maxOut: 4,
     description: '85% das leituras acertam o cache. Escritas e misses vão ao banco.',
+    route: splitByClass,
   },
   db: {
     label: 'Banco de dados',
@@ -136,9 +162,10 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 15,
     cost: 120,
     serves: { read: 1, write: 1 },
-    targets: [],
-    maxOut: 0,
+    targets: ['replica'],
+    maxOut: 4,
     description: 'Fonte da verdade. Caro e difícil de escalar.',
+    replicates: ['write'],
   },
   queue: {
     label: 'Fila de mensagens',
@@ -177,6 +204,32 @@ export const SPECS: Record<Kind, Spec> = {
     maxOut: 1,
     description: 'Consome mensagens da fila e grava no banco. Ninguém espera por ele.',
   },
+  replica: {
+    label: 'Réplica de leitura',
+    capacity: REPLICA_CAPACITY,
+    baseLatencyMs: 15,
+    cost: 80,
+    serves: { read: 1, write: 1 },
+    targets: [],
+    maxOut: 0,
+    description: 'Cópia do banco que responde leituras. Recebe as escritas do primário com atraso.',
+    step: (arriving, state, { sources }) => {
+      // Without a link from the primary it never gets a change: every read may be old.
+      if (!sources.includes('db')) return { load: arriving, state: { pending: 0 }, lagMs: Infinity, staleRate: 1 }
+      // Replicated writes use what the reads leave of the capacity; the rest piles up.
+      const pending = (state?.pending ?? 0) + arriving.write
+      const applied = Math.min(pending, Math.max(0, REPLICA_CAPACITY - arriving.read - arriving.static))
+      const behind = pending - applied
+      const utilization = Math.min(0.95, (arriving.static + arriving.read + applied) / REPLICA_CAPACITY)
+      const lagMs = REPLICA_BASE_LAG_MS / (1 - utilization) + (behind > 0 ? (behind / Math.max(applied, 1)) * 1000 : 0)
+      return {
+        load: { ...arriving, write: applied },
+        state: { pending: behind },
+        lagMs,
+        staleRate: 1 - Math.exp((-arriving.write * lagMs) / 1000 / HOT_RECORDS),
+      }
+    },
+  },
 }
 
 export interface ArchNode {
@@ -212,6 +265,8 @@ export interface Goals {
   minAvailability: number // 0..1
   maxP99Ms: number
   maxCost: number
+  /** Largest share of reads that may come back outdated, 0..1. No limit when absent. */
+  maxStaleReads?: number
 }
 
 export interface Level {

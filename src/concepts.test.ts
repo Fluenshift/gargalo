@@ -40,7 +40,8 @@ describe('GLOSSARY', () => {
   it('includes the terms the game shows', () => {
     const names = GLOSSARY.map((e) => e.term)
     for (const t of ['p99', 'throughput', 'req/s', 'health check', 'utilização', 'latência', 'disponibilidade',
-      'escalar horizontalmente', 'ponto único de falha', 'backpressure', 'backlog', 'consistência eventual']) {
+      'escalar horizontalmente', 'ponto único de falha', 'backpressure', 'backlog', 'consistência eventual',
+      'atraso de replicação', 'leitura desatualizada']) {
       expect(names).toContain(t)
     }
   })
