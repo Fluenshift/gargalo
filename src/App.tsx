@@ -40,6 +40,7 @@ import type { Progress, Stage } from './career'
 import { NodeCard } from './NodeCard'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
+import { parseDesign } from './savedDesign'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { runLevel } from './sim/engine'
@@ -98,13 +99,9 @@ function freshDesign(stage: Stage): Design {
 }
 
 function loadDesign(stage: Stage): Design {
-  try {
-    const raw = localStorage.getItem(designKey(stage.level))
-    if (raw) return JSON.parse(raw) as Design
-  } catch {
-    // Storage unavailable or corrupt: start from scratch.
-  }
-  return freshDesign(stage)
+  const raw = readStorage(designKey(stage.level))
+  // Storage unavailable or holding something the board cannot draw: start from scratch.
+  return (raw && parseDesign(raw)) || freshDesign(stage)
 }
 
 function readStorage(key: string): string | null {
@@ -157,7 +154,11 @@ function hints(summary: RunSummary, ticks: TickResult[]): string[] {
   if (summary.failed.down / total > 0.001)
     out.push('Requisições foram mandadas para um servidor fora do ar. Um load balancer para de enviar tráfego a servidores que caem.')
   if (!summary.passed.p99 && out.length === 0)
-    out.push('Nada caiu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.')
+    out.push(
+      ticks.some((t) => Object.values(t.nodes).some((n) => n.down))
+        ? 'Nenhuma requisição se perdeu, mas está lento: com uma peça fora do ar, as que sobraram ficam com a carga dela e formam fila. Folga de capacidade derruba o p99.'
+        : 'Nenhuma requisição se perdeu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.',
+    )
   if (summary.staleReadRate >= 0.01)
     out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas atrasam mais quando recebem muitas escritas ou estão cheias de leituras; uma réplica sem ligação do banco nunca é atualizada.`)
   if (summary.backlogAtEnd >= 1)

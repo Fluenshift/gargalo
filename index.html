@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>gargalo</title>
-    <meta name="description" content="Monte uma arquitetura de sistema e veja se ela aguenta o tráfego." />
+    <title>gargalo — jogo de system design: monte a arquitetura e aguente o tráfego</title>
+    <meta name="description" content="Jogo de system design no navegador: ligue servidores, banco, cache, CDN, load balancer e filas, e veja se a arquitetura aguenta picos de tráfego e quedas sem estourar latência e orçamento." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#e3e8e1" />
@@ -22,12 +22,40 @@
     <meta name="twitter:title" content="gargalo" />
     <meta name="twitter:description" content="Monte a arquitetura de um sistema e veja se ela aguenta o tráfego." />
     <meta name="twitter:image" content="/og.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "gargalo",
+        "description": "Jogo de system design no navegador: monte a arquitetura de um sistema e veja se ela aguenta o tráfego.",
+        "inLanguage": "pt-BR",
+        "genre": ["Simulação", "Educacional"],
+        "gamePlatform": "Navegador",
+        "applicationCategory": "Game",
+        "operatingSystem": "Qualquer",
+        "isAccessibleForFree": true
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main style="max-width: 60ch; margin: 48px auto; padding: 0 16px; font-family: system-ui, sans-serif">
+        <h1>gargalo: jogo de system design</h1>
+        <p>
+          Monte a arquitetura de um sistema ligando servidores, banco de dados, cache, CDN, load balancer, filas e
+          réplicas. Depois solte o tráfego e veja onde está o gargalo: o que descarta requisições, o que estoura a
+          latência p99 e o que passa do orçamento.
+        </p>
+        <p>
+          No modo carreira você começa numa startup e enfrenta chefões como a matéria na TV que multiplica o tráfego.
+          Cada fase explica os conceitos e os tradeoffs por trás da solução.
+        </p>
+        <noscript><p>O gargalo precisa de JavaScript para rodar o simulador.</p></noscript>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
