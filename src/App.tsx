@@ -53,10 +53,22 @@ import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db', 'replica', 'queue', 'worker']
-const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020, queue: 820, worker: 1020, replica: 1240 }
+const PALETTE: Kind[] = ['cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'replica', 'queue', 'worker']
+const COLUMN: Record<Kind, number> = {
+  client: 0,
+  cdn: 200,
+  limiter: 300,
+  gateway: 400,
+  lb: 400,
+  server: 600,
+  cache: 820,
+  db: 1020,
+  queue: 820,
+  worker: 1020,
+  replica: 1240,
+}
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320 }
+const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150 }
 const TICK_MS = 120
 const TOAST_MS = 6000
 const PANEL_KEY = 'gargalo:panel'
@@ -137,6 +149,7 @@ const REASONS: [FailureReason, string][] = [
   ['overload', 'sobrecarga'],
   ['down', 'fora do ar'],
   ['noRoute', 'sem rota'],
+  ['limited', 'limite (429)'],
 ]
 
 /** "120 por sobrecarga, 30 sem rota", or undefined when nothing was lost. */
@@ -152,6 +165,10 @@ function hints(summary: RunSummary, ticks: TickResult[]): string[] {
     out.push('Algumas requisições não tinham para onde ir. Confira se os usuários chegam a um servidor e se cada servidor chega ao banco.')
   if (summary.failed.overload / total > 0.001)
     out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle acima até o momento em que algo fica vermelho.')
+  if (summary.failed.limited / total > 0.001)
+    out.push(
+      `${pct(summary.failed.limited / total)} das requisições de usuários foram recusadas com 429. Recusar rápido protege o que está atrás, mas cada 429 é alguém sem resposta: dê mais capacidade ao que fica depois do limite.`,
+    )
   if (summary.failed.down / total > 0.001)
     out.push('Requisições foram mandadas para um servidor fora do ar. Um load balancer para de enviar tráfego a servidores que caem.')
   if (!summary.passed.p99 && out.length === 0)
@@ -794,7 +811,11 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
           </div>
 
           <div className="meters">
-            <Meter name="Tráfego" value={tick ? `${count(tick.rps)} req/s` : '—'}>
+            <Meter
+              name="Tráfego"
+              value={tick ? `${count(tick.rps)} req/s` : '—'}
+              sub={tick && tick.botRps > 0 ? `mais ${count(tick.botRps)} req/s de um bot` : undefined}
+            >
               {saturated && (
                 <button className="meter__link" onClick={() => selectNode(saturated)}>
                   Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label}{' '}
@@ -990,6 +1011,7 @@ function Meter({
 const BOTTLENECK_TEXT: Record<Bottleneck['reason'], (lost: number) => string> = {
   drops: (lost) => `Descartou ${count(lost)} requisições por excesso de carga.`,
   down: (lost) => `Ficou fora do ar sem outra peça para assumir, e ${count(lost)} requisições se perderam.`,
+  limited: (lost) => `Recusou ${count(lost)} requisições de usuários com 429: o que está atrás dele não aguentava mais.`,
   latency: () => 'Nada se perdeu, mas foi onde as requisições mais esperaram.',
 }
 

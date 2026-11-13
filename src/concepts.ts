@@ -43,6 +43,42 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Esquecer que os 5% que passam ainda chegam aos servidores.',
     ],
   },
+  limiter: {
+    whatIs:
+      'Recusa com 429, na hora e quase de graça, o que passa do limite: 10 req/s por cliente e, no total, 80% do que as peças atrás aguentam.',
+    whenToUse:
+      'Na frente de quem pode ser afogado: quando um bot martela o site ou quando um pico passaria da capacidade dos servidores.',
+    gains: [
+      'Um pico vira 429 rápido em vez de servidor lotado: quem passa é atendido sem fila.',
+      'Segura um bot sozinho por $15/mês.',
+    ],
+    costs: [
+      'Cada 429 de usuário de verdade é alguém sem resposta e conta contra a disponibilidade.',
+      'Não cria capacidade: só escolhe quem fica de fora.',
+    ],
+    mistakes: [
+      'Usar o limite no lugar de servidores: no pico, metade dos usuários leva 429.',
+      'Pôr o limite atrás dos servidores: aí eles já fizeram o trabalho.',
+    ],
+  },
+  gateway: {
+    whatIs:
+      'A porta única da API: autentica, limita por cliente e divide as chamadas entre servidores saudáveis. Aguenta 10.000 req/s e soma 5 ms.',
+    whenToUse:
+      'Quando há clientes que abusam ou vários serviços atrás de um endereço só. Faz o papel do load balancer e do limite por cliente juntos.',
+    gains: [
+      'Um lugar só para autenticação, limites e regras de roteamento.',
+      'Bots e clientes abusivos param na porta, antes de gastar servidor.',
+    ],
+    costs: [
+      '$60/mês, três vezes o load balancer.',
+      'Mais um salto em toda chamada, e ele mesmo pode virar o gargalo.',
+    ],
+    mistakes: [
+      'Esperar que ele corte picos de usuários de verdade: o limite é por cliente, não no total.',
+      'Pôr regra de negócio no gateway: ele fica lento e difícil de mudar.',
+    ],
+  },
   lb: {
     whatIs:
       'Recebe o tráfego e divide igualmente entre até 16 servidores. Um health check tira da roda o servidor que cai.',
@@ -306,6 +342,24 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'assíncrono',
     forms: ['assíncrona', 'processamento assíncrono'],
     definition: 'Trabalho feito depois, fora do caminho da resposta. O usuário recebe o "ok" antes de terminar.',
+  },
+  {
+    id: 'http-429',
+    term: '429',
+    forms: ['HTTP 429'],
+    definition: 'Resposta "muitas requisições": o servidor recusa na hora em vez de tentar e cair. Rápida e barata, mas o usuário fica sem resposta.',
+  },
+  {
+    id: 'rate-limit',
+    term: 'rate limit',
+    forms: ['limite de taxa', 'limite por cliente'],
+    definition: 'Teto de requisições por segundo, por cliente ou no total. O que passa do teto leva 429.',
+  },
+  {
+    id: 'bot',
+    term: 'bot',
+    forms: ['bots', 'scraper'],
+    definition: 'Programa que faz requisições sozinho, muitas vezes rápido demais. Gasta capacidade de quem atende pessoas.',
   },
   {
     id: 'dns',

@@ -83,6 +83,13 @@ describe('bottleneck', () => {
     expect(bottleneck(a, runLevel(a, level).ticks)).toMatchObject({ kind: 'server', reason: 'down' })
   })
 
+  it('points at the rate limiter when it only turned users away', () => {
+    const a = arch([['client', 'limiter'], ['limiter', 'server'], ['server', 'db']])
+    const result = bottleneck(a, runLevel(a, { ...spike, traffic: [{ from: 0, rps: 600 }], failures: [] }).ticks)
+    expect(result).toMatchObject({ kind: 'limiter', reason: 'limited' })
+    expect(result!.lost).toBeCloseTo(10 * (600 - 0.8 * 400))
+  })
+
   it('falls back to the slowest piece when nothing was lost', () => {
     const a = lbServers(4, ['db'])
     const result = bottleneck(a, runLevel(a, { ...spike, traffic: [{ from: 0, rps: 300 }], failures: [] }).ticks)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS } from '../levels'
 import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
-import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, SPECS, canConnect, connectRefusal } from './model'
+import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
@@ -167,7 +167,7 @@ describe('message queue and workers', () => {
     expect(direct.summary.passed.availability).toBe(false)
 
     const { ticks, summary } = runLevel(queued(5, 5), spike)
-    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0 })
+    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0, limited: 0 })
     expect(summary.availability).toBeCloseTo(1)
     // The database never sees the spike: the workers (5 × 200/s) cap what reaches it.
     for (const t of ticks) expect(t.nodes.db.load).toBeLessThanOrEqual(1000 + 1e-6)
@@ -311,6 +311,83 @@ describe('read replicas', () => {
   })
 })
 
+describe('rate limiter', () => {
+  // Two servers take 800 req/s; the spike asks for 1.500.
+  const spike: Level = {
+    ...steady,
+    traffic: [
+      { from: 0, rps: 400 },
+      { from: 3, rps: 1500 },
+    ],
+  }
+  const unprotected = fanOut(2, 'db', [['client', 'lb']])
+  const limited = fanOut(2, 'db', [['client', 'limiter'], ['limiter', 'lb']])
+
+  it('turns a spike into fast 429s instead of overloaded servers', () => {
+    const without = runLevel(unprotected, spike).summary
+    const withLimiter = runLevel(limited, spike).summary
+    expect(without.failed.overload).toBeGreaterThan(1000)
+    expect(without.failed.limited).toBe(0)
+    expect(withLimiter.failed.overload).toBeLessThan(1)
+    expect(withLimiter.failed.limited).toBeGreaterThan(1000)
+    // Servers kept below the limit answer fast; overloaded ones queue.
+    expect(withLimiter.p99Ms).toBeLessThan(without.p99Ms / 2)
+  })
+
+  it('lets through a share of what the servers behind the load balancer take', () => {
+    const tick = simulateTick(limited, spike, 5, mulberry32(1))
+    // 80% of 2 × 400 req/s.
+    expect(tick.nodes['server#0'].load + tick.nodes['server#1'].load).toBeCloseTo(LIMITER_HEADROOM * 800)
+    expect(tick.failed.limited).toBeCloseTo(1500 - LIMITER_HEADROOM * 800)
+    expect(tick.nodes.limiter.refused).toBeCloseTo(1500 - LIMITER_HEADROOM * 800)
+    expect(tick.nodes.limiter.dropRate).toBeCloseTo(0)
+  })
+
+  it('refuses more when a server behind it goes down', () => {
+    const outage = { ...spike, traffic: [{ from: 0, rps: 600 }], failures: [{ kind: 'server' as const, index: 0, from: 0, to: 10 }] }
+    const tick = simulateTick(limited, outage, 0, mulberry32(1))
+    expect(tick.failed.limited).toBeCloseTo(600 - LIMITER_HEADROOM * 400)
+    expect(tick.failed.down).toBeCloseTo(0)
+  })
+
+  it('with nothing behind it, leaves the missing link to show as a missing link', () => {
+    const tick = simulateTick(arch([['client', 'limiter']]), steady, 0, mulberry32(1))
+    expect(tick.failed.limited).toBe(0)
+    expect(tick.failed.noRoute).toBeCloseTo(800)
+  })
+})
+
+describe('bot traffic', () => {
+  // 300 req/s from people and 1.500 from one scraper.
+  const scraped: Level = { ...steady, traffic: [{ from: 0, rps: 300 }], bot: [{ from: 0, rps: 1500 }] }
+
+  it('loads the servers but never counts for availability', () => {
+    const tick = simulateTick(fanOut(2, 'db', [['client', 'lb']]), scraped, 0, mulberry32(1))
+    expect(tick.rps).toBe(300)
+    expect(tick.botRps).toBe(1500)
+    // 1.800 req/s on 800 of capacity: the people lose more than half.
+    expect(tick.served / tick.rps).toBeCloseTo(800 / 1800)
+    expect(tick.failed.overload).toBeCloseTo(300 * (1 - 800 / 1800))
+  })
+
+  it('a per-client limit at the gateway or the rate limiter keeps the bot out', () => {
+    const gateway = arch([['client', 'gateway'], ['gateway', 'server#0'], ['gateway', 'server#1'], ['server#0', 'db'], ['server#1', 'db']])
+    const limiter = fanOut(2, 'db', [['client', 'limiter'], ['limiter', 'lb']])
+    for (const a of [gateway, limiter]) {
+      const { summary, ticks } = runLevel(a, scraped)
+      expect(summary.availability).toBe(1)
+      expect(summary.failed.limited).toBe(0)
+      expect(ticks[0].nodes['server#0'].load).toBeCloseTo((300 + PER_CLIENT_LIMIT) / 2)
+    }
+  })
+
+  it('reads like a user read: the cache answers most of it', () => {
+    const cached = arch([['client', 'server'], ['server', 'cache'], ['cache', 'db']])
+    const tick = simulateTick(cached, { ...scraped, traffic: [{ from: 0, rps: 0 }], bot: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    expect(tick.nodes.db.load).toBeCloseTo(300 * 0.15)
+  })
+})
+
 describe('canConnect', () => {
   const a = arch([['client', 'lb']], ['server', 'db', 'cdn'])
   it('enforces allowed targets and max outputs', () => {
@@ -334,7 +411,7 @@ describe('connectRefusal', () => {
 
   it('names where a piece can go when the kind is wrong', () => {
     expect(connectRefusal(a, 'client', 'db')).toBe(
-      'Não dá para ligar Usuários a Banco de dados. Daqui só se chega a CDN, Load Balancer ou Servidor.',
+      'Não dá para ligar Usuários a Banco de dados. Daqui só se chega a CDN, Rate limiter, API Gateway, Load Balancer ou Servidor.',
     )
   })
 

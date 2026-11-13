@@ -18,6 +18,10 @@ const PATHS: Record<Kind, ReactNode> = {
       <path d="M3 12h18" />
     </>
   ),
+  // A funnel: more comes in than is let out.
+  limiter: <path d="M3 5h18l-7 8v6l-4 2v-8z" />,
+  // An arch: the one door every API call goes through.
+  gateway: <path d="M4 21V11a8 8 0 0 1 16 0v10M2.5 21h19M9 21v-5a3 3 0 0 1 6 0v5" />,
   lb: <path d="M3 12h6M9 12l5-6h7M9 12h12M9 12l5 6h7" />,
   server: (
     <>

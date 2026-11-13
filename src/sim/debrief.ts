@@ -14,9 +14,12 @@ export interface DebriefEvent {
 
 export interface Bottleneck {
   kind: Kind
-  /** drops: refused load above capacity. down: was offline with nothing to take over. latency: nothing lost, but slowest. */
-  reason: 'drops' | 'down' | 'latency'
-  /** Requests lost there over the run (0 for latency). */
+  /**
+   * drops: refused load above capacity. down: was offline with nothing to take over.
+   * limited: lost nothing, but turned users away with 429s. latency: nothing lost, but slowest.
+   */
+  reason: 'drops' | 'down' | 'limited' | 'latency'
+  /** Requests lost or refused there over the run (0 for latency). */
   lost: number
 }
 
@@ -29,6 +32,8 @@ const PLURAL: Partial<Record<Kind, string>> = {
   cache: 'caches',
   lb: 'load balancers',
   cdn: 'CDNs',
+  limiter: 'rate limiters',
+  gateway: 'API gateways',
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR')
@@ -111,6 +116,15 @@ export function timeline(arch: Architecture, ticks: TickResult[]): DebriefEvent[
     })
   }
 
+  const limited = ticks.find((tick) => tick.failed.limited >= 1)
+  if (limited) {
+    events.push({
+      t: limited.t,
+      text: `O rate limiter começou a recusar ${fmt(limited.failed.limited)} req/s de usuários com 429.`,
+      tone: 'warn',
+    })
+  }
+
   // First time each piece refused load, and first time it ran hot without refusing yet.
   const dropping = firstSeconds(ticks, (tick, id) => !tick.nodes[id].down && tick.nodes[id].dropRate > DROPPING)
   events.push(
@@ -162,6 +176,19 @@ export function bottleneck(arch: Architecture, ticks: TickResult[]): Bottleneck 
     if (amount >= 1 && amount > (worst?.lost ?? 0)) worst = { kind, reason, lost: amount }
   }
   if (worst) return worst
+  // Nothing failed, but users were turned away: the piece that refused them is where the run hurt.
+  const refusedUsers = ticks.reduce((sum, tick) => sum + tick.failed.limited, 0)
+  if (refusedUsers >= 1) {
+    const refusedBy = new Map<Kind, number>()
+    for (const tick of ticks) {
+      for (const [id, stats] of Object.entries(tick.nodes)) {
+        const kind = arch.nodes.find((n) => n.id === id)!.kind
+        refusedBy.set(kind, (refusedBy.get(kind) ?? 0) + (stats.refused ?? 0))
+      }
+    }
+    const kind = [...refusedBy].sort((a, b) => b[1] - a[1])[0][0]
+    return { kind, reason: 'limited', lost: refusedUsers }
+  }
   return slowest && { kind: slowest.kind, reason: 'latency', lost: 0 }
 }
 
