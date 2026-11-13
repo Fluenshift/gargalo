@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS } from '../levels'
 import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
-import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, SPECS, canConnect } from './model'
+import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, SPECS, canConnect, connectRefusal } from './model'
 import type { Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
@@ -318,6 +318,28 @@ describe('canConnect', () => {
     expect(canConnect(a, 'db', 'server')).toBe(false)
     expect(canConnect(a, 'client', 'cdn')).toBe(false) // client already points somewhere
     expect(canConnect(a, 'client', 'lb')).toBe(false) // duplicate
+  })
+})
+
+describe('connectRefusal', () => {
+  const a = arch([['client', 'lb']], ['server', 'db', 'cdn'])
+  it('allows what canConnect allows', () => {
+    expect(connectRefusal(a, 'lb', 'server')).toBeNull()
+  })
+
+  it('points users who want two servers at the load balancer', () => {
+    const direct = arch([['client', 'server#0']], ['server#1'])
+    expect(connectRefusal(direct, 'client', 'server#1')).toMatch(/DNS.*Load Balancer/)
+  })
+
+  it('names where a piece can go when the kind is wrong', () => {
+    expect(connectRefusal(a, 'client', 'db')).toBe(
+      'Não dá para ligar Usuários a Banco de dados. Daqui só se chega a CDN, Load Balancer ou Servidor.',
+    )
+  })
+
+  it('explains duplicates', () => {
+    expect(connectRefusal(a, 'client', 'lb')).toBe('Essas duas peças já estão ligadas.')
   })
 })
 

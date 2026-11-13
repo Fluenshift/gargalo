@@ -11,7 +11,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
+import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
@@ -47,7 +47,7 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { SPECS, canConnect, totalCost } from './sim/model'
+import { SPECS, canConnect, connectRefusal, totalCost } from './sim/model'
 import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
@@ -58,6 +58,7 @@ const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600
 const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320 }
 const TICK_MS = 120
 const TOAST_MS = 6000
+const PANEL_KEY = 'gargalo:panel'
 const LONG_PRESS_MS = 550
 
 type BoardRemoval = Removal<ComponentNode, Edge>
@@ -297,6 +298,14 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
   }, [nodes, edges])
   const [undoStack, setUndoStack] = useState<BoardRemoval[]>([])
   const [toast, setToast] = useState<BoardRemoval | null>(null)
+  /** Why the last connection the player tried was refused. */
+  const [notice, setNotice] = useState<string | null>(null)
+  const [panelOpen, setPanelOpen] = useState(() => readStorage(PANEL_KEY) !== JSON.stringify('closed'))
+  const togglePanel = () =>
+    setPanelOpen((open) => {
+      save(PANEL_KEY, open ? 'closed' : 'open')
+      return !open
+    })
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dragging, setDragging] = useState(false)
   const [overTrash, setOverTrash] = useState(false)
@@ -341,6 +350,12 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
     const id = setTimeout(() => setToast(null), TOAST_MS)
     return () => clearTimeout(id)
   }, [toast])
+
+  useEffect(() => {
+    if (!notice) return
+    const id = setTimeout(() => setNotice(null), TOAST_MS)
+    return () => clearTimeout(id)
+  }, [notice])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -476,8 +491,17 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
     [arch],
   )
 
+  // A drop on a piece that refuses the link says why instead of silently doing nothing.
+  const onConnectEnd: OnConnectEnd = (_event, state) => {
+    if (state.isValid || !state.fromNode || !state.toNode) return
+    const [source, target] =
+      state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
+    setNotice(connectRefusal(arch, source, target))
+  }
+
   const onConnect = useCallback(
     (c: Connection) => {
+      setNotice(null)
       clearRun()
       setEdges((es) => addEdge(c, es))
     },
@@ -569,13 +593,23 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
   const selectNode = (id: string) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
 
   return (
-    <div className="app">
-      <aside className="panel">
+    <div className={`app${panelOpen ? '' : ' is-collapsed'}`}>
+      <aside className="panel" id="panel" hidden={!panelOpen}>
         <header className="brand">
           <h1>
             <BrandMark size={52} />
             gargalo
           </h1>
+          <button
+            type="button"
+            className="panel__toggle"
+            onClick={togglePanel}
+            aria-expanded={panelOpen}
+            aria-controls="panel"
+            aria-label="Recolher painel"
+          >
+            <PanelIcon />
+          </button>
           <p>Monte a arquitetura. O tráfego vem depois.</p>
         </header>
 
@@ -649,6 +683,9 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
                   if (editable) onEdgesChange(changes)
                 }}
                 onConnect={onConnect}
+                onConnectEnd={onConnectEnd}
+                autoPanOnNodeDrag={false}
+                selectNodesOnDrag={false}
                 isValidConnection={isValidConnection}
                 nodesConnectable={editable}
                 nodesDraggable={editable}
@@ -672,8 +709,20 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
                 fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
                 minZoom={0.2}
               >
-                <Background variant={BackgroundVariant.Lines} gap={24} color="var(--grid)" />
+                <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
                 <Controls showInteractive={false} position="top-left" />
+                {!panelOpen && (
+                  <button
+                    type="button"
+                    className="panel__open"
+                    onClick={togglePanel}
+                    aria-expanded={false}
+                    aria-controls="panel"
+                  >
+                    <PanelIcon />
+                    Painel da fase
+                  </button>
+                )}
               </ReactFlow>
             </EditorContext.Provider>
 
@@ -689,6 +738,14 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
             )}
 
             <div className="toast-slot" role="status" aria-live="polite">
+              {notice && !toast && (
+                <div className="toast toast--notice">
+                  <span>{notice}</span>
+                  <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso">
+                    Ok
+                  </button>
+                </div>
+              )}
               {toast && (
                 <div className="toast">
                   <span>{removalMessage(toast)}</span>
@@ -863,6 +920,15 @@ function InfoIcon() {
       <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path d="M10 9v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       <circle cx="10" cy="6.2" r="1.1" fill="currentColor" />
+    </svg>
+  )
+}
+
+function PanelIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="M9 4v16" />
     </svg>
   )
 }
