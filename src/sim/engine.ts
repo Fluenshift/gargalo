@@ -386,12 +386,11 @@ export function simulateTick(
           const work = share * outAsync
           if (counts) failed.breaker += users * (1 - open)
           if (counts) async.lost += work * (1 - open)
-          const { attempts, success } = retryOutcome(down.get(target) ? 0 : lastSuccess(target, c), policy.retries ?? 0, policy.backoff ?? false)
+          // How many attempts pile on follows from how the target did last second; whether the
+          // users get an answer is settled below, once the target's outcome this second is known.
+          const { attempts } = retryOutcome(down.get(target) ? 0 : lastSuccess(target, c), policy.retries ?? 0, policy.backoff ?? false)
           const tried = users * open
           if (counts) {
-            served += tried * success
-            servedByClass[c] += tried * success
-            failed[down.get(target) ? 'down' : 'overload'] += tried * (1 - success)
             const calls = policyCalls.get(key) ?? zero()
             calls[c] += tried
             policyCalls.set(key, calls)
@@ -443,6 +442,19 @@ export function simulateTick(
     }
     success.set(node.id, result)
     state.set(`succ:${node.id}`, result)
+  }
+
+  // Users who went through a link with a policy: answered unless every attempt failed.
+  for (const [key, calls] of policyCalls) {
+    const policy = policies.get(key)!
+    const target = key.slice(key.indexOf('->') + 2)
+    for (const c of USER_CLASSES) {
+      if (calls[c] <= 0) continue
+      const { success: answered } = retryOutcome(success.get(target)?.[c] ?? 0, policy.retries ?? 0, policy.backoff ?? false)
+      served += calls[c] * answered
+      servedByClass[c] += calls[c] * answered
+      failed[down.get(target) ? 'down' : 'overload'] += calls[c] * (1 - answered)
+    }
   }
 
   // Breakers judge the calls that went through them this second.
