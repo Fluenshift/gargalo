@@ -74,6 +74,26 @@ export function NodeRunStats({ ticks, nodeId, shown }: Props) {
       },
     )
   }
+  if (series.lagMs && series.staleRate) {
+    const finiteLag = series.lagMs.filter(Number.isFinite)
+    const lagTop = peak(finiteLag)
+    rows.push(
+      {
+        name: 'Atraso de replicação',
+        value: now ? waitLabel(series.lagMs[i], 'sem primário') : '—',
+        bad: now && !Number.isFinite(series.lagMs[i]),
+        values: series.lagMs.map((v) => (Number.isFinite(v) ? v : lagTop)),
+        max: lagTop,
+      },
+      {
+        name: 'Leituras desatualizadas',
+        value: now ? pct(series.staleRate[i]) : '—',
+        bad: now && series.staleRate[i] >= 0.01,
+        values: series.staleRate,
+        max: Math.max(0.05, ...series.staleRate),
+      },
+    )
+  }
 
   return (
     <section className="noderun" aria-label="Esta peça na rodada">

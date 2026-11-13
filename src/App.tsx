@@ -49,8 +49,8 @@ import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db', 'queue', 'worker']
-const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020, queue: 820, worker: 1020 }
+const PALETTE: Kind[] = ['cdn', 'lb', 'server', 'cache', 'db', 'replica', 'queue', 'worker']
+const COLUMN: Record<Kind, number> = { client: 0, cdn: 200, lb: 400, server: 600, cache: 820, db: 1020, queue: 820, worker: 1020, replica: 1240 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
 const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320 }
 const TICK_MS = 120
@@ -155,6 +155,8 @@ function hints(summary: RunSummary, ticks: TickResult[]): string[] {
     out.push('Requisições foram mandadas para um servidor fora do ar. Um load balancer para de enviar tráfego a servidores que caem.')
   if (!summary.passed.p99 && out.length === 0)
     out.push('Nada caiu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.')
+  if (summary.staleReadRate >= 0.01)
+    out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas atrasam mais quando recebem muitas escritas ou estão cheias de leituras; uma réplica sem ligação do banco nunca é atualizada.`)
   if (summary.backlogAtEnd >= 1)
     out.push(`A rodada terminou com ${count(summary.backlogAtEnd)} mensagens esperando na fila. Se o backlog não esvazia, o problema só foi adiado: ponha mais workers.`)
   if (summary.async.lost >= 1)
@@ -819,6 +821,14 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
                 ok={measured?.passed.p99}
               />
               <GoalRow name="Custo mensal" required={`≤ $${g.maxCost}`} value={`$${cost}`} ok={cost <= g.maxCost} />
+              {g.maxStaleReads !== undefined && (
+                <GoalRow
+                  name="Leituras desatualizadas"
+                  required={`≤ ${pct(g.maxStaleReads)}`}
+                  value={measured && pct(measured.staleReadRate)}
+                  ok={measured?.passed.stale}
+                />
+              )}
               <tr>
                 <th scope="row">Custo por 1 mi de req.</th>
                 <td>—</td>
