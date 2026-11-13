@@ -32,6 +32,7 @@ import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
 import type { Editor } from './editorContext'
 import { Inspector } from './Inspector'
+import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
 import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
@@ -43,6 +44,8 @@ import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { runLevel } from './sim/engine'
 import type { FailureReason, RunSummary, TickResult } from './sim/engine'
+import { bottleneck, timeline } from './sim/debrief'
+import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
 import { SPECS, canConnect, totalCost } from './sim/model'
 import type { Architecture, Kind, Level } from './sim/model'
@@ -775,7 +778,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
           {finished && (
             <label className="scrub">
               <span>
-                Rever o segundo {shown} de {run.ticks.length}
+                Rever o momento {shown - 1}s de {run.ticks.length}s
               </span>
               <input
                 type="range"
@@ -791,7 +794,19 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
             </label>
           )}
 
-          {finished && <Result summary={run.summary} ticks={run.ticks} />}
+          {finished && (
+            <Result
+              summary={run.summary}
+              ticks={run.ticks}
+              arch={arch}
+              levelId={level.id}
+              onSeek={(t) => {
+                setPlaying(false)
+                setShown(t + 1)
+              }}
+              onConcept={openInfo}
+            />
+          )}
 
           <table className="sheet">
             <caption>
@@ -905,7 +920,30 @@ function Meter({
   )
 }
 
-function Result({ summary, ticks }: { summary: RunSummary; ticks: TickResult[] }) {
+const BOTTLENECK_TEXT: Record<Bottleneck['reason'], (lost: number) => string> = {
+  drops: (lost) => `Descartou ${count(lost)} requisições por excesso de carga.`,
+  down: (lost) => `Ficou fora do ar sem outra peça para assumir, e ${count(lost)} requisições se perderam.`,
+  latency: () => 'Nada se perdeu, mas foi onde as requisições mais esperaram.',
+}
+
+function Result({
+  summary,
+  ticks,
+  arch,
+  levelId,
+  onSeek,
+  onConcept,
+}: {
+  summary: RunSummary
+  ticks: TickResult[]
+  arch: Architecture
+  levelId: string
+  /** Shows the given second on the canvas. */
+  onSeek: (t: number) => void
+  onConcept: (kind: Kind, opener: HTMLElement) => void
+}) {
+  const events = timeline(arch, ticks)
+  const neck = bottleneck(arch, ticks)
   return (
     <section className={`result ${summary.passed.all ? 'result--pass' : 'result--fail'}`} aria-live="polite">
       <h2>
@@ -913,7 +951,15 @@ function Result({ summary, ticks }: { summary: RunSummary; ticks: TickResult[] }
           ? 'Fase concluída. As três metas foram cumpridas.'
           : 'Ainda não. Veja no selo da folha qual meta falhou.'}
       </h2>
-      {lostByReason(summary.failed) && (
+      {neck && (
+        <p className="debrief__neck">
+          Gargalo principal: <strong>{SPECS[neck.kind].label}</strong>. {BOTTLENECK_TEXT[neck.reason](neck.lost)}{' '}
+          <button className="meter__link" onClick={(e) => onConcept(neck.kind, e.currentTarget)}>
+            Ver o conceito
+          </button>
+        </p>
+      )}
+      {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
       {hints(summary, ticks).map((h) => (
@@ -921,6 +967,27 @@ function Result({ summary, ticks }: { summary: RunSummary; ticks: TickResult[] }
           {h}
         </p>
       ))}
+      {summary.passed.all &&
+        ALTERNATIVES[levelId]?.map((text) => (
+          <p key={text} className="hint">
+            <strong>Outro caminho:</strong> {text}
+          </p>
+        ))}
+      {events.length > 0 && (
+        <details className="debrief">
+          <summary>O que aconteceu na rodada ({events.length})</summary>
+          <ol>
+            {events.map((e) => (
+              <li key={`${e.t}-${e.text}`} className={`debrief__event is-${e.tone}`}>
+                <button className="debrief__t" onClick={() => onSeek(e.t)} aria-label={`Rever o momento ${e.t}s`}>
+                  {e.t}s
+                </button>
+                <span>{e.text}</span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
     </section>
   )
 }

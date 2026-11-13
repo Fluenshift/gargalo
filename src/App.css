@@ -896,6 +896,9 @@ ul {
   grid-template-columns: 1fr auto;
   gap: 12px 28px;
   align-items: center;
+  /* A long debrief scrolls here instead of squeezing the canvas. */
+  max-height: 48vh;
+  overflow-y: auto;
 }
 
 .meters {
@@ -1049,6 +1052,55 @@ ul {
   font-size: 17px;
   font-weight: 800;
   font-stretch: 112%;
+}
+
+.debrief__neck {
+  margin-top: 4px;
+  max-width: 80ch;
+}
+
+.debrief {
+  margin-top: 8px;
+  max-width: 80ch;
+}
+
+.debrief summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.debrief ol {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.debrief__event {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.debrief__event.is-bad span {
+  color: var(--hot);
+}
+
+.debrief__event.is-warn span {
+  color: var(--warm);
+}
+
+.debrief__t {
+  justify-self: start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .hint {
@@ -1382,6 +1434,7 @@ ul {
 
   .console {
     grid-template-columns: 1fr;
+    max-height: none;
     padding: 14px 16px;
   }
 
