@@ -41,6 +41,8 @@ import { NodeCard } from './NodeCard'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
 import { parseDesign } from './savedDesign'
+import { LinkPanel } from './LinkPanel'
+import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { runLevel } from './sim/engine'
@@ -133,11 +135,22 @@ function save(key: string, value: unknown) {
   }
 }
 
+/** Retries, backoff and breaker set on a link (kept in the edge's data). */
+const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
+
 function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
   return {
     nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })),
-    edges: edges.map((e) => ({ source: e.source, target: e.target })),
+    edges: edges.map((e) => ({ source: e.source, target: e.target, ...policyOf(e) })),
   }
+}
+
+/** "3 retries com backoff · breaker", or undefined for a plain link. */
+function policyLabel(p: LinkPolicy): string | undefined {
+  const parts: string[] = []
+  if (p.retries) parts.push(`${p.retries} ${p.retries === 1 ? 'retry' : 'retries'}${p.backoff ? ' com backoff' : ''}`)
+  if (p.breaker) parts.push('breaker')
+  return parts.length ? parts.join(' · ') : undefined
 }
 
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1)}%`
@@ -150,6 +163,7 @@ const REASONS: [FailureReason, string][] = [
   ['down', 'fora do ar'],
   ['noRoute', 'sem rota'],
   ['limited', 'limite (429)'],
+  ['breaker', 'circuit breaker aberto'],
 ]
 
 /** "120 por sobrecarga, 30 sem rota", or undefined when nothing was lost. */
@@ -158,18 +172,31 @@ function lostByReason(failed: Record<FailureReason, number>, unit = ''): string 
   return parts.length ? parts.join(', ') : undefined
 }
 
-function hints(summary: RunSummary, ticks: TickResult[]): string[] {
+function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture): string[] {
   const total = ticks.reduce((s, t) => s + t.rps, 0) || 1
   const out: string[] = []
   if (summary.failed.noRoute / total > 0.001)
     out.push('Algumas requisições não tinham para onde ir. Confira se os usuários chegam a um servidor e se cada servidor chega ao banco.')
   if (summary.failed.overload / total > 0.001)
     out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle acima até o momento em que algo fica vermelho.')
+  const stormy = arch.edges.some((e) => (e.retries ?? 0) > 0 && !e.backoff && !e.breaker)
+  const crashed = ticks.some((t) => Object.entries(t.nodes).some(([id, n]) => n.down && SPECS[arch.nodes.find((x) => x.id === id)!.kind].crashesAbove))
+  if (crashed)
+    out.push(
+      stormy
+        ? 'Tentativas extras sem backoff chegam todas no mesmo segundo e multiplicam a carga de quem já está mal: um banco lento vira um banco caído. Ligue o backoff ou um circuit breaker na ligação.'
+        : 'O banco recebeu mais que o dobro do que aguenta e caiu por alguns segundos. Falta capacidade na frente dele: reduza o que chega até ele.',
+    )
+  if (summary.failed.breaker / total > 0.001)
+    out.push(
+      `${pct(summary.failed.breaker / total)} das requisições falharam na hora num circuit breaker aberto. É o preço de deixar o destino se recuperar; o que não pode é ele cair de novo assim que fecha.`,
+    )
   if (summary.failed.limited / total > 0.001)
     out.push(
       `${pct(summary.failed.limited / total)} das requisições de usuários foram recusadas com 429. Recusar rápido protege o que está atrás, mas cada 429 é alguém sem resposta: dê mais capacidade ao que fica depois do limite.`,
     )
-  if (summary.failed.down / total > 0.001)
+  // A crash from overload is already explained above; this one is about pieces taken out by the level.
+  if (summary.failed.down / total > 0.001 && !crashed)
     out.push('Requisições foram mandadas para um servidor fora do ar. Um load balancer para de enviar tráfego a servidores que caem.')
   if (!summary.passed.p99 && out.length === 0)
     out.push(
@@ -540,6 +567,8 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
   // Concepts panel: the single selected piece, or a kind opened from the parts list.
   const [listInfo, setListInfo] = useState<{ kind: Kind; opener: HTMLElement } | null>(null)
   const selected = nodes.filter((n) => n.selected)
+  const selectedEdges = edges.filter((e) => e.selected)
+  const selectedLink = selected.length === 0 && selectedEdges.length === 1 ? selectedEdges[0] : undefined
   const inspected = listInfo?.kind ?? (selected.length === 1 ? selected[0].data.kind : null)
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
@@ -589,16 +618,22 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
       ...e,
       type: 'removable',
       ariaLabel: `Ligação de ${labelOf(e.source)} para ${labelOf(e.target)}`,
+      label: policyLabel(policyOf(e)),
     }))
     if (!tick) return base
     const peak = Math.max(1, ...Object.values(tick.edges))
     return base.map((e) => {
       const rps = tick.edges[`${e.source}->${e.target}`] ?? 0
+      const breaker = tick.breakers[`${e.source}->${e.target}`]
+      // The dotted line already shows an open breaker; its words go to screen readers, so labels don't pile up.
+      const state = breaker === 'open' ? ', circuit breaker aberto' : breaker === 'half-open' ? ', circuit breaker testando' : ''
       return {
         ...e,
         animated: rps > 0,
+        ariaLabel: `${e.ariaLabel}${state}`,
         label: rps > 0 ? `${Math.round(rps)}/s` : undefined,
-        style: { strokeWidth: 1.5 + 6 * (rps / peak), opacity: rps > 0 ? 1 : 0.35 },
+        className: breaker ? `edge--${breaker}` : undefined,
+        style: { strokeWidth: 1.5 + 6 * (rps / peak), opacity: rps > 0 || breaker ? 1 : 0.35 },
       }
     })
   }, [nodes, edges, tick])
@@ -785,6 +820,20 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
             )}
           </div>
 
+          {!inspected && selectedLink && (
+            <LinkPanel
+              from={SPECS[nodes.find((n) => n.id === selectedLink.source)!.data.kind].label}
+              to={SPECS[nodes.find((n) => n.id === selectedLink.target)!.data.kind].label}
+              policy={policyOf(selectedLink)}
+              state={tick ? (tick.breakers[`${selectedLink.source}->${selectedLink.target}`] ?? 'closed') : undefined}
+              editable={editable}
+              onChange={(policy) => {
+                clearRun()
+                setEdges((es) => es.map((e) => (e.id === selectedLink.id ? { ...e, data: { ...policy } } : e)))
+              }}
+              onClose={() => setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))}
+            />
+          )}
           {inspected && (
             <Inspector
               kind={inspected}
@@ -1051,7 +1100,7 @@ function Result({
       {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
-      {hints(summary, ticks).map((h) => (
+      {hints(summary, ticks, arch).map((h) => (
         <p key={h} className="hint">
           {h}
         </p>

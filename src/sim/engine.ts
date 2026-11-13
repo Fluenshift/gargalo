@@ -20,14 +20,24 @@
 // reaches, but nobody waits for it, so it never counts for availability or
 // latency.
 //
+// A link can retry failed calls and carry a circuit breaker. Such a link
+// settles its users' fate right there, from how often the target answered in
+// the previous second: with r retries a user fails only if all r + 1 attempts
+// fail. Every attempt still loads the target, but past the link that load is
+// "ghost" work whose outcome nobody counts any more. Without backoff all
+// retries land in the same second and pile on a struggling target; a piece
+// with `crashesAbove` goes down when that pile gets too big. A breaker stops
+// calling a target that fails most calls, fails fast for a while and then
+// lets a probe through.
+//
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
 import { SPECS, botRpsAt, rpsAt, totalCost } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec, UserClass } from './model'
 
-/** limited: refused on purpose with a 429 (rate limit). */
-export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited'
+/** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
+export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited' | 'breaker'
 
 export interface NodeStats {
   load: number
@@ -80,8 +90,10 @@ export interface TickResult extends Percentiles {
   failed: Record<FailureReason, number>
   async: AsyncWork
   nodes: Record<string, NodeStats>
-  /** Requests per second on each edge, keyed `${source}->${target}`. */
+  /** Requests per second on each edge, keyed `${source}->${target}`, retries included. */
   edges: Record<string, number>
+  /** Edges whose circuit breaker is open (nothing goes through) or half-open (a probe goes through). */
+  breakers: Record<string, 'open' | 'half-open'>
   latencies: number[]
 }
 
@@ -103,6 +115,24 @@ export interface RunSummary extends Percentiles {
 const USER_CLASSES: UserClass[] = ['static', 'read', 'write']
 const CLASSES: RequestClass[] = [...USER_CLASSES, 'bot']
 const MAX_UTILIZATION_FOR_LATENCY = 0.95
+/** A breaker opens when fewer than this share of the calls through it succeed. */
+export const BREAKER_THRESHOLD = 0.5
+/** Seconds an open breaker fails fast before letting a probe through. */
+export const BREAKER_OPEN_S = 5
+/** Share of the calls a half-open breaker lets through to test the target. */
+export const BREAKER_PROBE = 0.1
+/** Seconds a piece stays down after load past `crashesAbove` takes it out. */
+export const CRASH_DOWN_S = 5
+
+/** Expected attempts per call and the chance a call finally succeeds, given one attempt succeeds with `s`. */
+export function retryOutcome(s: number, retries: number, backoff: boolean): { attempts: number; success: number } {
+  const f = 1 - s
+  // With backoff and jitter only the first retry falls in the same second; later ones find the target recovered or give up.
+  let attempts = 1
+  if (backoff) attempts += retries > 0 ? f : 0
+  else for (let k = 1; k <= retries; k++) attempts += f ** k
+  return { attempts, success: 1 - f ** (retries + 1) }
+}
 
 export type Rng = () => number
 
@@ -147,7 +177,7 @@ function topoOrder(arch: Architecture): ArchNode[] {
 }
 
 function emptyFailures(): Record<FailureReason, number> {
-  return { overload: 0, down: 0, noRoute: 0, limited: 0 }
+  return { overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0 }
 }
 
 function sampleClass(level: Level, rng: Rng): UserClass {
@@ -183,7 +213,23 @@ export function simulateTick(
     parents.get(e.target)?.push(e.source)
   }
 
-  const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t)]))
+  const crashed = (id: string) => t < (state.get(`crash:${id}`)?.until ?? -1)
+  const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t) || crashed(n.id)]))
+  const policies = new Map(arch.edges.map((e) => [`${e.source}->${e.target}`, e]))
+  /** Share of calls the link lets through this second: 0 while its breaker is open, a probe while half-open. */
+  const breakers: TickResult['breakers'] = {}
+  const letThrough = (key: string): number => {
+    const b = state.get(`edge:${key}`)
+    if (!b?.open) return 1
+    if (t < b.until) {
+      breakers[key] = 'open'
+      return 0
+    }
+    breakers[key] = 'half-open'
+    return BREAKER_PROBE
+  }
+  /** How often one call to `id` succeeded last second, per class (1 before anything is known). */
+  const lastSuccess = (id: string, c: RequestClass) => state.get(`succ:${id}`)?.[c] ?? 1
   const byId = new Map(arch.nodes.map((n) => [n.id, n]))
   const routable = (node: ArchNode, c: RequestClass): string[] => {
     const targets = (children.get(node.id) ?? []).map((id) => ({ id, kind: byId.get(id)!.kind, down: down.get(id)! }))
@@ -214,6 +260,10 @@ export function simulateTick(
   const arriving = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
   // The part of `arriving` some piece upstream already answered to the user.
   const acked = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
+  // The part of `arriving` whose outcome a retrying link upstream already settled: load only.
+  const ghost = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
+  /** User calls per class that went through each link with a policy, to judge its breaker. */
+  const policyCalls = new Map<string, ClassLoad>()
   const client = arch.nodes.find((n) => pieces[n.kind].entry)
   if (client) {
     for (const c of USER_CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
@@ -228,18 +278,19 @@ export function simulateTick(
   let served = 0
   let stale = 0
   const servedByClass = zero()
-  // Splits a loss between the users still waiting (`waiting` share) and acknowledged work.
-  // What a bot loses is nobody's loss.
-  const lose = (c: RequestClass, amount: number, waiting: number, reason: FailureReason) => {
+  // Splits a loss between the users still waiting (`waiting` share) and acknowledged work
+  // (`asyncShare`); the rest is ghost work nobody counts. What a bot loses is nobody's loss.
+  const lose = (c: RequestClass, amount: number, waiting: number, asyncShare: number, reason: FailureReason) => {
     if (c === 'bot') return
     failed[reason] += amount * waiting
-    async.lost += amount * (1 - waiting)
+    async.lost += amount * asyncShare
   }
 
   for (const node of topoOrder(arch)) {
     const spec = pieces[node.kind]
     const arrived = arriving.get(node.id)!
     const ack = acked.get(node.id)!
+    const gho = ghost.get(node.id)!
     const isNodeDown = down.get(node.id)!
     let a = arrived
     let dropped = zero()
@@ -281,12 +332,14 @@ export function simulateTick(
     }
 
     for (const c of CLASSES) {
-      // Share of this class whose users are still waiting for an answer.
-      const waiting = arrived[c] > 0 ? 1 - ack[c] / arrived[c] : 1
+      // Shares of this class: users still waiting, work already acknowledged, and ghost load.
+      const asyncShare = arrived[c] > 0 ? ack[c] / arrived[c] : 0
+      const ghostShare = arrived[c] > 0 ? gho[c] / arrived[c] : 0
+      const waiting = Math.max(0, 1 - asyncShare - ghostShare)
       // Bots count for load only: nothing they get or lose is anyone's answer.
       const counts = c !== 'bot'
-      lose(c, dropped[c], waiting, 'overload')
-      lose(c, refused[c], waiting, 'limited')
+      lose(c, dropped[c], waiting, asyncShare, 'overload')
+      lose(c, refused[c], waiting, asyncShare, 'limited')
       // Past an acknowledging piece nobody waits: the user got the answer on acceptance.
       const acknowledges = !isNodeDown && (spec.acknowledges?.includes(c) ?? false)
       if (acknowledges && counts) {
@@ -294,15 +347,16 @@ export function simulateTick(
         servedByClass[c] += (arrived[c] - dropped[c] - refused[c]) * waiting
       }
       const outWaiting = acknowledges ? 0 : waiting
+      const outAsync = acknowledges ? asyncShare + waiting : asyncShare
 
-      lose(c, a[c] * (1 - pass), outWaiting, isNodeDown ? 'down' : 'overload')
+      lose(c, a[c] * (1 - pass), outWaiting, outAsync, isNodeDown ? 'down' : 'overload')
       const survivors = a[c] * pass
       const endsHere = survivors * (spec.serves[c] ?? 0)
       if (counts) {
         served += endsHere * outWaiting
         servedByClass[c] += endsHere * outWaiting
         stale += endsHere * outWaiting * staleRate
-        async.done += endsHere * (1 - outWaiting)
+        async.done += endsHere * outAsync
       }
       if (endsHere > 0 && spec.replicates?.includes(c)) {
         for (const target of children.get(node.id) ?? []) {
@@ -317,17 +371,90 @@ export function simulateTick(
       if (forward <= 0) continue
       const targets = routable(node, c)
       if (targets.length === 0) {
-        lose(c, forward, outWaiting, 'noRoute')
+        lose(c, forward, outWaiting, outAsync, 'noRoute')
         continue
       }
       for (const target of targets) {
         const share = forward / targets.length
-        arriving.get(target)![c] += share
-        acked.get(target)![c] += share * (1 - outWaiting)
         const key = `${node.id}->${target}`
-        edges[key] = (edges[key] ?? 0) + share
+        const policy = policies.get(key)
+        let sent = share
+        if (policy && ((policy.retries ?? 0) > 0 || policy.breaker)) {
+          // This link settles its users here; what it sends on is load nobody counts.
+          const open = policy.breaker ? letThrough(key) : 1
+          const users = share * outWaiting
+          const work = share * outAsync
+          if (counts) failed.breaker += users * (1 - open)
+          if (counts) async.lost += work * (1 - open)
+          const { attempts, success } = retryOutcome(down.get(target) ? 0 : lastSuccess(target, c), policy.retries ?? 0, policy.backoff ?? false)
+          const tried = users * open
+          if (counts) {
+            served += tried * success
+            servedByClass[c] += tried * success
+            failed[down.get(target) ? 'down' : 'overload'] += tried * (1 - success)
+            const calls = policyCalls.get(key) ?? zero()
+            calls[c] += tried
+            policyCalls.set(key, calls)
+          }
+          const ghostLoad = tried * attempts + share * (1 - outWaiting - outAsync) * open
+          sent = ghostLoad + work * open
+          ghost.get(target)![c] += ghostLoad
+          acked.get(target)![c] += work * open
+        } else {
+          acked.get(target)![c] += share * outAsync
+          ghost.get(target)![c] += share * (1 - outWaiting - outAsync)
+        }
+        arriving.get(target)![c] += sent
+        edges[key] = (edges[key] ?? 0) + sent
       }
     }
+
+    // Too much load takes a fragile piece out for a while.
+    if (!isNodeDown && spec.crashesAbove !== undefined && load > spec.crashesAbove * spec.capacity) {
+      state.set(`crash:${node.id}`, { until: t + 1 + CRASH_DOWN_S })
+    }
+  }
+
+  // How often one call to each piece succeeded this second, per class: what retrying links
+  // and breakers upstream judge it by next second. Children first.
+  const success = new Map<string, Record<string, number>>()
+  for (const node of [...topoOrder(arch)].reverse()) {
+    const spec = pieces[node.kind]
+    const through = down.get(node.id) ? 0 : (passRate.get(node.id) ?? 0)
+    const result: Record<string, number> = {}
+    for (const c of USER_CLASSES) {
+      if (spec.acknowledges?.includes(c)) {
+        result[c] = through
+        continue
+      }
+      const ends = spec.serves[c] ?? 0
+      const targets = routable(node, c)
+      const onward = targets.length
+        ? targets.reduce((sum, target) => {
+            const key = `${node.id}->${target}`
+            const policy = policies.get(key)
+            const s = success.get(target)?.[c] ?? 0
+            if (!policy || (!(policy.retries ?? 0) && !policy.breaker)) return sum + s
+            const open = breakers[key] === 'open' ? 0 : 1
+            return sum + open * retryOutcome(s, policy.retries ?? 0, policy.backoff ?? false).success
+          }, 0) / targets.length
+        : 0
+      result[c] = through * (ends + (1 - ends) * onward)
+    }
+    success.set(node.id, result)
+    state.set(`succ:${node.id}`, result)
+  }
+
+  // Breakers judge the calls that went through them this second.
+  for (const [key, policy] of policies) {
+    if (!policy.breaker) continue
+    const calls = policyCalls.get(key)
+    const total = calls ? USER_CLASSES.reduce((sum, c) => sum + calls[c], 0) : 0
+    if (total <= 0) continue
+    const target = key.slice(key.indexOf('->') + 2)
+    const ok = USER_CLASSES.reduce((sum, c) => sum + calls![c] * (success.get(target)?.[c] ?? 0), 0) / total
+    if (ok < BREAKER_THRESHOLD) state.set(`edge:${key}`, { open: 1, until: t + 1 + BREAKER_OPEN_S })
+    else if (state.get(`edge:${key}`)?.open) state.set(`edge:${key}`, { open: 0, until: 0 })
   }
 
   // Sampling pass for latency.
@@ -346,12 +473,17 @@ export function simulateTick(
           break
         }
         const targets = routable(node, c)
-        node = targets.length ? byId.get(targets[Math.floor(rng() * targets.length)]) : undefined
+        const next = targets.length ? targets[Math.floor(rng() * targets.length)] : undefined
+        // An open breaker fails the call on the spot.
+        const key = next && `${node.id}->${next}`
+        if (key && breakers[key] === 'open') break
+        if (key && breakers[key] === 'half-open' && rng() >= BREAKER_PROBE) break
+        node = next ? byId.get(next) : undefined
       }
     }
   }
 
-  return { t, rps, botRps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, latencies }
+  return { t, rps, botRps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, breakers, latencies }
 }
 
 /** Mean queueing delay of an M/M/1 queue at this utilization, capped so it stays finite. */

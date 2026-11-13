@@ -70,6 +70,8 @@ export interface Spec {
    * replicating its writes). The copies are background work nobody waits for.
    */
   replicates?: RequestClass[]
+  /** Load above this multiple of capacity takes the piece down for a few seconds (out of memory, connections). */
+  crashesAbove?: number
 }
 
 export interface StepContext {
@@ -236,8 +238,9 @@ export const SPECS: Record<Kind, Spec> = {
     serves: { read: 1, write: 1, bot: 1 },
     targets: ['replica'],
     maxOut: 4,
-    description: 'Fonte da verdade. Caro e difícil de escalar.',
+    description: 'Fonte da verdade. Caro e difícil de escalar. Com mais que o dobro da capacidade, cai.',
     replicates: ['write'],
+    crashesAbove: 2,
   },
   queue: {
     label: 'Fila de mensagens',
@@ -312,7 +315,16 @@ export interface ArchNode {
 export interface ArchEdge {
   source: string
   target: string
+  /** Extra attempts after a failed call (0 to 3). */
+  retries?: number
+  /** Retries wait longer each time, with jitter, instead of all landing at once. */
+  backoff?: boolean
+  /** Stops calling a target that fails most calls, failing fast for a while. */
+  breaker?: boolean
 }
+
+/** Most extra attempts a link may make. */
+export const MAX_RETRIES = 3
 
 export interface Architecture {
   nodes: ArchNode[]

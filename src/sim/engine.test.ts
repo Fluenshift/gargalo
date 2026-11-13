@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS } from '../levels'
-import { latencyPercentiles, mulberry32, runLevel, simulateTick } from './engine'
+import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
+import type { TickResult } from './engine'
 import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
-import type { Architecture, Kind, Level, Spec } from './model'
+import type { ArchEdge, Architecture, Kind, Level, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
 function arch(edges: [string, string][], extra: string[] = []): Architecture {
@@ -167,7 +168,7 @@ describe('message queue and workers', () => {
     expect(direct.summary.passed.availability).toBe(false)
 
     const { ticks, summary } = runLevel(queued(5, 5), spike)
-    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0, limited: 0 })
+    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0 })
     expect(summary.availability).toBeCloseTo(1)
     // The database never sees the spike: the workers (5 × 200/s) cap what reaches it.
     for (const t of ticks) expect(t.nodes.db.load).toBeLessThanOrEqual(1000 + 1e-6)
@@ -385,6 +386,69 @@ describe('bot traffic', () => {
     const cached = arch([['client', 'server'], ['server', 'cache'], ['cache', 'db']])
     const tick = simulateTick(cached, { ...scraped, traffic: [{ from: 0, rps: 0 }], bot: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
     expect(tick.nodes.db.load).toBeCloseTo(300 * 0.15)
+  })
+})
+
+describe('retries and circuit breakers', () => {
+  // Five servers in front of one database (1.000 req/s): a 20-second rush of 1.200 reads, then calm.
+  const rush: Level = {
+    ...steady,
+    durationS: 40,
+    traffic: [
+      { from: 0, rps: 600 },
+      { from: 5, rps: 1200 },
+      { from: 25, rps: 600 },
+    ],
+  }
+  const withPolicy = (policy: Partial<ArchEdge>): Architecture => {
+    const a = fanOut(5, 'db', [['client', 'lb']])
+    return { ...a, edges: a.edges.map((e) => (e.target === 'db' ? { ...e, ...policy } : e)) }
+  }
+  const run = (policy: Partial<ArchEdge>) => runLevel(withPolicy(policy), rush)
+  const secondsDown = (ticks: TickResult[]) => ticks.filter((t) => t.nodes.db.down).length
+  const lastAvailability = (ticks: TickResult[]) => ticks.at(-1)!.served / ticks.at(-1)!.rps
+
+  it('counts expected attempts and final success', () => {
+    expect(retryOutcome(0.5, 3, false)).toEqual({ attempts: 1.875, success: 0.9375 })
+    expect(retryOutcome(0.5, 3, true)).toEqual({ attempts: 1.5, success: 0.9375 })
+    expect(retryOutcome(1, 3, false)).toEqual({ attempts: 1, success: 1 })
+  })
+
+  it('retries without backoff turn a slow database into a dead one', () => {
+    const plain = run({})
+    const storm = run({ retries: 3 })
+    // Without retries the database sheds the excess and lives.
+    expect(secondsDown(plain.ticks)).toBe(0)
+    expect(lastAvailability(plain.ticks)).toBe(1)
+    // Retries pile on, it crashes, and every time it comes back the backlog of retries takes it out again,
+    // even after the rush is over.
+    expect(secondsDown(storm.ticks)).toBeGreaterThan(20)
+    expect(lastAvailability(storm.ticks)).toBe(0)
+    expect(storm.summary.availability).toBeLessThan(plain.summary.availability / 2)
+  })
+
+  it('with backoff, retries help instead', () => {
+    const plain = run({})
+    const backoff = run({ retries: 3, backoff: true })
+    expect(secondsDown(backoff.ticks)).toBe(0)
+    expect(backoff.summary.availability).toBeGreaterThan(plain.summary.availability)
+  })
+
+  it('a circuit breaker fails fast, lets the database recover and closes again', () => {
+    const { ticks, summary } = run({ retries: 3, breaker: true })
+    expect(summary.failed.breaker).toBeGreaterThan(0)
+    expect(ticks.some((t) => Object.values(t.breakers).includes('open'))).toBe(true)
+    expect(ticks.some((t) => Object.values(t.breakers).includes('half-open'))).toBe(true)
+    // Back to normal once the rush ends: database up, breakers closed, everyone answered.
+    expect(ticks.at(-1)!.nodes.db.down).toBe(false)
+    expect(Object.keys(ticks.at(-1)!.breakers)).toEqual([])
+    expect(lastAvailability(ticks)).toBe(1)
+    expect(summary.availability).toBeGreaterThan(run({ retries: 3 }).summary.availability * 2)
+  })
+
+  it('links without a policy behave exactly as before', () => {
+    const a = fanOut(5, 'db', [['client', 'lb']])
+    expect(runLevel(withPolicy({ retries: 0, backoff: true, breaker: false }), rush).summary).toEqual(runLevel(a, rush).summary)
   })
 })
 

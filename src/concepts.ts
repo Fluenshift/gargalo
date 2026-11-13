@@ -344,6 +344,29 @@ export const GLOSSARY: GlossaryEntry[] = [
     definition: 'Trabalho feito depois, fora do caminho da resposta. O usuário recebe o "ok" antes de terminar.',
   },
   {
+    id: 'retry',
+    term: 'retry',
+    forms: ['retries', 'tentativas extras', 'tentativa extra'],
+    definition: 'Chamar de novo depois de uma falha. Resolve falhas passageiras, mas cada tentativa é mais carga no destino.',
+  },
+  {
+    id: 'backoff',
+    term: 'backoff',
+    forms: ['backoff exponencial', 'jitter'],
+    definition: 'Esperar cada vez mais entre tentativas, com um sorteio (jitter) para que os clientes não voltem todos juntos.',
+  },
+  {
+    id: 'circuit-breaker',
+    term: 'circuit breaker',
+    forms: ['breaker'],
+    definition: 'Disjuntor da ligação: depois de muitas falhas para de chamar o destino por um tempo, falha na hora e depois testa com pouco tráfego.',
+  },
+  {
+    id: 'tempestade-retries',
+    term: 'tempestade de retries',
+    definition: 'Quando tentativas extras sobrecarregam um destino lento, que falha mais, gera mais tentativas e acaba caindo.',
+  },
+  {
     id: 'http-429',
     term: '429',
     forms: ['HTTP 429'],
