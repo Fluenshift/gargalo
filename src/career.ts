@@ -29,8 +29,15 @@ export const COMPANIES: Company[] = [
     id: 'startup',
     name: 'Startup',
     budget: 'Três pessoas e o dinheiro do primeiro investidor. Cada servidor a mais sai do caixa.',
-    levels: [level('primeiro-deploy'), level('banco-nao-aguenta')],
-    boss: level('black-friday'),
+    levels: [
+      level('colocar-no-ar'),
+      level('primeiro-deploy'),
+      level('banco-nao-aguenta'),
+      level('imagens-pesadas'),
+      level('caiu-de-madrugada'),
+    ],
+    // Black Friday was this boss; it moves to the E-commerce company (#15).
+    boss: level('materia-na-tv'),
     unlocks: ['cdn', 'lb', 'server', 'cache', 'db'],
   },
 ]
@@ -78,15 +85,19 @@ export function companyOpen(index: number, passed: Passed, companies: Company[] 
 /**
  * Levels open one after the other; the boss after all of the company's levels.
  * A level already passed always stays done, even if it was passed out of order
- * before career mode existed.
+ * before career mode existed. Passing a level also clears the way past every
+ * level before it, so a level added in front of one the player already passed
+ * stays open to play without locking the levels after it.
  */
 export function levelStatus(levelId: string, passed: Passed, companies: Company[] = COMPANIES): Status {
   if (passed.includes(levelId)) return 'done'
   const stage = findStage(levelId, companies)
   if (!stage || !companyOpen(stage.companyIndex, passed, companies)) return 'locked'
   const { levels } = stage.company
-  const before = stage.isBoss ? levels : levels.slice(0, levels.indexOf(stage.level))
-  return before.every((l) => passed.includes(l.id)) ? 'open' : 'locked'
+  // Index of the level right before this one (the last level, for the boss).
+  const previous = (stage.isBoss ? levels.length : levels.indexOf(stage.level)) - 1
+  const furthest = levels.findLastIndex((l) => passed.includes(l.id))
+  return furthest >= previous ? 'open' : 'locked'
 }
 
 export function bossBeaten(company: Company, passed: Passed): boolean {
