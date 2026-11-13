@@ -289,11 +289,28 @@ export function canConnect(arch: Architecture, sourceId: string, targetId: strin
   const source = arch.nodes.find((n) => n.id === sourceId)
   const target = arch.nodes.find((n) => n.id === targetId)
   if (!source || !target || source.id === target.id) return false
+  return connectRefusal(arch, sourceId, targetId) === null
+}
+
+const listPT = (items: string[]) =>
+  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ou ${items[items.length - 1]}`
+
+/** Why the player cannot draw this connection, in words for them; null when it is allowed. */
+export function connectRefusal(arch: Architecture, sourceId: string, targetId: string): string | null {
+  const source = arch.nodes.find((n) => n.id === sourceId)
+  const target = arch.nodes.find((n) => n.id === targetId)
+  if (!source || !target || source.id === target.id) return null
   const spec = SPECS[source.kind]
-  if (!spec.targets.includes(target.kind)) return false
+  if (!spec.targets.includes(target.kind)) {
+    if (spec.targets.length === 0) return `${spec.label} não se liga a nenhuma peça: é o fim do caminho.`
+    return `Não dá para ligar ${spec.label} a ${SPECS[target.kind].label}. Daqui só se chega a ${listPT(spec.targets.map((k) => SPECS[k].label))}.`
+  }
   const out = arch.edges.filter((e) => e.source === sourceId)
-  if (out.some((e) => e.target === targetId)) return false
-  return out.length < spec.maxOut
+  if (out.some((e) => e.target === targetId)) return 'Essas duas peças já estão ligadas.'
+  if (out.length < spec.maxOut) return null
+  const split = spec.targets.includes('lb') ? ' Para dividir o tráfego entre vários servidores, ligue a um Load Balancer e ele aos servidores.' : ''
+  if (source.kind === 'client') return `O DNS só aponta para um lugar, então os Usuários se ligam a uma peça só.${split}`
+  return `${spec.label} se liga a no máximo ${spec.maxOut} ${spec.maxOut === 1 ? 'peça' : 'peças'}.${split}`
 }
 
 export function totalCost(arch: Architecture, pieces: Record<string, Spec> = SPECS): number {
