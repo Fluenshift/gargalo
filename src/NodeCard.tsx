@@ -56,6 +56,9 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
               {Number.isFinite(stats.lagMs) && ` · ${Math.round((stats.staleRate ?? 0) * 100)}% velhas`}
             </div>
           )}
+          {(stats.refused ?? 0) >= 1 && (
+            <div className="node__queue">recusando {fmt(stats.refused ?? 0)}/s (429)</div>
+          )}
           {stats.dropRate > 0.001 && state !== 'down' && (
             <div className="node__drop">perdendo {Math.round(stats.dropRate * 100)}%</div>
           )}

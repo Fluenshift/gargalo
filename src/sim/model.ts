@@ -1,7 +1,25 @@
 // Domain model: component catalogue, architecture graph and level definitions.
 
-export type Kind = 'client' | 'cdn' | 'lb' | 'server' | 'cache' | 'db' | 'queue' | 'worker' | 'replica'
-export type RequestClass = 'static' | 'read' | 'write'
+export type Kind =
+  | 'client'
+  | 'cdn'
+  | 'limiter'
+  | 'gateway'
+  | 'lb'
+  | 'server'
+  | 'cache'
+  | 'db'
+  | 'queue'
+  | 'worker'
+  | 'replica'
+/** What people using the system ask for. */
+export type UserClass = 'static' | 'read' | 'write'
+/**
+ * `bot` is an abusive client scraping pages: it reads like `read` and loads every
+ * piece it reaches, but nobody waits for it, so it never counts for availability
+ * or latency.
+ */
+export type RequestClass = UserClass | 'bot'
 /** Requests per second of each class. */
 export type ClassLoad = Record<RequestClass, number>
 /** What a node keeps from one simulated second to the next (a backlog, a lag). */
@@ -55,7 +73,11 @@ export interface Spec {
 }
 
 export interface StepContext {
-  /** Requests per second the live targets of this node can take, summed. */
+  /**
+   * Requests per second the live targets of this node can take, summed. A target
+   * that ends nothing itself (a load balancer) counts what is behind it, capped
+   * by its own capacity.
+   */
   downstreamCapacity: number
   /** Kinds of the pieces connected into this node. */
   sources: Kind[]
@@ -66,6 +88,8 @@ export interface StepResult {
   state: NodeState
   /** Arrivals refused this second (a full queue). They fail like an overload. */
   dropped?: ClassLoad
+  /** Arrivals turned away on purpose with a fast 429 (a rate limit). They fail apart from overload. */
+  refused?: ClassLoad
   /** Requests waiting inside the node when the second ends. */
   backlog?: number
   /** How long a request accepted now waits before it moves on, in ms. Infinity if nothing drains it. */
@@ -74,6 +98,19 @@ export interface StepResult {
   lagMs?: number
   /** Share of the answers given here this second that are outdated. */
   staleRate?: number
+}
+
+/** Requests per second one client may send before a per-client limit refuses the rest. */
+export const PER_CLIENT_LIMIT = 10
+/** Share of what is behind it that a rate limiter lets through, keeping some headroom. */
+export const LIMITER_HEADROOM = 0.8
+
+const zeroLoad = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
+
+/** Lets each client through up to the per-client limit; a bot is one client sending far more. */
+function perClientLimit(arriving: ClassLoad): { load: ClassLoad; refused: ClassLoad } {
+  const bot = Math.min(arriving.bot, PER_CLIENT_LIMIT)
+  return { load: { ...arriving, bot }, refused: { ...zeroLoad(), bot: arriving.bot - bot } }
 }
 
 const QUEUE_CAPACITY = 10_000
@@ -108,7 +145,7 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 0,
     cost: 0,
     serves: {},
-    targets: ['cdn', 'lb', 'server'],
+    targets: ['cdn', 'limiter', 'gateway', 'lb', 'server'],
     maxOut: 1,
     description: 'De onde vem o tráfego. O DNS só aponta para um lugar.',
     entry: true,
@@ -119,9 +156,44 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 8,
     cost: 25,
     serves: { static: 0.95 },
-    targets: ['lb', 'server'],
+    targets: ['limiter', 'gateway', 'lb', 'server'],
     maxOut: 1,
     description: 'Serve 95% dos arquivos estáticos na borda. O resto segue para a origem.',
+  },
+  limiter: {
+    label: 'Rate limiter',
+    capacity: 50_000,
+    baseLatencyMs: 1,
+    cost: 15,
+    serves: {},
+    targets: ['gateway', 'lb', 'server'],
+    maxOut: 1,
+    description: 'Recusa com 429 o que passa do limite: por cliente, o que segura bots, e no total, o que protege quem está atrás.',
+    step: (arriving, _state, { downstreamCapacity }) => {
+      const { load, refused } = perClientLimit(arriving)
+      // With nothing live behind it there is nothing to protect: let the next piece fail it.
+      if (downstreamCapacity === 0) return { load, state: {}, refused }
+      const users = load.static + load.read + load.write
+      const room = Math.max(0, LIMITER_HEADROOM * downstreamCapacity - load.bot)
+      const keep = users <= room ? 1 : room / users
+      for (const c of ['static', 'read', 'write'] as const) {
+        refused[c] = load[c] * (1 - keep)
+        load[c] *= keep
+      }
+      return { load, state: {}, refused }
+    },
+  },
+  gateway: {
+    label: 'API Gateway',
+    capacity: 10_000,
+    baseLatencyMs: 5,
+    cost: 60,
+    serves: {},
+    targets: ['server'],
+    maxOut: 16,
+    description: 'Porta única da API: autentica, aplica limite por cliente e divide entre servidores saudáveis.',
+    route: (targets) => targets.filter((t) => !t.down),
+    step: (arriving) => ({ ...perClientLimit(arriving), state: {} }),
   },
   lb: {
     label: 'Load Balancer',
@@ -150,7 +222,7 @@ export const SPECS: Record<Kind, Spec> = {
     capacity: 10_000,
     baseLatencyMs: 1,
     cost: 30,
-    serves: { read: 0.85 },
+    serves: { read: 0.85, bot: 0.85 },
     targets: ['db', 'replica'],
     maxOut: 4,
     description: '85% das leituras acertam o cache. Escritas e misses vão ao banco.',
@@ -161,7 +233,7 @@ export const SPECS: Record<Kind, Spec> = {
     capacity: 1000,
     baseLatencyMs: 15,
     cost: 120,
-    serves: { read: 1, write: 1 },
+    serves: { read: 1, write: 1, bot: 1 },
     targets: ['replica'],
     maxOut: 4,
     description: 'Fonte da verdade. Caro e difícil de escalar.',
@@ -188,7 +260,7 @@ export const SPECS: Record<Kind, Spec> = {
       return {
         load: { ...arriving, write: out },
         state: { backlog },
-        dropped: { static: 0, read: 0, write: dropped },
+        dropped: { ...zeroLoad(), write: dropped },
         backlog,
         waitMs: backlog === 0 ? 0 : drain > 0 ? (backlog / drain) * 1000 : Infinity,
       }
@@ -209,7 +281,7 @@ export const SPECS: Record<Kind, Spec> = {
     capacity: REPLICA_CAPACITY,
     baseLatencyMs: 15,
     cost: 80,
-    serves: { read: 1, write: 1 },
+    serves: { read: 1, write: 1, bot: 1 },
     targets: [],
     maxOut: 0,
     description: 'Cópia do banco que responde leituras. Recebe as escritas do primário com atraso.',
@@ -274,8 +346,10 @@ export interface Level {
   title: string
   briefing: string
   durationS: number
-  mix: Record<RequestClass, number>
+  mix: Record<UserClass, number>
   traffic: TrafficPhase[]
+  /** An abusive client hammering the site, in requests per second over time. */
+  bot?: TrafficPhase[]
   failures: Failure[]
   goals: Goals
   /**
@@ -317,8 +391,18 @@ export function totalCost(arch: Architecture, pieces: Record<string, Spec> = SPE
   return arch.nodes.reduce((sum, n) => sum + pieces[n.kind].cost, 0)
 }
 
-export function rpsAt(level: Level, t: number): number {
+function phaseAt(phases: TrafficPhase[], t: number): number {
   let rps = 0
-  for (const phase of level.traffic) if (t >= phase.from) rps = phase.rps
+  for (const phase of phases) if (t >= phase.from) rps = phase.rps
   return rps
+}
+
+/** Requests per second from the people using the system. */
+export function rpsAt(level: Level, t: number): number {
+  return phaseAt(level.traffic, t)
+}
+
+/** Requests per second from the level's bot, if it has one. */
+export function botRpsAt(level: Level, t: number): number {
+  return level.bot ? phaseAt(level.bot, t) : 0
 }

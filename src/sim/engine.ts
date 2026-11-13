@@ -12,13 +12,22 @@
 // there on the flow pass tracks that load as async work: it no longer counts
 // for availability or latency, and losing it is reported apart.
 //
+// A piece may also refuse load on purpose (a rate limiter answering 429). That
+// is fast and cheap, so it adds no latency, but the user still got no answer:
+// it counts as a failure of its own kind.
+//
+// Traffic of class `bot` comes from an abusive client. It loads every piece it
+// reaches, but nobody waits for it, so it never counts for availability or
+// latency.
+//
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { SPECS, rpsAt, totalCost } from './model'
-import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec } from './model'
+import { SPECS, botRpsAt, rpsAt, totalCost } from './model'
+import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec, UserClass } from './model'
 
-export type FailureReason = 'overload' | 'down' | 'noRoute'
+/** limited: refused on purpose with a 429 (rate limit). */
+export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited'
 
 export interface NodeStats {
   load: number
@@ -27,6 +36,8 @@ export interface NodeStats {
   down: boolean
   /** Mean time a request spends at this node (service + queueing), in ms. 0 while down. */
   latencyMs: number
+  /** Requests per second refused on purpose with a 429 (pieces that limit), users and bots alike. */
+  refused?: number
   /** Requests waiting inside the node at the end of the second (pieces that hold a backlog). */
   backlog?: number
   /** How long a request accepted now waits before it moves on, in ms (pieces that hold a backlog). */
@@ -57,7 +68,10 @@ export interface Percentiles {
 
 export interface TickResult extends Percentiles {
   t: number
+  /** Requests per second from the users. */
   rps: number
+  /** Requests per second from the level's bot, on top of `rps`. */
+  botRps: number
   served: number
   /** `served`, split by request class. */
   servedByClass: ClassLoad
@@ -86,7 +100,8 @@ export interface RunSummary extends Percentiles {
   passed: { availability: boolean; p99: boolean; cost: boolean; stale: boolean; all: boolean }
 }
 
-const CLASSES: RequestClass[] = ['static', 'read', 'write']
+const USER_CLASSES: UserClass[] = ['static', 'read', 'write']
+const CLASSES: RequestClass[] = [...USER_CLASSES, 'bot']
 const MAX_UTILIZATION_FOR_LATENCY = 0.95
 
 export type Rng = () => number
@@ -132,12 +147,12 @@ function topoOrder(arch: Architecture): ArchNode[] {
 }
 
 function emptyFailures(): Record<FailureReason, number> {
-  return { overload: 0, down: 0, noRoute: 0 }
+  return { overload: 0, down: 0, noRoute: 0, limited: 0 }
 }
 
-function sampleClass(level: Level, rng: Rng): RequestClass {
+function sampleClass(level: Level, rng: Rng): UserClass {
   let r = rng()
-  for (const c of CLASSES) {
+  for (const c of USER_CLASSES) {
     r -= level.mix[c]
     if (r < 0) return c
   }
@@ -158,6 +173,7 @@ export function simulateTick(
   pieces: Record<string, Spec> = SPECS,
 ): TickResult {
   const rps = rpsAt(level, t)
+  const botRps = botRpsAt(level, t)
   // More samples in busier seconds, so the run-wide p99 is weighted by traffic.
   const samples = Math.min(1000, Math.max(100, Math.round(rps / 4)))
   const children = new Map<string, string[]>(arch.nodes.map((n) => [n.id, []]))
@@ -175,12 +191,34 @@ export function simulateTick(
     return (route ? route(targets, c) : targets).map((target) => target.id)
   }
 
-  const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0 })
+  const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
+
+  // What a target can take: its capacity, or for a piece that ends nothing
+  // itself (a load balancer), what is behind it up to its own capacity.
+  const capacityMemo = new Map<string, number>()
+  const effectiveCapacity = (id: string): number => {
+    if (down.get(id)) return 0
+    const cached = capacityMemo.get(id)
+    if (cached !== undefined) return cached
+    capacityMemo.set(id, 0) // a cycle adds nothing
+    const spec = pieces[byId.get(id)!.kind]
+    const kids = children.get(id) ?? []
+    const endsSomething = Object.values(spec.serves).some((p) => (p ?? 0) > 0)
+    const result =
+      endsSomething || kids.length === 0
+        ? spec.capacity
+        : Math.min(spec.capacity, kids.reduce((sum, kid) => sum + effectiveCapacity(kid), 0))
+    capacityMemo.set(id, result)
+    return result
+  }
   const arriving = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
   // The part of `arriving` some piece upstream already answered to the user.
   const acked = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
   const client = arch.nodes.find((n) => pieces[n.kind].entry)
-  if (client) for (const c of CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
+  if (client) {
+    for (const c of USER_CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
+    arriving.get(client.id)!.bot = botRps
+  }
 
   const failed = emptyFailures()
   const async: AsyncWork = { done: 0, lost: 0 }
@@ -191,7 +229,9 @@ export function simulateTick(
   let stale = 0
   const servedByClass = zero()
   // Splits a loss between the users still waiting (`waiting` share) and acknowledged work.
-  const lose = (amount: number, waiting: number, reason: FailureReason) => {
+  // What a bot loses is nobody's loss.
+  const lose = (c: RequestClass, amount: number, waiting: number, reason: FailureReason) => {
+    if (c === 'bot') return
     failed[reason] += amount * waiting
     async.lost += amount * (1 - waiting)
   }
@@ -203,58 +243,67 @@ export function simulateTick(
     const isNodeDown = down.get(node.id)!
     let a = arrived
     let dropped = zero()
+    let refused = zero()
     let extra: Pick<NodeStats, 'backlog' | 'waitMs' | 'lagMs' | 'staleRate'> = {}
     let staleRate = 0
     // A crashed piece takes nothing in; whatever it holds waits for it to come back.
     if (spec.step && !isNodeDown) {
-      const downstreamCapacity = (children.get(node.id) ?? [])
-        .filter((id) => !down.get(id))
-        .reduce((sum, id) => sum + pieces[byId.get(id)!.kind].capacity, 0)
+      const downstreamCapacity = (children.get(node.id) ?? []).reduce((sum, id) => sum + effectiveCapacity(id), 0)
       const sources = (parents.get(node.id) ?? []).map((id) => byId.get(id)!.kind)
       const next = spec.step(arrived, state.get(node.id), { downstreamCapacity, sources })
       a = next.load
       dropped = next.dropped ?? dropped
+      refused = next.refused ?? refused
       state.set(node.id, next.state)
       if (next.backlog !== undefined) extra = { backlog: next.backlog, waitMs: next.waitMs }
       if (next.lagMs !== undefined) extra = { ...extra, lagMs: next.lagMs, staleRate: next.staleRate ?? 0 }
       staleRate = next.staleRate ?? 0
     }
-    const load = a.static + a.read + a.write
+    const load = CLASSES.reduce((sum, c) => sum + a[c], 0)
     const pass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
-    const totalArrived = arrived.static + arrived.read + arrived.write
-    const totalDropped = dropped.static + dropped.read + dropped.write
+    const totalArrived = CLASSES.reduce((sum, c) => sum + arrived[c], 0)
+    const totalDropped = CLASSES.reduce((sum, c) => sum + dropped[c], 0)
+    const totalRefused = CLASSES.reduce((sum, c) => sum + refused[c], 0)
+    const share = (amount: number) => (totalArrived > 0 ? amount / totalArrived : 0)
     // Share of what arrived that gets through: refused at the door, then cut at capacity.
-    const through = pass * (totalArrived > 0 ? 1 - totalDropped / totalArrived : 1)
+    const through = pass * (1 - share(totalDropped) - share(totalRefused))
     passRate.set(node.id, through)
     const utilization = spec.capacity === Infinity ? 0 : load / spec.capacity
     nodes[node.id] = {
       load,
       utilization,
-      dropRate: 1 - through,
+      // A 429 is the piece doing its job, not losing load.
+      dropRate: 1 - through - share(totalRefused),
       down: isNodeDown,
       latencyMs: isNodeDown ? 0 : spec.baseLatencyMs + queueMeanMs(spec, utilization),
       ...extra,
+      ...(spec.step && !isNodeDown && totalRefused > 0 ? { refused: totalRefused } : {}),
     }
 
     for (const c of CLASSES) {
       // Share of this class whose users are still waiting for an answer.
       const waiting = arrived[c] > 0 ? 1 - ack[c] / arrived[c] : 1
-      lose(dropped[c], waiting, 'overload')
+      // Bots count for load only: nothing they get or lose is anyone's answer.
+      const counts = c !== 'bot'
+      lose(c, dropped[c], waiting, 'overload')
+      lose(c, refused[c], waiting, 'limited')
       // Past an acknowledging piece nobody waits: the user got the answer on acceptance.
       const acknowledges = !isNodeDown && (spec.acknowledges?.includes(c) ?? false)
-      if (acknowledges) {
-        served += (arrived[c] - dropped[c]) * waiting
-        servedByClass[c] += (arrived[c] - dropped[c]) * waiting
+      if (acknowledges && counts) {
+        served += (arrived[c] - dropped[c] - refused[c]) * waiting
+        servedByClass[c] += (arrived[c] - dropped[c] - refused[c]) * waiting
       }
       const outWaiting = acknowledges ? 0 : waiting
 
-      lose(a[c] * (1 - pass), outWaiting, isNodeDown ? 'down' : 'overload')
+      lose(c, a[c] * (1 - pass), outWaiting, isNodeDown ? 'down' : 'overload')
       const survivors = a[c] * pass
       const endsHere = survivors * (spec.serves[c] ?? 0)
-      served += endsHere * outWaiting
-      servedByClass[c] += endsHere * outWaiting
-      stale += endsHere * outWaiting * staleRate
-      async.done += endsHere * (1 - outWaiting)
+      if (counts) {
+        served += endsHere * outWaiting
+        servedByClass[c] += endsHere * outWaiting
+        stale += endsHere * outWaiting * staleRate
+        async.done += endsHere * (1 - outWaiting)
+      }
       if (endsHere > 0 && spec.replicates?.includes(c)) {
         for (const target of children.get(node.id) ?? []) {
           if (down.get(target)) continue
@@ -268,7 +317,7 @@ export function simulateTick(
       if (forward <= 0) continue
       const targets = routable(node, c)
       if (targets.length === 0) {
-        lose(forward, outWaiting, 'noRoute')
+        lose(c, forward, outWaiting, 'noRoute')
         continue
       }
       for (const target of targets) {
@@ -302,7 +351,7 @@ export function simulateTick(
     }
   }
 
-  return { t, rps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, latencies }
+  return { t, rps, botRps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, latencies }
 }
 
 /** Mean queueing delay of an M/M/1 queue at this utilization, capped so it stays finite. */

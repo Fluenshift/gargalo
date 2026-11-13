@@ -26,9 +26,10 @@ const stats = (load: number, utilization: number, extra: Partial<NodeStats> = {}
 const tick = (nodes: Record<string, NodeStats>): TickResult => ({
   t: 0,
   rps: 0,
+  botRps: 0,
   served: 0,
-  failed: { overload: 0, down: 0, noRoute: 0 },
-  servedByClass: { static: 0, read: 0, write: 0 },
+  failed: { overload: 0, down: 0, noRoute: 0, limited: 0 },
+  servedByClass: { static: 0, read: 0, write: 0, bot: 0 },
   stale: 0,
   async: { done: 0, lost: 0 },
   p50Ms: 0,
