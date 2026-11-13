@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://gargalo-one.vercel.app/sitemap.xml
