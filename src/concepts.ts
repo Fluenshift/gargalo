@@ -79,6 +79,20 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Pôr regra de negócio no gateway: ele fica lento e difícil de mudar.',
     ],
   },
+  payment: {
+    whatIs:
+      'API de outra empresa que cobra o cartão em cada pedido. Aguenta 600 req/s, leva 120 ms e cai às vezes. Com mais de 1,5× a capacidade, cai também.',
+    whenToUse: 'Vem com a fase: todo pedido passa por ela. Você não escala nem conserta; só decide como chamá-la.',
+    gains: ['Ninguém da loja precisa guardar dado de cartão.', 'O custo é por transação, fora do orçamento mensal.'],
+    costs: [
+      'Quando ela cai, nenhum pedido fecha.',
+      'É lenta: puxa o p99 de todo pedido para cima.',
+    ],
+    mistakes: [
+      'Tentar de novo sem backoff quando ela volta: a enxurrada derruba de novo.',
+      'Achar que retry resolve uma queda inteira: tentar de novo um serviço fora só gasta carga.',
+    ],
+  },
   lb: {
     whatIs:
       'Recebe o tráfego e divide igualmente entre até 16 servidores. Um health check tira da roda o servidor que cai.',

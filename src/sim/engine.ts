@@ -33,7 +33,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { SPECS, botRpsAt, rpsAt, totalCost } from './model'
+import { SPECS, botRpsAt, levelPieces, rpsAt, totalCost } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -543,7 +543,8 @@ export function summarize(
   return { availability, ...latency, cost, failed, async, backlogAtEnd, staleReadRate, passed }
 }
 
-export function runLevel(arch: Architecture, level: Level, seed = 1, pieces: Record<string, Spec> = SPECS) {
+export function runLevel(arch: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
+  const pieces = levelPieces(level, catalogue)
   const rng = mulberry32(seed)
   const state = new Map<string, NodeState>()
   const ticks: TickResult[] = []

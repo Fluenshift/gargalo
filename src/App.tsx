@@ -45,7 +45,7 @@ import { LinkPanel } from './LinkPanel'
 import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
-import { runLevel } from './sim/engine'
+import { isDown, runLevel } from './sim/engine'
 import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
@@ -68,9 +68,10 @@ const COLUMN: Record<Kind, number> = {
   queue: 820,
   worker: 1020,
   replica: 1240,
+  payment: 820,
 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150 }
+const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160 }
 const TICK_MS = 120
 const TOAST_MS = 6000
 const PANEL_KEY = 'gargalo:panel'
@@ -101,16 +102,26 @@ function freshDesign(stage: Stage): Design {
   const arch = startArchitecture(stage)
   const nodes = arch.nodes.map((n): ComponentNode => {
     const same = arch.nodes.filter((m) => m.kind === n.kind)
-    const y = 120 + (same.indexOf(n) - (same.length - 1) / 2) * 110
+    // Kinds that share a column with another (payment above the cache) keep their own row.
+    const y = (FIRST_ROW[n.kind] ?? 120) + (same.indexOf(n) - (same.length - 1) / 2) * 110
     return {
       id: n.id,
       type: 'component',
       position: { x: COLUMN[n.kind], y },
       data: { kind: n.kind },
-      ...(n.kind === 'client' ? { deletable: false } : {}),
+      // The users and pieces run by another company stay on the drawing.
+      ...(n.kind === 'client' || SPECS[n.kind].external ? { deletable: false } : {}),
     }
   })
-  return { nodes, edges: arch.edges.map((e) => ({ id: `${e.source}->${e.target}`, ...e })) }
+  return {
+    nodes,
+    edges: arch.edges.map(({ source, target, ...policy }) => ({
+      id: `${source}->${target}`,
+      source,
+      target,
+      ...(Object.keys(policy).length ? { data: policy } : {}),
+    })),
+  }
 }
 
 function loadDesign(stage: Stage): Design {
@@ -172,7 +183,7 @@ function lostByReason(failed: Record<FailureReason, number>, unit = ''): string 
   return parts.length ? parts.join(', ') : undefined
 }
 
-function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture): string[] {
+function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, level: Level): string[] {
   const total = ticks.reduce((s, t) => s + t.rps, 0) || 1
   const out: string[] = []
   if (summary.failed.noRoute / total > 0.001)
@@ -180,13 +191,21 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture): st
   if (summary.failed.overload / total > 0.001)
     out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle acima até o momento em que algo fica vermelho.')
   const stormy = arch.edges.some((e) => (e.retries ?? 0) > 0 && !e.backoff && !e.breaker)
-  const crashed = ticks.some((t) => Object.entries(t.nodes).some(([id, n]) => n.down && SPECS[arch.nodes.find((x) => x.id === id)!.kind].crashesAbove))
-  if (crashed)
+  // A fragile piece down when the level did not take it out: load knocked it over.
+  const crashedNode = arch.nodes.find(
+    (node) =>
+      SPECS[node.kind].crashesAbove !== undefined &&
+      ticks.some((t) => t.nodes[node.id]?.down && !isDown(arch, level, node, t.t)),
+  )
+  const crashed = crashedNode !== undefined
+  if (crashedNode) {
+    const name = SPECS[crashedNode.kind].label
     out.push(
       stormy
-        ? 'Tentativas extras sem backoff chegam todas no mesmo segundo e multiplicam a carga de quem já está mal: um banco lento vira um banco caído. Ligue o backoff ou um circuit breaker na ligação.'
-        : 'O banco recebeu mais que o dobro do que aguenta e caiu por alguns segundos. Falta capacidade na frente dele: reduza o que chega até ele.',
+        ? `Tentativas extras sem backoff chegam todas no mesmo segundo e multiplicam a carga de quem já está mal: ${name} recebeu a enxurrada e caiu. Ligue o backoff ou um circuit breaker na ligação.`
+        : `${name} recebeu bem mais do que aguenta e caiu por alguns segundos. Reduza o que chega até ele.`,
     )
+  }
   if (summary.failed.breaker / total > 0.001)
     out.push(
       `${pct(summary.failed.breaker / total)} das requisições falharam na hora num circuit breaker aberto. É o preço de deixar o destino se recuperar; o que não pode é ele cair de novo assim que fecha.`,
@@ -553,7 +572,10 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
     [setEdges, clearRun],
   )
 
+  const atMax = (kind: Kind) => nodes.filter((n) => n.data.kind === kind).length >= (SPECS[kind].maxCount ?? Infinity)
+
   const addComponent = (kind: Kind) => {
+    if (atMax(kind)) return
     clearRun()
     const sameKind = nodes.filter((n) => n.data.kind === kind).length
     const id = `${kind}-${Date.now().toString(36)}`
@@ -677,7 +699,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
               const unlock = pieceUnlock(kind, stage.companyIndex)
               return (
               <li key={kind} className={unlock.unlocked ? undefined : 'is-locked'}>
-                <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked}>
+                <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked || atMax(kind)}>
                   <KindIcon kind={kind} size={22} />
                   <span className="part__name">
                     {SPECS[kind].label}
@@ -686,6 +708,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
                   {unlock.unlocked ? (
                     <span className="part__spec">
                       {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
+                      {atMax(kind) && ` · já no desenho, ${SPECS[kind].maxCount === 1 ? 'só cabe um' : `até ${SPECS[kind].maxCount}`}`}
                     </span>
                   ) : (
                     <span className="part__spec">
@@ -1100,7 +1123,7 @@ function Result({
       {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
-      {hints(summary, ticks, arch).map((h) => (
+      {hints(summary, ticks, arch, findStage(levelId)!.level).map((h) => (
         <p key={h} className="hint">
           {h}
         </p>

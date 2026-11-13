@@ -23,6 +23,13 @@ const PATHS: Record<Kind, ReactNode> = {
   // An arch: the one door every API call goes through.
   gateway: <path d="M4 21V11a8 8 0 0 1 16 0v10M2.5 21h19M9 21v-5a3 3 0 0 1 6 0v5" />,
   lb: <path d="M3 12h6M9 12l5-6h7M9 12h12M9 12l5 6h7" />,
+  // A card: the payment API run by another company.
+  payment: (
+    <>
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+      <path d="M2.5 10h19M6 15h4" />
+    </>
+  ),
   server: (
     <>
       <rect x="4" y="3.5" width="16" height="7" rx="1" />

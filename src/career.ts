@@ -1,6 +1,6 @@
 // Career mode: companies are chapters, each with levels, a boss and the pieces it unlocks.
 
-import { LEVELS } from './levels'
+import { LEVELS, STARTUP_LEGACY } from './levels'
 import type { Architecture, Kind, Level } from './sim/model'
 
 export interface Company {
@@ -36,9 +36,18 @@ export const COMPANIES: Company[] = [
       level('imagens-pesadas'),
       level('caiu-de-madrugada'),
     ],
-    // Black Friday was this boss; it moves to the E-commerce company (#15).
     boss: level('materia-na-tv'),
     unlocks: ['cdn', 'lb', 'server', 'cache', 'db'],
+  },
+  {
+    id: 'ecommerce',
+    name: 'E-commerce',
+    budget: 'Uma loja online que fatura de verdade. O caixa aguenta mais, mas cada pedido perdido é dinheiro na mesa.',
+    levels: [level('checkout-travando'), level('catalogo-gigante'), level('bot-de-precos'), level('pagamento-instavel')],
+    boss: level('black-friday'),
+    unlocks: ['queue', 'worker', 'replica', 'limiter', 'gateway'],
+    // What the Startup left behind.
+    start: STARTUP_LEGACY,
   },
 ]
 

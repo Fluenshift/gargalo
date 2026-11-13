@@ -56,6 +56,11 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'imagens-pesadas': ['cdn', 'estaticos'],
   'caiu-de-madrugada': ['redundancia', 'ponto-unico', 'health-check'],
   'materia-na-tv': ['folga'],
+  'checkout-travando': ['queue', 'assincrono'],
+  'catalogo-gigante': ['replica', 'leitura-desatualizada'],
+  'bot-de-precos': ['limiter', 'bot', 'rate-limit'],
+  'pagamento-instavel': ['circuit-breaker', 'backoff', 'tempestade-retries'],
+  'black-friday': ['folga', 'limiter', 'replica'],
 }
 
 describe('level concepts', () => {

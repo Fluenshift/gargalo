@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BLACK_FRIDAY, LEVELS } from '../levels'
+import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
 import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
@@ -33,7 +33,7 @@ const steady: Level = {
   goals: { minAvailability: 0.99, maxP99Ms: 1000, maxCost: 10_000 },
 }
 
-const byId = (id: string) => [...LEVELS, BLACK_FRIDAY].find((l) => l.id === id)!
+const byId = (id: string) => LEVELS.find((l) => l.id === id)!
 
 describe('simulateTick', () => {
   it('drops the load above a node capacity', () => {
@@ -489,6 +489,44 @@ describe('connectRefusal', () => {
   })
 })
 
+/** `start` plus `edges` (new pieces named `kind#n`), minus the `drop` edges. */
+function extend(start: Architecture, edges: [string, string, Partial<ArchEdge>?][], drop: [string, string][] = []): Architecture {
+  const nodes = [...start.nodes]
+  for (const [a, b] of edges)
+    for (const id of [a, b]) if (!nodes.some((n) => n.id === id)) nodes.push({ id, kind: id.split('#')[0] as Kind })
+  return {
+    nodes,
+    edges: [
+      ...start.edges.filter((e) => !drop.some(([s, t]) => s === e.source && t === e.target)),
+      ...edges.map(([source, target, p]) => ({ source, target, ...p })),
+    ],
+  }
+}
+/** `n` new servers behind the load balancer, each connected to `to`. */
+const servers = (n: number, to = ['cache']): [string, string][] =>
+  Array.from({ length: n }, (_, i) => [['lb', `server#${i}`] as [string, string], ...to.map((t) => [`server#${i}`, t] as [string, string])]).flat()
+const legacyTo = (target: string): [string, string][] =>
+  STARTUP_LEGACY.nodes.filter((n) => n.kind === 'server').map((n) => [n.id, target])
+const workers = (n: number): [string, string][] =>
+  Array.from({ length: n }, (_, i) => [['queue', `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
+const replicas = (n: number): [string, string][] =>
+  Array.from({ length: n }, (_, i) => [['cache', `replica#${i}`], ['db', `replica#${i}`]] as [string, string][]).flat()
+const paymentPolicy = (a: Architecture, policy: Partial<ArchEdge>): Architecture => ({
+  ...a,
+  edges: a.edges.map((e) => (e.target === 'payment' ? { source: e.source, target: e.target, ...policy } : e)),
+})
+/** Six more servers, three replicas and one retry with backoff to the payment API, with or without a rate limiter. */
+function blackFriday(limiter: boolean): Architecture {
+  const policy = { retries: 1, backoff: true }
+  const add: [string, string, Partial<ArchEdge>?][] = [
+    ...servers(6),
+    ...Array.from({ length: 6 }, (_, i) => [`server#${i}`, 'payment', policy] as [string, string, Partial<ArchEdge>]),
+    ...replicas(3),
+  ]
+  if (limiter) add.push(['cdn', 'limiter'], ['limiter', 'lb'])
+  return extend(paymentPolicy(BLACK_FRIDAY.start!, policy), add, limiter ? [['cdn', 'lb']] : [])
+}
+
 describe('levels', () => {
   const cases: [string, boolean, Architecture][] = [
     // A server alone keeps nothing: reads and writes have nowhere to go.
@@ -513,8 +551,24 @@ describe('levels', () => {
     ['materia-na-tv', false, fanOut(9, 'cache', [['client', 'lb'], ['cache', 'db']])],
     ['materia-na-tv', true, fanOut(7, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
     // Out of the career until the E-commerce company (#15); kept tuned for it.
-    ['black-friday', false, fanOut(10, 'cache', [['client', 'lb'], ['cache', 'db']])],
-    ['black-friday', true, fanOut(8, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    // E-commerce, all starting from what the Startup left.
+    // Orders waiting on the database: more servers do not help, a queue with workers does.
+    ['checkout-travando', false, extend(STARTUP_LEGACY, servers(4))],
+    ['checkout-travando', true, extend(STARTUP_LEGACY, [...servers(1, ['cache', 'queue']), ...legacyTo('queue'), ...workers(3)])],
+    // The cache rarely hits: reads go to replicas; one alone lags behind.
+    ['catalogo-gigante', false, extend(STARTUP_LEGACY, servers(2))],
+    ['catalogo-gigante', false, extend(STARTUP_LEGACY, [...servers(2), ...replicas(1)])],
+    ['catalogo-gigante', true, extend(STARTUP_LEGACY, [...servers(2), ...replicas(2)])],
+    // The bot: servers cannot outgrow it, a per-client limit stops it.
+    ['bot-de-precos', false, extend(STARTUP_LEGACY, servers(4))],
+    ['bot-de-precos', true, extend(STARTUP_LEGACY, [['cdn', 'limiter'], ['limiter', 'lb']], [['cdn', 'lb']])],
+    // The legacy three retries without backoff turn each payment outage into a storm.
+    ['pagamento-instavel', false, byId('pagamento-instavel').start!],
+    ['pagamento-instavel', true, paymentPolicy(byId('pagamento-instavel').start!, { retries: 1 })],
+    // Black Friday: no limiter drowns the servers; the full design holds.
+    ['black-friday', false, BLACK_FRIDAY.start!],
+    ['black-friday', false, blackFriday(false)],
+    ['black-friday', true, blackFriday(true)],
   ]
   it.each(cases)('%s: design passes = %s', (id, shouldPass, a) => {
     const { summary } = runLevel(a, byId(id))

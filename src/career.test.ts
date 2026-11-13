@@ -38,8 +38,22 @@ describe('career data', () => {
     expect(COMPANIES[0].boss.id).toBe('materia-na-tv')
   })
 
-  it('Black Friday is out of the career until its company exists', () => {
-    expect(stages().some((s) => s.level.id === BLACK_FRIDAY.id)).toBe(false)
+  it('the E-commerce has four levels and Black Friday as its boss', () => {
+    expect(COMPANIES[1].name).toBe('E-commerce')
+    expect(COMPANIES[1].levels.map((l) => l.id)).toEqual([
+      'checkout-travando',
+      'catalogo-gigante',
+      'bot-de-precos',
+      'pagamento-instavel',
+    ])
+    expect(COMPANIES[1].boss).toBe(BLACK_FRIDAY)
+  })
+
+  it('the E-commerce unlocks the pieces its levels teach', () => {
+    for (const kind of ['queue', 'worker', 'replica', 'limiter', 'gateway'] as const) {
+      expect(pieceUnlock(kind, 0)).toMatchObject({ unlocked: false, by: { id: 'ecommerce' } })
+      expect(pieceUnlock(kind, 1)).toEqual({ unlocked: true })
+    }
   })
 
   it('every level belongs to exactly one company', () => {
@@ -116,14 +130,18 @@ describe('starting architecture', () => {
     expect(startArchitecture({ company: { ...company, start }, level: { ...lvl('x'), start: own } })).toBe(own)
   })
 
-  it('Black Friday starts from the previous team’s design', () => {
+  it('Black Friday starts from what the Startup left, plus the payment API', () => {
     expect(startArchitecture({ company, level: BLACK_FRIDAY }).nodes.map((n) => n.kind)).toEqual([
       'client',
+      'cdn',
       'lb',
       'server',
       'server',
       'server',
+      'server',
+      'cache',
       'db',
+      'payment',
     ])
   })
 })
@@ -140,7 +158,7 @@ describe('progress migration', () => {
     expect(levelStatus('banco-nao-aguenta', p.passed)).toBe('done')
   })
 
-  it('a player who beat the old three levels finds the new ones open, Black Friday kept', () => {
+  it('a player who beat the old three levels finds the new ones open and Black Friday where it is now', () => {
     const p = loadProgress(
       storage({
         [PASSED_KEY]: '["primeiro-deploy","banco-nao-aguenta","black-friday"]',
@@ -152,7 +170,9 @@ describe('progress migration', () => {
     expect(levelStatus('imagens-pesadas', p.passed)).toBe('open')
     expect(levelStatus('caiu-de-madrugada', p.passed)).toBe('locked')
     expect(levelStatus('materia-na-tv', p.passed)).toBe('locked')
-    expect(p.current).toBe('colocar-no-ar')
+    // Black Friday is back as the E-commerce boss: the player lands on it, done, with the company open.
+    expect(p.current).toBe('black-friday')
+    expect(levelStatus('checkout-travando', p.passed)).toBe('open')
   })
 
   it('a level passed out of order stays done, and the skipped ones stay playable', () => {
@@ -184,6 +204,6 @@ describe('progress migration', () => {
   })
 
   it('points at the last level when everything is done', () => {
-    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('materia-na-tv')
+    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('black-friday')
   })
 })

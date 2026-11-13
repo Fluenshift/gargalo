@@ -44,7 +44,7 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
       type: 'component',
       position: { x: x as number, y: y as number },
       data: { kind },
-      ...(kind === 'client' ? { deletable: false } : {}),
+      ...(kind === 'client' || SPECS[kind].external ? { deletable: false } : {}),
     })
   }
   const ids = new Set(nodes.map((n) => n.id))
