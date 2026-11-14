@@ -1,7 +1,7 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { SPECS } from './sim/model'
+import { MAX_RETRIES, SPECS } from './sim/model'
 import type { Kind } from './sim/model'
 
 export interface SavedNode {
@@ -16,6 +16,7 @@ export interface SavedEdge {
   id: string
   source: string
   target: string
+  data?: { retries?: number; backoff?: boolean; breaker?: boolean }
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
@@ -43,7 +44,7 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
       type: 'component',
       position: { x: x as number, y: y as number },
       data: { kind },
-      ...(kind === 'client' ? { deletable: false } : {}),
+      ...(kind === 'client' || SPECS[kind].external ? { deletable: false } : {}),
     })
   }
   const ids = new Set(nodes.map((n) => n.id))
@@ -53,7 +54,17 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
   for (const e of value.edges) {
     if (!isObject(e) || typeof e.source !== 'string' || typeof e.target !== 'string') return null
     if (!ids.has(e.source) || !ids.has(e.target)) return null
-    edges.push({ id: typeof e.id === 'string' ? e.id : `${e.source}->${e.target}`, source: e.source, target: e.target })
+    const data = isObject(e.data) ? e.data : {}
+    const policy: NonNullable<SavedEdge['data']> = {}
+    if (Number.isInteger(data.retries) && (data.retries as number) >= 0 && (data.retries as number) <= MAX_RETRIES) policy.retries = data.retries as number
+    if (data.backoff === true) policy.backoff = true
+    if (data.breaker === true) policy.breaker = true
+    edges.push({
+      id: typeof e.id === 'string' ? e.id : `${e.source}->${e.target}`,
+      source: e.source,
+      target: e.target,
+      ...(Object.keys(policy).length ? { data: policy } : {}),
+    })
   }
   return { nodes, edges }
 }

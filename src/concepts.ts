@@ -79,6 +79,20 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Pôr regra de negócio no gateway: ele fica lento e difícil de mudar.',
     ],
   },
+  payment: {
+    whatIs:
+      'API de outra empresa que cobra o cartão em cada pedido. Aguenta 600 req/s, leva 120 ms e cai às vezes. Com mais de 1,5× a capacidade, cai também.',
+    whenToUse: 'Vem com a fase: todo pedido passa por ela. Você não escala nem conserta; só decide como chamá-la.',
+    gains: ['Ninguém da loja precisa guardar dado de cartão.', 'O custo é por transação, fora do orçamento mensal.'],
+    costs: [
+      'Quando ela cai, nenhum pedido fecha.',
+      'É lenta: puxa o p99 de todo pedido para cima.',
+    ],
+    mistakes: [
+      'Tentar de novo sem backoff quando ela volta: a enxurrada derruba de novo.',
+      'Achar que retry resolve uma queda inteira: tentar de novo um serviço fora só gasta carga.',
+    ],
+  },
   lb: {
     whatIs:
       'Recebe o tráfego e divide igualmente entre até 16 servidores. Um health check tira da roda o servidor que cai.',
@@ -342,6 +356,29 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'assíncrono',
     forms: ['assíncrona', 'processamento assíncrono'],
     definition: 'Trabalho feito depois, fora do caminho da resposta. O usuário recebe o "ok" antes de terminar.',
+  },
+  {
+    id: 'retry',
+    term: 'retry',
+    forms: ['retries', 'tentativas extras', 'tentativa extra'],
+    definition: 'Chamar de novo depois de uma falha. Resolve falhas passageiras, mas cada tentativa é mais carga no destino.',
+  },
+  {
+    id: 'backoff',
+    term: 'backoff',
+    forms: ['backoff exponencial', 'jitter'],
+    definition: 'Esperar cada vez mais entre tentativas, com um sorteio (jitter) para que os clientes não voltem todos juntos.',
+  },
+  {
+    id: 'circuit-breaker',
+    term: 'circuit breaker',
+    forms: ['breaker'],
+    definition: 'Disjuntor da ligação: depois de muitas falhas para de chamar o destino por um tempo, falha na hora e depois testa com pouco tráfego.',
+  },
+  {
+    id: 'tempestade-retries',
+    term: 'tempestade de retries',
+    definition: 'Quando tentativas extras sobrecarregam um destino lento, que falha mais, gera mais tentativas e acaba caindo.',
   },
   {
     id: 'http-429',

@@ -15,6 +15,16 @@ describe('parseDesign', () => {
     expect(design?.edges).toEqual(valid.edges)
   })
 
+  it('keeps a link policy and drops values out of range', () => {
+    const edges = [
+      { id: 'a', source: 'client', target: 'server', data: { retries: 2, backoff: true, breaker: true } },
+      { id: 'b', source: 'server', target: 'client', data: { retries: 9, backoff: 'yes' } },
+    ]
+    const design = parseDesign(JSON.stringify({ ...valid, edges }))
+    expect(design?.edges[0].data).toEqual({ retries: 2, backoff: true, breaker: true })
+    expect(design?.edges[1].data).toBeUndefined()
+  })
+
   it('drops run stats and other leftovers from the nodes', () => {
     const withStats = { ...valid, nodes: [{ ...node('client', 'client'), data: { kind: 'client', stats: { load: 9 } } }] }
     expect(parseDesign(JSON.stringify({ ...withStats, edges: [] }))?.nodes[0].data).toEqual({ kind: 'client' })

@@ -125,6 +125,26 @@ export function timeline(arch: Architecture, ticks: TickResult[]): DebriefEvent[
     })
   }
 
+  // Circuit breakers opening and closing, grouped by second.
+  const opened = new Map<number, number>()
+  const closed = new Map<number, number>()
+  for (let i = 1; i < ticks.length; i++) {
+    const before = ticks[i - 1].breakers
+    const now = ticks[i].breakers
+    for (const key of Object.keys(now)) if (now[key] === 'open' && !before[key]) opened.set(ticks[i].t, (opened.get(ticks[i].t) ?? 0) + 1)
+    for (const key of Object.keys(before)) if (!now[key]) closed.set(ticks[i].t, (closed.get(ticks[i].t) ?? 0) + 1)
+  }
+  for (const [t, n] of opened) {
+    events.push({
+      t,
+      text: n === 1 ? 'Um circuit breaker abriu: as chamadas falham na hora.' : `${n} circuit breakers abriram: as chamadas falham na hora.`,
+      tone: 'warn',
+    })
+  }
+  for (const [t, n] of closed) {
+    events.push({ t, text: n === 1 ? 'Um circuit breaker fechou de novo.' : `${n} circuit breakers fecharam de novo.`, tone: 'info' })
+  }
+
   // First time each piece refused load, and first time it ran hot without refusing yet.
   const dropping = firstSeconds(ticks, (tick, id) => !tick.nodes[id].down && tick.nodes[id].dropRate > DROPPING)
   events.push(

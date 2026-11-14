@@ -13,7 +13,19 @@ export const ALTERNATIVES: Record<string, string[]> = {
     'Aqui a CDN ajuda pouco: só 10% do tráfego é estático, e com ela 6 servidores ainda deixam o p99 perto de 350 ms. Oito servidores folgam bem a latência, mas custam $570 e estouram o orçamento.',
   ],
   'black-friday': [
-    'Nove servidores em vez de oito passam com o p99 perto de 200 ms no pior pico, por $50 a mais: folga comprada com dinheiro. Sem a CDN, nem 12 servidores resolvem: todas as imagens chegam à origem, o p99 passa de 500 ms e o custo, de $700.',
+    'Tirar as tentativas extras do pagamento também passa, com o p99 perto de 570 ms: na queda de 3 s os pedidos falham de qualquer jeito. Já um circuit breaker em cada ligação fica abaixo da meta: ele segue falhando de propósito por 5 s depois que o pagamento volta. E com só 2 réplicas, quando uma cai a outra recebe todo o catálogo e o p99 passa de 800 ms.',
+  ],
+  'checkout-travando': [
+    'Fila e 4 workers sem servidor novo ($585) não bastam: o banco folga, mas os 4 servidores herdados passam de 70% no pico e o p99 chega perto de 300 ms. Um servidor a mais e 3 workers ($595) passam: o backlog cresce no cupom e esvazia poucos segundos depois.',
+  ],
+  'catalogo-gigante': [
+    'Uma réplica só não dá conta: recebe 840 leituras e as escritas do primário, atrasa e mais de 30% das leituras voltam velhas. Já com 2 réplicas e só 5 servidores, o p99 passa de 390 ms: os servidores rodam a quase 90%.',
+  ],
+  'bot-de-precos': [
+    'Um API Gateway no lugar do load balancer também segura o bot pelo limite por cliente, por $435 em vez de $410: paga mais pela porta única de autenticação e regras. Servidores a mais não resolvem: com 8 o bot ainda leva o p99 a mais de 2 segundos e o custo a $595.',
+  ],
+  'pagamento-instavel': [
+    'Também passa ligar o backoff nas 3 tentativas, deixar só 1 tentativa extra ou tirar todas: nas quedas os pedidos falham igual, e o que importa é não multiplicar a carga quando o pagamento volta. Com circuit breaker a loja fica em 95%: ele segue falhando de propósito por 5 s depois de cada queda.',
   ],
   'imagens-pesadas': [
     'O cache não é luxo aqui: sem ele, nem 5 servidores ($415) resolvem, porque 750 leituras por segundo chegam ao banco, ele roda a 90% e o p99 fica perto de 550 ms. Com cache, 3 servidores também não bastam: cada um passa de 80% e a fila cresce.',

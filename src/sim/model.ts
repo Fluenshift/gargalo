@@ -12,6 +12,7 @@ export type Kind =
   | 'queue'
   | 'worker'
   | 'replica'
+  | 'payment'
 /** What people using the system ask for. */
 export type UserClass = 'static' | 'read' | 'write'
 /**
@@ -70,6 +71,15 @@ export interface Spec {
    * replicating its writes). The copies are background work nobody waits for.
    */
   replicates?: RequestClass[]
+  /** Load above this multiple of capacity takes the piece down for a few seconds (out of memory, connections). */
+  crashesAbove?: number
+  /**
+   * Run by another company: it comes with the level, the player cannot buy,
+   * remove or scale it, and its cost is not part of the budget.
+   */
+  external?: boolean
+  /** Most instances one drawing may have (one primary database until sharding exists). */
+  maxCount?: number
 }
 
 export interface StepContext {
@@ -127,15 +137,29 @@ export const REPLICA_BASE_LAG_MS = 50
  */
 const HOT_RECORDS = 2000
 
+/** Pieces that only take writes, and pieces that only take reads. */
+const WRITE_ONLY: Kind[] = ['queue', 'payment']
+const READ_ONLY: Kind[] = ['replica']
+/** Where writes go first when connected: a checkout charges the card before anything else. */
+const WRITE_FIRST: Kind[] = ['payment', 'queue']
+const READ_FIRST: Kind[] = ['replica']
+
 /**
- * Writes go to a queue when there is one, reads to read replicas when there are
- * some. Reads never go to a queue and writes never to a replica.
+ * Writes go to the payment API or a queue when there is one, reads to read
+ * replicas when there are some. Reads never go to a write-only piece and writes
+ * never to a replica.
  */
 function splitByClass(targets: RouteTarget[], c: RequestClass): RouteTarget[] {
   const write = c === 'write'
-  const usable = targets.filter((t) => t.kind !== (write ? 'replica' : 'queue'))
-  const preferred = usable.filter((t) => t.kind === (write ? 'queue' : 'replica'))
-  return preferred.length ? preferred : usable
+  const usable = targets.filter((t) => (write ? !READ_ONLY.includes(t.kind) : !WRITE_ONLY.includes(t.kind)))
+  // The first kind on the list that is connected takes the class.
+  for (const kind of write ? WRITE_FIRST : READ_FIRST) {
+    // Replicas are health-checked: a dead one gets no reads, and with none alive reads go to the primary.
+    const preferred = usable.filter((t) => t.kind === kind && !(t.down && READ_ONLY.includes(kind)))
+    if (preferred.length) return preferred
+    if (READ_ONLY.includes(kind)) return usable.filter((t) => t.kind !== kind)
+  }
+  return usable
 }
 
 export const SPECS: Record<Kind, Spec> = {
@@ -212,8 +236,8 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 30,
     cost: 50,
     serves: { static: 1 },
-    targets: ['cache', 'db', 'queue', 'replica'],
-    maxOut: 4,
+    targets: ['cache', 'db', 'queue', 'replica', 'payment'],
+    maxOut: 5,
     description: 'Roda a aplicação. Responde estáticos; leituras e escritas vão adiante.',
     route: splitByClass,
   },
@@ -236,8 +260,10 @@ export const SPECS: Record<Kind, Spec> = {
     serves: { read: 1, write: 1, bot: 1 },
     targets: ['replica'],
     maxOut: 4,
-    description: 'Fonte da verdade. Caro e difícil de escalar.',
+    description: 'Fonte da verdade. Um só por desenho. Caro e difícil de escalar; com mais que o dobro da capacidade, cai.',
     replicates: ['write'],
+    crashesAbove: 2,
+    maxCount: 1,
   },
   queue: {
     label: 'Fila de mensagens',
@@ -276,6 +302,18 @@ export const SPECS: Record<Kind, Spec> = {
     maxOut: 1,
     description: 'Consome mensagens da fila e grava no banco. Ninguém espera por ele.',
   },
+  payment: {
+    label: 'API de pagamento',
+    capacity: 600,
+    baseLatencyMs: 120,
+    cost: 0,
+    serves: { write: 1 },
+    targets: [],
+    maxOut: 0,
+    description: 'Serviço de outra empresa que cobra o cartão. Não dá para escalar nem consertar: só escolher como chamar.',
+    crashesAbove: 1.5,
+    external: true,
+  },
   replica: {
     label: 'Réplica de leitura',
     capacity: REPLICA_CAPACITY,
@@ -312,7 +350,16 @@ export interface ArchNode {
 export interface ArchEdge {
   source: string
   target: string
+  /** Extra attempts after a failed call (0 to 3). */
+  retries?: number
+  /** Retries wait longer each time, with jitter, instead of all landing at once. */
+  backoff?: boolean
+  /** Stops calling a target that fails most calls, failing fast for a while. */
+  breaker?: boolean
 }
+
+/** Most extra attempts a link may make. */
+export const MAX_RETRIES = 3
 
 export interface Architecture {
   nodes: ArchNode[]
@@ -350,6 +397,11 @@ export interface Level {
   traffic: TrafficPhase[]
   /** An abusive client hammering the site, in requests per second over time. */
   bot?: TrafficPhase[]
+  /**
+   * How pieces behave differently in this level (a catalog so large the cache
+   * rarely hits). The briefing must say it: the parts list shows the usual specs.
+   */
+  tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity'>>>>
   failures: Failure[]
   goals: Goals
   /**
@@ -387,8 +439,16 @@ export function connectRefusal(arch: Architecture, sourceId: string, targetId: s
   return `${spec.label} se liga a no máximo ${spec.maxOut} ${spec.maxOut === 1 ? 'peça' : 'peças'}.${split}`
 }
 
+/** The piece catalogue as this level changes it. */
+export function levelPieces(level: Level, pieces: Record<string, Spec> = SPECS): Record<string, Spec> {
+  if (!level.tweaks) return pieces
+  const out = { ...pieces }
+  for (const [kind, tweak] of Object.entries(level.tweaks)) out[kind] = { ...out[kind], ...tweak }
+  return out
+}
+
 export function totalCost(arch: Architecture, pieces: Record<string, Spec> = SPECS): number {
-  return arch.nodes.reduce((sum, n) => sum + pieces[n.kind].cost, 0)
+  return arch.nodes.reduce((sum, n) => sum + (pieces[n.kind].external ? 0 : pieces[n.kind].cost), 0)
 }
 
 function phaseAt(phases: TrafficPhase[], t: number): number {

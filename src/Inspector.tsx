@@ -86,9 +86,11 @@ export function Inspector({
             {spec.label}
           </h2>
           <p className="inspector__spec">
-            {finite
-              ? `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, $${spec.cost}/mês`
-              : 'Origem do tráfego'}
+            {!finite
+              ? 'Origem do tráfego'
+              : spec.external
+                ? `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, de outra empresa`
+                : `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, $${spec.cost}/mês`}
           </p>
         </div>
         <button type="button" className="inspector__close" onClick={onClose} aria-label="Fechar painel" title="Fechar (Esc)">
