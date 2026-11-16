@@ -14,6 +14,23 @@ export interface Concept {
 }
 
 export const CONCEPTS: Record<Kind, Concept> = {
+  dns: {
+    whatIs:
+      'DNS que responde a cada pessoa com o endereço vivo mais perto dela. Custa $40/mês, responde em 2 ms e não fica em região nenhuma.',
+    whenToUse: 'Quando o público está em mais de uma região e você tem peças em cada uma delas.',
+    gains: [
+      'Cada pessoa vai para a região mais próxima, sem pagar a latência entre regiões.',
+      'Se uma região cai, manda todo mundo para a próxima: o site segue no ar.',
+    ],
+    costs: [
+      'Você paga as peças de cada região, em dobro ou mais.',
+      'Com um único banco primário, as escritas ainda cruzam até a região dele e param se ela cair.',
+    ],
+    mistakes: [
+      'Ligar o DNS a peças de uma região só: ele não tem para onde desviar.',
+      'Replicar servidores e esquecer os dados: o banco continua em um lugar.',
+    ],
+  },
   client: {
     whatIs:
       'As pessoas usando o sistema. Geram as requisições de cada fase: estáticos, leituras e escritas, em ondas que podem subir de repente.',
@@ -446,6 +463,31 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'dns',
     term: 'DNS',
     definition: 'Traduz o nome do site para o endereço de uma peça. Aqui aponta para um único lugar.',
+  },
+  {
+    id: 'regiao',
+    term: 'região',
+    forms: ['regiões'],
+    definition: 'Lugar do mundo onde ficam os datacenters: São Paulo, Virgínia, Frankfurt. Cada peça roda em uma região.',
+  },
+  {
+    id: 'latencia-entre-regioes',
+    term: 'latência entre regiões',
+    forms: ['round trip', 'RTT'],
+    definition:
+      'Ida e volta entre duas regiões: São Paulo–Virgínia 120 ms, São Paulo–Frankfurt 200 ms, Virgínia–Frankfurt 90 ms. Cada chamada que cruza paga isso.',
+  },
+  {
+    id: 'failover',
+    term: 'failover',
+    definition: 'Troca automática para a cópia que está viva quando a principal cai. Entre regiões, quem desvia é o DNS.',
+  },
+  {
+    id: 'ativo-passivo',
+    term: 'ativo-passivo',
+    forms: ['ativo-ativo'],
+    definition:
+      'Ativo-passivo: uma região atende e a outra espera. Ativo-ativo: as duas atendem. Ganha disponibilidade e latência local, mas custa o dobro e replica dados entre regiões; com um primário, escritas ainda cruzam até ele e param se a região cair.',
   },
 ]
 

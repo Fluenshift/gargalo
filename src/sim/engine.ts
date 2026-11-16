@@ -32,13 +32,17 @@
 //
 // A node splits what it forwards evenly among its targets, except among
 // partitions of the data: each gets an equal key range, and the level's hot key
-// lands whole on one of them.
+// lands whole on one of them. A geographic piece (DNS) sends each region's
+// users to the closest live targets instead.
+//
+// Pieces run in regions. A call that crosses regions pays the round trip
+// between them, and a region can go dark with everything running in it.
 //
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { SPECS, botRpsAt, levelPieces, rpsAt, totalCost } from './model'
-import type { Architecture, ArchNode, ClassLoad, Level, NodeState, RequestClass, Spec, UserClass } from './model'
+import { REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
 export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited' | 'breaker'
@@ -152,7 +156,10 @@ export function mulberry32(seed: number): Rng {
   }
 }
 
-export function isDown(arch: Architecture, level: Level, node: ArchNode, t: number): boolean {
+export function isDown(arch: Architecture, level: Level, node: ArchNode, t: number, pieces: Record<string, Spec> = SPECS): boolean {
+  const region = regionOf(node)
+  const regional = !pieces[node.kind].global
+  if (regional && level.regionOutages?.some((o) => o.region === region && t >= o.from && t < o.to)) return true
   return level.failures.some((f) => {
     if (f.kind !== node.kind || t < f.from || t >= f.to) return false
     const sameKind = arch.nodes.filter((n) => n.kind === f.kind)
@@ -218,7 +225,7 @@ export function simulateTick(
   }
 
   const crashed = (id: string) => t < (state.get(`crash:${id}`)?.until ?? -1)
-  const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t) || crashed(n.id)]))
+  const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t, pieces) || crashed(n.id)]))
   const policies = new Map(arch.edges.map((e) => [`${e.source}->${e.target}`, e]))
   /** Share of calls the link lets through this second: 0 while its breaker is open, a probe while half-open. */
   const breakers: TickResult['breakers'] = {}
@@ -242,9 +249,25 @@ export function simulateTick(
   }
   // The partition that holds the hot key is the first one created, the same whoever sends to it.
   const created = new Map(arch.nodes.map((n, i) => [n.id, i]))
-  /** Share of a node's forwarded class-`c` load each target gets: equal, except that partitions split keys. */
-  const shares = (targets: string[], c: RequestClass): number[] => {
+  const users = userRegions(level)
+  /**
+   * Share of a node's forwarded class-`c` load each target gets: equal, except that a
+   * geographic node sends each region's users to its closest targets (only `from`'s users
+   * when given) and partitions split keys.
+   */
+  const shares = (node: ArchNode, targets: string[], c: RequestClass, from?: Region): number[] => {
     const even = 1 / targets.length
+    if (pieces[node.kind].geo) {
+      const weights = targets.map(() => 0)
+      for (const [region, share] of from ? ([[from, 1]] as [Region, number][]) : users) {
+        const rtt = targets.map((id) => REGION_RTT_MS[region][regionOf(byId.get(id)!)])
+        const closest = rtt.filter((r) => r === Math.min(...rtt)).length
+        rtt.forEach((r, i) => {
+          if (r === Math.min(...rtt)) weights[i] += share / closest
+        })
+      }
+      return weights
+    }
     const keyed = targets.filter((id) => pieces[byId.get(id)!.kind].partitioned)
     if (keyed.length === 0) return targets.map(() => even)
     // A bot scrapes the whole catalogue; only people pile onto the viral key.
@@ -392,7 +415,7 @@ export function simulateTick(
         lose(c, forward, outWaiting, outAsync, 'noRoute')
         continue
       }
-      const split = shares(targets, c)
+      const split = shares(node, targets, c)
       for (const [i, target] of targets.entries()) {
         const share = forward * split[i]
         const key = `${node.id}->${target}`
@@ -447,7 +470,7 @@ export function simulateTick(
       }
       const ends = spec.serves[c] ?? 0
       const targets = routable(node, c)
-      const split = targets.length ? shares(targets, c) : []
+      const split = targets.length ? shares(node, targets, c) : []
       const onward = targets.reduce((sum, target, i) => {
         const key = `${node.id}->${target}`
         const policy = policies.get(key)
@@ -492,6 +515,8 @@ export function simulateTick(
   if (client && rps > 0) {
     for (let i = 0; i < samples; i++) {
       const c = sampleClass(level, rng)
+      // Drawn only when users come from several regions, so single-region runs keep their numbers.
+      const from = users.length > 1 ? pick(users.map(([r]) => r), users.map(([, s]) => s), rng()) : users[0][0]
       let node: ArchNode | undefined = client
       let latency = 0
       while (node) {
@@ -503,12 +528,16 @@ export function simulateTick(
           break
         }
         const targets = routable(node, c)
-        const next = targets.length ? pick(targets, shares(targets, c), rng()) : undefined
+        const next: string | undefined = targets.length ? pick(targets, shares(node, targets, c, from), rng()) : undefined
         // An open breaker fails the call on the spot.
         const key = next && `${node.id}->${next}`
         if (key && breakers[key] === 'open') break
         if (key && breakers[key] === 'half-open' && rng() >= BREAKER_PROBE) break
-        node = next ? byId.get(next) : undefined
+        const nextNode: ArchNode | undefined = next ? byId.get(next) : undefined
+        // Crossing regions costs a round trip. A global piece is wherever the user is.
+        const at = (n: ArchNode) => (pieces[n.kind].global ? from : regionOf(n))
+        if (nextNode) latency += REGION_RTT_MS[at(node)][at(nextNode)]
+        node = nextNode
       }
     }
   }

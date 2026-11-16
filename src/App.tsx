@@ -38,6 +38,8 @@ import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
 import { NodeCard } from './NodeCard'
+import { RegionArea } from './RegionArea'
+import type { RegionAreaNode } from './RegionArea'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
 import { parseDesign } from './savedDesign'
@@ -50,14 +52,15 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { SPECS, canConnect, connectRefusal, totalCost } from './sim/model'
-import type { Architecture, Kind, Level } from './sim/model'
+import { HOME_REGION, REGIONS, SPECS, canConnect, connectRefusal, levelRegions, regionOf, totalCost } from './sim/model'
+import type { Architecture, Kind, Level, Region } from './sim/model'
 
-const nodeTypes = { component: NodeCard }
+const nodeTypes = { component: NodeCard, region: RegionArea }
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
+const PALETTE: Kind[] = ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
 const COLUMN: Record<Kind, number> = {
   client: 0,
+  dns: 200,
   cdn: 200,
   limiter: 300,
   gateway: 400,
@@ -72,7 +75,10 @@ const COLUMN: Record<Kind, number> = {
   payment: 820,
 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340 }
+const FIRST_ROW: Partial<Record<Kind, number>> = { dns: -230, queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340 }
+/** Height of the canvas band each region keeps: São Paulo on top, then Virgínia, then Frankfurt. */
+const REGION_BAND = 900
+const bandOf = (region: Region) => (Object.keys(REGIONS) as Region[]).indexOf(region)
 const TICK_MS = 120
 const TOAST_MS = 6000
 const PANEL_KEY = 'gargalo:panel'
@@ -102,14 +108,14 @@ interface Design {
 function freshDesign(stage: Stage): Design {
   const arch = startArchitecture(stage)
   const nodes = arch.nodes.map((n): ComponentNode => {
-    const same = arch.nodes.filter((m) => m.kind === n.kind)
     // Kinds that share a column with another (payment above the cache) keep their own row.
-    const y = (FIRST_ROW[n.kind] ?? 120) + (same.indexOf(n) - (same.length - 1) / 2) * 110
+    const same = arch.nodes.filter((m) => m.kind === n.kind && regionOf(m) === regionOf(n))
+    const y = (FIRST_ROW[n.kind] ?? 120) + (same.indexOf(n) - (same.length - 1) / 2) * 110 + bandOf(regionOf(n)) * REGION_BAND
     return {
       id: n.id,
       type: 'component',
       position: { x: COLUMN[n.kind], y },
-      data: { kind: n.kind },
+      data: { kind: n.kind, ...(n.region ? { region: n.region } : {}) },
       // The users and pieces run by another company stay on the drawing.
       ...(n.kind === 'client' || SPECS[n.kind].external ? { deletable: false } : {}),
     }
@@ -152,7 +158,7 @@ const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
 
 function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
   return {
-    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })),
+    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, ...(n.data.region ? { region: n.data.region } : {}) })),
     edges: edges.map((e) => ({ source: e.source, target: e.target, ...policyOf(e) })),
   }
 }
@@ -510,7 +516,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
         id,
         type: 'component',
         position: { x: node.position.x + 32, y: node.position.y + 32 },
-        data: { kind: node.data.kind },
+        data: { kind: node.data.kind, ...(node.data.region ? { region: node.data.region } : {}) },
         selected: true,
       },
     ])
@@ -628,10 +634,47 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
     setPlaying(true)
   }
 
-  const displayNodes = useMemo(
-    () => (tick ? nodes.map((n) => ({ ...n, data: { ...n.data, stats: tick.nodes[n.id] } })) : nodes),
-    [nodes, tick],
-  )
+  // Multi-region levels (or designs already spread out) show the regions on the canvas.
+  const regionChoices = useMemo(() => {
+    const used = nodes.map((n) => regionOf({ id: n.id, ...n.data })).filter((_, i) => !SPECS[nodes[i].data.kind].global)
+    const all = new Set<Region>([...levelRegions(level), ...used])
+    return levelRegions(level).length > 1 || used.some((r) => r !== HOME_REGION)
+      ? (Object.keys(REGIONS) as Region[]).filter((r) => all.has(r))
+      : []
+  }, [nodes, level])
+  const multiRegion = regionChoices.length > 0
+
+  const displayNodes = useMemo((): (ComponentNode | RegionAreaNode)[] => {
+    const cards = tick ? nodes.map((n) => ({ ...n, data: { ...n.data, stats: tick.nodes[n.id] } })) : nodes
+    if (!multiRegion) return cards
+    const PAD = 28
+    const areas = regionChoices.flatMap((region): RegionAreaNode[] => {
+      const inside = cards.filter((n) => !SPECS[n.data.kind].global && regionOf({ id: n.id, ...n.data }) === region)
+      if (inside.length === 0) return []
+      const left = Math.min(...inside.map((n) => n.position.x)) - PAD
+      const top = Math.min(...inside.map((n) => n.position.y)) - PAD - 12
+      const right = Math.max(...inside.map((n) => n.position.x + (n.measured?.width ?? 184))) + PAD
+      const bottom = Math.max(...inside.map((n) => n.position.y + (n.measured?.height ?? 90))) + PAD
+      const down = !!tick && !!level.regionOutages?.some((o) => o.region === region && tick.t >= o.from && tick.t < o.to)
+      return [
+        {
+          id: `region-${region}`,
+          type: 'region',
+          position: { x: left, y: top },
+          width: right - left,
+          height: bottom - top,
+          data: { region, down },
+          zIndex: -1,
+          selectable: false,
+          draggable: false,
+          connectable: false,
+          focusable: false,
+          deletable: false,
+        },
+      ]
+    })
+    return [...areas, ...cards]
+  }, [nodes, tick, multiRegion, regionChoices, level])
   const displayEdges = useMemo(() => {
     const labelOf = (id: string) => {
       const n = nodes.find((x) => x.id === id)
@@ -751,7 +794,8 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
           >
             <EditorContext.Provider value={editor}>
               <ReactFlow
-                nodes={displayNodes}
+                // Region areas are inert (not selectable, draggable or deletable), so no handler ever sees one.
+                nodes={displayNodes as ComponentNode[]}
                 edges={displayEdges}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
@@ -864,6 +908,27 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
               onClose={closeInfo}
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}
+              region={
+                multiRegion && !listInfo && selected.length === 1 && !SPECS[selected[0].data.kind].global
+                  ? {
+                      value: regionOf({ id: selected[0].id, ...selected[0].data }),
+                      choices: regionChoices,
+                      editable,
+                      onChange: (r) => {
+                        clearRun()
+                        setNodes((ns) =>
+                          ns.map((n) => {
+                            if (n.id !== selected[0].id) return n
+                            const { region: _old, ...rest } = n.data
+                            // Each region keeps its own band of the canvas, so the areas never overlap.
+                            const y = n.position.y + (bandOf(r) - bandOf(regionOf({ id: n.id, ...n.data }))) * REGION_BAND
+                            return { ...n, position: { ...n.position, y }, data: r === HOME_REGION ? rest : { ...rest, region: r } }
+                          }),
+                        )
+                      },
+                    }
+                  : undefined
+              }
             >
               {/* A piece picked on the canvas also shows how it did in the run on screen. */}
               {!listInfo && selected.length === 1 && run && shown > 0 && (

@@ -30,6 +30,22 @@ describe('parseDesign', () => {
     expect(parseDesign(JSON.stringify({ ...withStats, edges: [] }))?.nodes[0].data).toEqual({ kind: 'client' })
   })
 
+  it('keeps a valid region and drops an invalid one or one on a global piece', () => {
+    const at = (id: string, kind: string, region: unknown) => ({ ...node(id, kind), data: { kind, region } })
+    const design = parseDesign(
+      JSON.stringify({
+        nodes: [at('client', 'client', 'us'), at('a', 'server', 'us'), at('b', 'server', 'mars'), at('c', 'dns', 'eu')],
+        edges: [],
+      }),
+    )
+    expect(design?.nodes.map((n) => n.data)).toEqual([
+      { kind: 'client' },
+      { kind: 'server', region: 'us' },
+      { kind: 'server' },
+      { kind: 'dns' },
+    ])
+  })
+
   it.each([
     ['not JSON', '{'],
     ['not an object', '42'],

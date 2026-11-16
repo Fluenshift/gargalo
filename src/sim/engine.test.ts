@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
-import { QUEUE_MAX_BACKLOG, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
-import type { ArchEdge, Architecture, Kind, Level, Spec } from './model'
+import { QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
+import type { ArchEdge, Architecture, Kind, Level, Region, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
 function arch(edges: [string, string][], extra: string[] = []): Architecture {
@@ -515,6 +515,56 @@ describe('partitioned database', () => {
   })
 })
 
+describe('regions', () => {
+  /** Puts the named nodes in `region`; the rest stay in the home region. */
+  const placed = (a: Architecture, region: Region, ids: string[]): Architecture => ({
+    ...a,
+    nodes: a.nodes.map((n) => (ids.includes(n.id) ? { ...n, region } : n)),
+  })
+  /** One stack per region behind a geographic DNS: lb → 3 servers → cache; reads end on the primary in São Paulo or a local replica. */
+  const twoRegions = (): Architecture => {
+    const edges: [string, string][] = [['client', 'dns'], ['dns', 'lb#sa'], ['dns', 'lb#us'], ['cache#sa', 'db'], ['cache#us', 'replica#us'], ['db', 'replica#us']]
+    for (const r of ['sa', 'us']) for (let i = 0; i < 3; i++) edges.push([`lb#${r}`, `server#${r}${i}`], [`server#${r}${i}`, `cache#${r}`])
+    const a = arch(edges)
+    const us = a.nodes.filter((n) => n.id.includes('#us')).map((n) => n.id)
+    return placed(a, 'us', us)
+  }
+  const reads: Level = { ...steady, durationS: 30, traffic: [{ from: 0, rps: 800 }], users: { sa: 0.5, us: 0.5 } }
+
+  it('a call across regions pays the round trip', () => {
+    const local = runLevel(arch([['client', 'server'], ['server', 'db']]), steady).summary
+    const far = runLevel(arch([['client', 'server'], ['server', 'db']]), { ...steady, users: { eu: 1 } }).summary
+    expect(far.p50Ms - local.p50Ms).toBeCloseTo(REGION_RTT_MS.eu.sa, -1)
+    const split = placed(arch([['client', 'server'], ['server', 'db']]), 'us', ['db'])
+    expect(runLevel(split, steady).summary.p50Ms - local.p50Ms).toBeCloseTo(REGION_RTT_MS.sa.us, -1)
+  })
+
+  it('a geographic DNS sends each region its own users', () => {
+    const tick = runLevel(twoRegions(), reads).ticks[0]
+    expect(tick.nodes['lb#sa'].load).toBeCloseTo(400)
+    expect(tick.nodes['lb#us'].load).toBeCloseTo(400)
+    const oneRegion = placed(twoRegions(), 'sa', twoRegions().nodes.map((n) => n.id))
+    expect(runLevel(twoRegions(), reads).summary.p99Ms).toBeLessThan(runLevel({ ...oneRegion, edges: oneRegion.edges }, { ...reads, users: { us: 1 } }).summary.p99Ms)
+  })
+
+  it('fails over when a whole region goes dark', () => {
+    const outage: Level = { ...reads, regionOutages: [{ region: 'sa', from: 10, to: 20 }] }
+    const { ticks, summary } = runLevel(twoRegions(), outage)
+    expect(ticks[15].nodes['lb#sa'].down).toBe(true)
+    expect(ticks[15].nodes['lb#us'].load).toBeCloseTo(800)
+    expect(summary.passed.availability).toBe(true)
+    // Everything in one region: the outage takes the whole site down.
+    const single = fanOut(3, 'cache', [['client', 'lb'], ['cache', 'db']])
+    expect(runLevel(single, outage).summary.passed.availability).toBe(false)
+  })
+
+  it('without a DNS, every user goes to the one place the users point at', () => {
+    const outage: Level = { ...reads, regionOutages: [{ region: 'sa', from: 10, to: 20 }] }
+    const a = { ...twoRegions(), edges: twoRegions().edges.map((e) => (e.source === 'client' ? { ...e, target: 'lb#sa' } : e)).filter((e) => e.source !== 'dns') }
+    expect(runLevel(a, outage).summary.passed.availability).toBe(false)
+  })
+})
+
 describe('canConnect', () => {
   const a = arch([['client', 'lb']], ['server', 'db', 'cdn'])
   it('enforces allowed targets and max outputs', () => {
@@ -538,7 +588,7 @@ describe('connectRefusal', () => {
 
   it('names where a piece can go when the kind is wrong', () => {
     expect(connectRefusal(a, 'client', 'db')).toBe(
-      'Não dá para ligar Usuários a Banco de dados. Daqui só se chega a CDN, Rate limiter, API Gateway, Load Balancer ou Servidor.',
+      'Não dá para ligar Usuários a Banco de dados. Daqui só se chega a DNS geográfico, CDN, Rate limiter, API Gateway, Load Balancer ou Servidor.',
     )
   })
 

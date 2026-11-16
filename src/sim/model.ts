@@ -14,6 +14,7 @@ export type Kind =
   | 'replica'
   | 'payment'
   | 'shard'
+  | 'dns'
 /** What people using the system ask for. */
 export type UserClass = 'static' | 'read' | 'write'
 /**
@@ -26,6 +27,19 @@ export type RequestClass = UserClass | 'bot'
 export type ClassLoad = Record<RequestClass, number>
 /** What a node keeps from one simulated second to the next (a backlog, a lag). */
 export type NodeState = Record<string, number>
+
+/** Where a piece runs, or where users connect from. */
+export type Region = 'sa' | 'us' | 'eu'
+
+export const REGIONS: Record<Region, string> = { sa: 'São Paulo', us: 'Virgínia', eu: 'Frankfurt' }
+/** Where every piece runs and every user is, unless a level or the player says otherwise. */
+export const HOME_REGION: Region = 'sa'
+/** Round trip between two regions, in ms: what a call pays each time it crosses. */
+export const REGION_RTT_MS: Record<Region, Record<Region, number>> = {
+  sa: { sa: 0, us: 120, eu: 200 },
+  us: { sa: 120, us: 0, eu: 90 },
+  eu: { sa: 200, us: 90, eu: 0 },
+}
 
 export interface RouteTarget {
   id: string
@@ -87,6 +101,16 @@ export interface Spec {
    * equal share of the load, so the level's hot key lands on one of them.
    */
   partitioned?: boolean
+  /**
+   * Sends each user to the closest live target (geographic DNS): the users of a
+   * region go to the targets in the region with the shortest round trip.
+   */
+  geo?: boolean
+  /**
+   * Runs everywhere at once (the users, an anycast DNS): it sits in no region, no
+   * regional outage takes it down, and calls through it pay no round trip of their own.
+   */
+  global?: boolean
 }
 
 export interface StepContext {
@@ -176,10 +200,24 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 0,
     cost: 0,
     serves: {},
-    targets: ['cdn', 'limiter', 'gateway', 'lb', 'server'],
+    targets: ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server'],
     maxOut: 1,
     description: 'De onde vem o tráfego. O DNS só aponta para um lugar.',
     entry: true,
+    global: true,
+  },
+  dns: {
+    label: 'DNS geográfico',
+    capacity: 1_000_000,
+    baseLatencyMs: 2,
+    cost: 40,
+    serves: {},
+    targets: ['cdn', 'limiter', 'gateway', 'lb', 'server'],
+    maxOut: 6,
+    description: 'Responde a cada usuário com o endereço vivo mais perto dele. Se uma região cai, manda todo mundo para a próxima.',
+    route: (targets) => targets.filter((t) => !t.down),
+    geo: true,
+    global: true,
   },
   cdn: {
     label: 'CDN',
@@ -364,6 +402,8 @@ export const SPECS: Record<Kind, Spec> = {
 export interface ArchNode {
   id: string
   kind: Kind
+  /** Where it runs; the home region when absent. */
+  region?: Region
 }
 
 export interface ArchEdge {
@@ -422,6 +462,10 @@ export interface Level {
    */
   tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity'>>>>
   failures: Failure[]
+  /** A whole region going dark: every piece running there is down. */
+  regionOutages?: { region: Region; from: number; to: number }[]
+  /** Share of the users connecting from each region; everyone in the home region when absent. */
+  users?: Partial<Record<Region, number>>
   /**
    * Share of the reads and writes that ask for one same key (a viral product).
    * Partitions split keys, not load: this share always lands on one partition.
@@ -479,6 +523,21 @@ function phaseAt(phases: TrafficPhase[], t: number): number {
   let rps = 0
   for (const phase of phases) if (t >= phase.from) rps = phase.rps
   return rps
+}
+
+/** Where a piece runs. */
+export const regionOf = (node: ArchNode): Region => node.region ?? HOME_REGION
+
+/** Share of the users per region, regions without users left out. */
+export function userRegions(level: Level): [Region, number][] {
+  const entries = Object.entries(level.users ?? { [HOME_REGION]: 1 }) as [Region, number][]
+  return entries.filter(([, share]) => share > 0)
+}
+
+/** Regions the level plays in: where its users connect from and where a region can go dark. */
+export function levelRegions(level: Level): Region[] {
+  const all = new Set<Region>([...userRegions(level).map(([r]) => r), ...(level.regionOutages ?? []).map((o) => o.region)])
+  return (Object.keys(REGIONS) as Region[]).filter((r) => all.has(r))
 }
 
 /** Requests per second from the people using the system. */
