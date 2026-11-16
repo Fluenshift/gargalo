@@ -41,7 +41,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { ANSWER_LOST, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import { ANSWER_LOST, PROTOCOLS, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -284,6 +284,20 @@ export function simulateTick(
 
   const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
 
+  /**
+   * Share of class `c` a node ends. An HTTP cache only keeps what the protocol of the
+   * links into it lets it keep, in proportion to those links.
+   */
+  const servesOf = (node: ArchNode, c: RequestClass): number => {
+    const spec = pieces[node.kind]
+    const base = spec.serves[c] ?? 0
+    if (!spec.httpCache || base === 0) return base
+    const incoming = arch.edges.filter((e) => e.target === node.id)
+    if (incoming.length === 0) return base
+    const kept = incoming.filter((e) => !PROTOCOLS[e.protocol ?? 'rest'].uncached.includes(c)).length
+    return (base * kept) / incoming.length
+  }
+
   // What a target can take: its capacity, or for a piece that ends nothing
   // itself (a load balancer), what is behind it up to its own capacity.
   const capacityMemo = new Map<string, number>()
@@ -406,7 +420,7 @@ export function simulateTick(
       lose(c, a[c] * (1 - capPass), outWaiting, outAsync, isNodeDown ? 'down' : 'overload')
       lose(c, a[c] * capPass * blips, outWaiting, outAsync, 'down')
       const survivors = a[c] * pass
-      const endsHere = survivors * (spec.serves[c] ?? 0)
+      const endsHere = survivors * servesOf(node, c)
       if (counts) {
         served += endsHere * outWaiting
         servedByClass[c] += endsHere * outWaiting
@@ -484,7 +498,7 @@ export function simulateTick(
         result[c] = through
         continue
       }
-      const ends = spec.serves[c] ?? 0
+      const ends = servesOf(node, c)
       const targets = routable(node, c)
       const split = targets.length ? shares(node, targets, c) : []
       const onward = targets.reduce((sum, target, i) => {
@@ -539,8 +553,8 @@ export function simulateTick(
         if (rng() >= (passRate.get(node.id) ?? 0)) break
         const spec = pieces[node.kind]
         latency += spec.baseLatencyMs - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
-        if (spec.acknowledges?.includes(c) || rng() < (spec.serves[c] ?? 0)) {
-          latencies.push(latency)
+        if (spec.acknowledges?.includes(c) || rng() < servesOf(node, c)) {
+          latencies.push(Math.max(0, latency))
           break
         }
         const targets = routable(node, c)
@@ -552,7 +566,7 @@ export function simulateTick(
         const nextNode: ArchNode | undefined = next ? byId.get(next) : undefined
         // Crossing regions costs a round trip. A global piece is wherever the user is.
         const at = (n: ArchNode) => (pieces[n.kind].global ? from : regionOf(n))
-        if (nextNode) latency += REGION_RTT_MS[at(node)][at(nextNode)]
+        if (nextNode) latency += REGION_RTT_MS[at(node)][at(nextNode)] + (PROTOCOLS[policies.get(key!)?.protocol ?? 'rest'].hopMs[c] ?? 0)
         node = nextNode
       }
     }

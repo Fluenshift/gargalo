@@ -113,6 +113,15 @@ export interface Spec {
   global?: boolean
   /** Share of the calls that fail at random whatever the load (network blips): a retry usually gets through. */
   flaky?: number
+  /** Takes API calls: the link into it speaks a protocol (REST, GraphQL, gRPC). */
+  api?: boolean
+  /**
+   * Keeps answers by URL (an HTTP cache at the edge): it only ends the classes the
+   * protocol of the link into it lets a cache keep.
+   */
+  httpCache?: boolean
+  /** Talks to browsers: links out of it can only use protocols a browser speaks. */
+  browserFacing?: boolean
 }
 
 export interface StepContext {
@@ -209,6 +218,7 @@ export const SPECS: Record<Kind, Spec> = {
     description: 'De onde vem o tráfego. O DNS só aponta para um lugar.',
     entry: true,
     global: true,
+    browserFacing: true,
   },
   dns: {
     label: 'DNS geográfico',
@@ -222,19 +232,25 @@ export const SPECS: Record<Kind, Spec> = {
     route: (targets) => targets.filter((t) => !t.down),
     geo: true,
     global: true,
+    browserFacing: true,
   },
   cdn: {
     label: 'CDN',
     capacity: 100_000,
     baseLatencyMs: 8,
     cost: 25,
-    serves: { static: 0.95 },
+    serves: { static: 0.95, read: 0.1, bot: 0.1 },
     targets: ['limiter', 'gateway', 'lb', 'server'],
     maxOut: 1,
-    description: 'Serve 95% dos arquivos estáticos na borda. O resto segue para a origem.',
+    description:
+      'Serve 95% dos arquivos estáticos na borda e guarda 10% das leituras da API, quando elas chegam por REST. O resto segue para a origem.',
+    api: true,
+    httpCache: true,
+    browserFacing: true,
   },
   limiter: {
     label: 'Rate limiter',
+    api: true,
     capacity: 50_000,
     baseLatencyMs: 1,
     cost: 15,
@@ -258,6 +274,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   gateway: {
     label: 'API Gateway',
+    api: true,
     capacity: 10_000,
     baseLatencyMs: 5,
     cost: 60,
@@ -270,6 +287,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   lb: {
     label: 'Load Balancer',
+    api: true,
     capacity: 20_000,
     baseLatencyMs: 1,
     cost: 20,
@@ -281,6 +299,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   server: {
     label: 'Servidor',
+    api: true,
     capacity: 400,
     baseLatencyMs: 30,
     cost: 50,
@@ -422,6 +441,53 @@ export interface ArchEdge {
   breaker?: boolean
   /** Each call carries an idempotency key: the target runs a repeated write only once. */
   idempotent?: boolean
+  /** How the source talks to an API piece. REST when absent. */
+  protocol?: Protocol
+}
+
+export type Protocol = 'rest' | 'graphql' | 'grpc'
+
+export interface ProtocolSpec {
+  label: string
+  description: string
+  /** Time each call over the link gains (negative) or loses compared with REST, per class, in ms. */
+  hopMs: Partial<Record<RequestClass, number>>
+  /** Classes an HTTP cache cannot keep over this protocol (everything goes as one POST). */
+  uncached: RequestClass[]
+  /** A browser can speak it, so it may leave a piece that talks to browsers. */
+  browser: boolean
+}
+
+export const PROTOCOLS: Record<Protocol, ProtocolSpec> = {
+  rest: {
+    label: 'REST',
+    description: 'Uma URL por recurso, JSON e verbos HTTP. Simples, e um GET pode ser guardado pela CDN.',
+    hopMs: {},
+    uncached: [],
+    browser: true,
+  },
+  graphql: {
+    label: 'GraphQL',
+    description: 'Uma consulta traz tudo que a tela pede de uma vez, com menos idas e voltas. Mas tudo vai num POST, e a CDN não guarda.',
+    hopMs: { read: -10, bot: -10 },
+    uncached: ['read', 'bot'],
+    browser: true,
+  },
+  grpc: {
+    label: 'gRPC',
+    description: 'Binário e com conexão aberta (HTTP/2): mais rápido entre serviços internos. O navegador não fala gRPC.',
+    hopMs: { read: -6, write: -6, bot: -6 },
+    uncached: ['read', 'bot'],
+    browser: false,
+  },
+}
+
+/** Why the link from `source` cannot use `protocol`, in words for the player; null when it can. */
+export function protocolRefusal(source: Kind, target: Kind, protocol: Protocol, pieces: Record<string, Spec> = SPECS): string | null {
+  if (!pieces[target].api) return `${pieces[target].label} não recebe chamadas de API: a ligação não tem protocolo.`
+  if (pieces[source].browserFacing && !PROTOCOLS[protocol].browser)
+    return `O navegador não fala ${PROTOCOLS[protocol].label}. Use REST ou GraphQL na ligação que sai de ${pieces[source].label}.`
+  return null
 }
 
 /**
@@ -486,6 +552,8 @@ export interface Level {
    * Partitions split keys, not load: this share always lands on one partition.
    */
   hotKey?: number
+  /** What the routes are called in this system (e.g. `POST /transferencias`); generic ones when absent. */
+  endpoints?: Partial<Record<UserClass, string>>
   goals: Goals
   /**
    * What is already on the drawing when the level opens (the previous team's work).
@@ -563,4 +631,32 @@ export function rpsAt(level: Level, t: number): number {
 /** Requests per second from the level's bot, if it has one. */
 export function botRpsAt(level: Level, t: number): number {
   return level.bot ? phaseAt(level.bot, t) : 0
+}
+
+/** One route of the application: how much of the traffic asks for it and what one call costs. */
+export interface Endpoint {
+  route: string
+  class: UserClass
+  /** Share of the users' requests, 0..1. */
+  share: number
+  /** CPU time on the server per call, in ms. */
+  cpuMs: number
+  /** Database queries per call. */
+  queries: number
+  /** Size of the answer, in kB. */
+  responseKb: number
+}
+
+const ENDPOINT_DEFAULTS: Record<UserClass, Omit<Endpoint, 'share' | 'class'>> = {
+  static: { route: 'GET /arquivos/:nome', cpuMs: 1, queries: 0, responseKb: 200 },
+  read: { route: 'GET /produtos/:id', cpuMs: 8, queries: 1, responseKb: 4 },
+  write: { route: 'POST /pedidos', cpuMs: 15, queries: 2, responseKb: 1 },
+}
+
+/** The level's traffic as routes, busiest first: the same mix, by endpoint. */
+export function endpointsOf(level: Level): Endpoint[] {
+  return (Object.keys(ENDPOINT_DEFAULTS) as UserClass[])
+    .filter((c) => level.mix[c] > 0)
+    .map((c) => ({ ...ENDPOINT_DEFAULTS[c], route: level.endpoints?.[c] ?? ENDPOINT_DEFAULTS[c].route, class: c, share: level.mix[c] }))
+    .sort((a, b) => b.share - a.share)
 }

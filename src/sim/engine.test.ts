@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
-import { QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal } from './model'
-import type { ArchEdge, Architecture, Kind, Level, Region, Spec } from './model'
+import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal, protocolRefusal } from './model'
+import type { ArchEdge, Architecture, Kind, Level, Protocol, Region, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
 function arch(edges: [string, string][], extra: string[] = []): Architecture {
@@ -562,6 +562,51 @@ describe('regions', () => {
     const outage: Level = { ...reads, regionOutages: [{ region: 'sa', from: 10, to: 20 }] }
     const a = { ...twoRegions(), edges: twoRegions().edges.map((e) => (e.source === 'client' ? { ...e, target: 'lb#sa' } : e)).filter((e) => e.source !== 'dns') }
     expect(runLevel(a, outage).summary.passed.availability).toBe(false)
+  })
+})
+
+describe('protocols', () => {
+  /** Sets the protocol of every link from a piece of kind `from` (e.g. 'lb'). */
+  const speak = (a: Architecture, from: string, protocol: Protocol): Architecture => ({
+    ...a,
+    edges: a.edges.map((e) => (e.source.split('#')[0] === from ? { ...e, protocol } : e)),
+  })
+  const shop = fanOut(4, 'db', [['client', 'cdn'], ['cdn', 'lb']])
+  const site: Level = { ...steady, mix: { static: 0.3, read: 0.6, write: 0.1 }, traffic: [{ from: 0, rps: 600 }] }
+
+  it('REST is what every link speaks when none is set', () => {
+    expect(runLevel(speak(shop, 'lb', 'rest'), site).summary).toEqual(runLevel(shop, site).summary)
+  })
+
+  it('gRPC between internal services cuts the latency without losing requests', () => {
+    const rest = runLevel(shop, site).summary
+    const grpc = runLevel(speak(shop, 'lb', 'grpc'), site).summary
+    expect(grpc.availability).toBeCloseTo(rest.availability)
+    expect(grpc.p50Ms).toBeLessThan(rest.p50Ms)
+  })
+
+  it('GraphQL from the browser keeps the CDN from caching API reads, so more reach the servers', () => {
+    const load = (a: Architecture) => runLevel(a, site).ticks[5].edges['cdn->lb']
+    const rest = load(shop)
+    const graphql = load(speak(shop, 'client', 'graphql'))
+    expect(graphql).toBeGreaterThan(rest)
+    // Only the 10% of reads the CDN kept come back: static files are still cached.
+    expect(graphql - rest).toBeCloseTo(600 * 0.6 * (SPECS.cdn.serves.read ?? 0), 0)
+  })
+
+  it('GraphQL answers reads in fewer round trips', () => {
+    const direct = arch([['client', 'lb'], ['lb', 'server#0'], ['lb', 'server#1'], ['lb', 'server#2'], ['server#0', 'db'], ['server#1', 'db'], ['server#2', 'db']])
+    const rest = runLevel(direct, site).summary
+    const graphql = runLevel(speak(direct, 'client', 'graphql'), site).summary
+    expect(graphql.p50Ms).toBeLessThan(rest.p50Ms)
+  })
+
+  it('a browser cannot speak gRPC, and only API pieces take a protocol', () => {
+    expect(protocolRefusal('client', 'cdn', 'grpc')).toMatch(/navegador não fala gRPC/)
+    expect(protocolRefusal('client', 'cdn', 'graphql')).toBeNull()
+    expect(protocolRefusal('lb', 'server', 'grpc')).toBeNull()
+    expect(protocolRefusal('server', 'db', 'rest')).toMatch(/não recebe chamadas de API/)
+    expect(Object.keys(PROTOCOLS)).toEqual(['rest', 'graphql', 'grpc'])
   })
 })
 
