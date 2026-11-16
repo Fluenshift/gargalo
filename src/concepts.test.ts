@@ -61,6 +61,10 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'bot-de-precos': ['limiter', 'bot', 'rate-limit'],
   'pagamento-instavel': ['circuit-breaker', 'backoff', 'tempestade-retries'],
   'black-friday': ['folga', 'limiter', 'replica'],
+  'transferencia-duplicada': ['idempotencia', 'falha-transitoria', 'retry'],
+  'livro-razao': ['db', 'chave-quente', 'particao'],
+  'clientes-na-europa': ['regiao', 'consistencia-forte', 'consistencia-eventual', 'latencia-entre-regioes'],
+  'fechamento-do-mes': ['cap', 'failover', 'ativo-passivo'],
 }
 
 describe('level concepts', () => {

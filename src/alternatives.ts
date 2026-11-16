@@ -36,4 +36,16 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'materia-na-tv': [
     'Oito servidores ($595) derrubam o p99 do pico para perto de 200 ms, a $5 do teto: folga comprada com quase todo o orçamento. Sem o cache, o banco recebe todas as leituras do pico, descarta parte delas e o p99 passa de 1 segundo.',
   ],
+  'transferencia-duplicada': [
+    'Tirar as tentativas extras também zera as duplicatas, mas aí cada falha à toa do parceiro (15%) vira erro para o cliente e a disponibilidade fica perto de 85%. A chave de idempotência mantém os retries e não deixa nenhuma transferência sair duas vezes.',
+  ],
+  'livro-razao': [
+    'Réplicas não resolvem: 60% do tráfego é escrita e só o primário escreve. O que divide a carga são as partições do banco, e com a chave quente de 35% a partição do lojista gigante continua sendo o gargalo se ficar sozinha.',
+  ],
+  'clientes-na-europa': [
+    'Uma CDN na Europa tira os estáticos do oceano, mas as consultas de saldo ainda cruzam para São Paulo. Réplica em Frankfurt resolve a leitura, ao custo de ela atrasar meia ida e volta a mais e algumas leituras voltarem velhas.',
+  ],
+  'fechamento-do-mes': [
+    'Com o primário só em São Paulo, a queda de 15 s para as transferências: a disponibilidade fica abaixo da meta mesmo com leitura nos Estados Unidos. Mover o primário para a Virgínia protege as escritas, mas os clientes brasileiros pagam 120 ms em cada uma.',
+  ],
 }

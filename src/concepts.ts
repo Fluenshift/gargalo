@@ -478,6 +478,33 @@ export const GLOSSARY: GlossaryEntry[] = [
       'Ida e volta entre duas regiões: São Paulo–Virgínia 120 ms, São Paulo–Frankfurt 200 ms, Virgínia–Frankfurt 90 ms. Cada chamada que cruza paga isso.',
   },
   {
+    id: 'idempotencia',
+    term: 'idempotência',
+    forms: ['chave de idempotência', 'idempotente'],
+    definition:
+      'Repetir a chamada dá o mesmo resultado que fazer uma vez. Se a resposta de uma escrita se perde, o retry a executa de novo e a transferência sai duas vezes; com a chave de idempotência o destino reconhece a repetição e executa uma só.',
+  },
+  {
+    id: 'falha-transitoria',
+    term: 'falha transitória',
+    forms: ['falhas transitórias', 'falha passageira', 'falhas passageiras'],
+    definition:
+      'Erro que some sozinho na chamada seguinte, como um soluço do parceiro, sem relação com a carga. Retry ajuda; já numa sobrecarga, mais tentativas só pioram.',
+  },
+  {
+    id: 'consistencia-forte',
+    term: 'consistência forte',
+    definition:
+      'Toda leitura vê a última escrita, porque lê do primário. Fora da região dele cada leitura paga a viagem; a réplica é rápida, mas eventual, e entre regiões atrasa meia ida e volta a mais.',
+  },
+  {
+    id: 'cap',
+    term: 'teorema CAP',
+    forms: ['CAP'],
+    definition:
+      'Com a rede partida entre regiões, ou você responde (talvez com dado velho, ou aceitando escritas que divergem) ou recusa para manter a consistência. Com um só primário, as escritas param quando a região dele cai; mover o primário é essa escolha.',
+  },
+  {
     id: 'failover',
     term: 'failover',
     definition: 'Troca automática para a cópia que está viva quando a principal cai. Entre regiões, quem desvia é o DNS.',
