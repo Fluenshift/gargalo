@@ -1915,3 +1915,28 @@ ul {
 .profile__state {
   color: var(--ink-soft);
 }
+
+.levels__streak,
+.profile__daily {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.levels__streak {
+  padding: 0 4px;
+}
+
+.career__streak {
+  align-self: center;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.career__actions {
+  flex-wrap: wrap;
+}
+
+.career__actions .ghost {
+  white-space: nowrap;
+}

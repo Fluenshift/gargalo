@@ -1,18 +1,22 @@
 import { useEffect, useRef } from 'react'
+import { dailyXp, streak } from './daily'
+import type { DailyRecord } from './daily'
 import { ACHIEVEMENTS, RANKS, achievements, rankFor, totalXp } from './score'
 import type { Results } from './score'
 
 const xp = (n: number) => `${n.toLocaleString('pt-BR')} XP`
 
 /** Modal with the player's rank, XP and achievements. The native dialog traps focus, closes on Escape and returns focus to the opener. */
-export function Profile({ results, onClose }: { results: Results; onClose: () => void }) {
+export function Profile({ results, daily, today, onClose }: { results: Results; daily: DailyRecord; today: string; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const d = ref.current
     if (d && !d.open) d.showModal()
   }, [])
 
-  const total = totalXp(results)
+  const total = totalXp(results) + dailyXp(daily, today)
+  const days = Object.values(daily).filter((stars) => stars > 0).length
+  const run = streak(daily, today)
   const rank = rankFor(total)
   const earned = new Set(achievements(results))
   const from = RANKS.find((r) => r.title === rank.title)!.xp
@@ -32,6 +36,10 @@ export function Profile({ results, onClose }: { results: Results; onClose: () =>
         <span style={{ width: `${share * 100}%` }} />
       </div>
       <p className="profile__next">{rank.next ? `Faltam ${xp(rank.next.missing)} para ${rank.next.title}.` : 'Você chegou ao nível mais alto.'}</p>
+
+      <p className="profile__daily">
+        Sequência: {run} {run === 1 ? 'dia' : 'dias'} · {days} {days === 1 ? 'dia jogado' : 'dias jogados'} no desafio do dia
+      </p>
 
       <h3>
         Conquistas ({earned.size}/{ACHIEVEMENTS.length})
