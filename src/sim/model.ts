@@ -13,6 +13,7 @@ export type Kind =
   | 'worker'
   | 'replica'
   | 'payment'
+  | 'shard'
 /** What people using the system ask for. */
 export type UserClass = 'static' | 'read' | 'write'
 /**
@@ -78,8 +79,14 @@ export interface Spec {
    * remove or scale it, and its cost is not part of the budget.
    */
   external?: boolean
-  /** Most instances one drawing may have (one primary database until sharding exists). */
+  /** Most instances one drawing may have (one primary database: more of them means partitions). */
   maxCount?: number
+  /**
+   * Holds one slice of the data, chosen by key (a database partition). A node
+   * sending to several such pieces gives each an equal key range instead of an
+   * equal share of the load, so the level's hot key lands on one of them.
+   */
+  partitioned?: boolean
 }
 
 export interface StepContext {
@@ -236,7 +243,7 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 30,
     cost: 50,
     serves: { static: 1 },
-    targets: ['cache', 'db', 'queue', 'replica', 'payment'],
+    targets: ['cache', 'db', 'shard', 'queue', 'replica', 'payment'],
     maxOut: 5,
     description: 'Roda a aplicação. Responde estáticos; leituras e escritas vão adiante.',
     route: splitByClass,
@@ -247,7 +254,7 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 1,
     cost: 30,
     serves: { read: 0.85, bot: 0.85 },
-    targets: ['db', 'replica'],
+    targets: ['db', 'shard', 'replica'],
     maxOut: 4,
     description: '85% das leituras acertam o cache. Escritas e misses vão ao banco.',
     route: splitByClass,
@@ -298,8 +305,8 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 20,
     cost: 40,
     serves: {},
-    targets: ['db'],
-    maxOut: 1,
+    targets: ['db', 'shard'],
+    maxOut: 4,
     description: 'Consome mensagens da fila e grava no banco. Ninguém espera por ele.',
   },
   payment: {
@@ -313,6 +320,18 @@ export const SPECS: Record<Kind, Spec> = {
     description: 'Serviço de outra empresa que cobra o cartão. Não dá para escalar nem consertar: só escolher como chamar.',
     crashesAbove: 1.5,
     external: true,
+  },
+  shard: {
+    label: 'Partição do banco',
+    capacity: 1000,
+    baseLatencyMs: 15,
+    cost: 130,
+    serves: { read: 1, write: 1, bot: 1 },
+    targets: [],
+    maxOut: 0,
+    description: 'Um pedaço do banco, escolhido pela chave. Cada partição a mais soma leituras e escritas, mas uma chave quente cai sempre na mesma.',
+    crashesAbove: 2,
+    partitioned: true,
   },
   replica: {
     label: 'Réplica de leitura',
@@ -403,6 +422,11 @@ export interface Level {
    */
   tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity'>>>>
   failures: Failure[]
+  /**
+   * Share of the reads and writes that ask for one same key (a viral product).
+   * Partitions split keys, not load: this share always lands on one partition.
+   */
+  hotKey?: number
   goals: Goals
   /**
    * What is already on the drawing when the level opens (the previous team's work).
