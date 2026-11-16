@@ -1,14 +1,14 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, SPECS } from './sim/model'
-import type { Kind } from './sim/model'
+import { MAX_RETRIES, REGIONS, SPECS } from './sim/model'
+import type { Kind, Region } from './sim/model'
 
 export interface SavedNode {
   id: string
   type: 'component'
   position: { x: number; y: number }
-  data: { kind: Kind }
+  data: { kind: Kind; region?: Region }
   deletable?: boolean
 }
 
@@ -20,6 +20,8 @@ export interface SavedEdge {
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
+
+const isRegion = (v: unknown): v is Region => typeof v === 'string' && Object.hasOwn(REGIONS, v)
 
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && Object.hasOwn(SPECS, v)
 
@@ -43,7 +45,8 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
       id: n.id,
       type: 'component',
       position: { x: x as number, y: y as number },
-      data: { kind },
+      // Global pieces (users, DNS) sit in no region; a bad region is dropped.
+      data: { kind, ...(isRegion(n.data.region) && !SPECS[kind].global ? { region: n.data.region } : {}) },
       ...(kind === 'client' || SPECS[kind].external ? { deletable: false } : {}),
     })
   }

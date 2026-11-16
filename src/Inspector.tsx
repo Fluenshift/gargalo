@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { CONCEPTS, splitTerms } from './concepts'
 import type { GlossaryEntry } from './concepts'
 import { KindIcon } from './KindIcon'
-import { SPECS } from './sim/model'
-import type { Kind } from './sim/model'
+import { REGIONS, SPECS } from './sim/model'
+import type { Kind, Region } from './sim/model'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR')
 
@@ -18,6 +18,7 @@ export function Inspector({
   focusOnOpen = false,
   escapeCloses = true,
   children,
+  region,
 }: {
   kind: Kind
   onClose: () => void
@@ -26,6 +27,8 @@ export function Inspector({
   /** False while something above the panel (a menu) owns Escape. */
   escapeCloses?: boolean
   children?: ReactNode
+  /** Regions to choose from for the selected piece; absent on single-region levels and for global pieces. */
+  region?: { value: Region; choices: Region[]; editable: boolean; onChange: (r: Region) => void }
 }) {
   const spec = SPECS[kind]
   const concept = CONCEPTS[kind]
@@ -99,6 +102,25 @@ export function Inspector({
           </svg>
         </button>
       </header>
+
+      {region && (
+        <section>
+          <h3 id={`${titleId}-region`}>Região</h3>
+          <div className="segmented" role="group" aria-labelledby={`${titleId}-region`}>
+            {region.choices.map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={region.value === r}
+                disabled={!region.editable}
+                onClick={() => region.onChange(r)}
+              >
+                {REGIONS[r]}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h3>O que é</h3>

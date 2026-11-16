@@ -3,11 +3,11 @@ import type { Node, NodeProps } from '@xyflow/react'
 import { useControlScale, useEditor } from './editorContext'
 import { KindIcon } from './KindIcon'
 import { SPECS } from './sim/model'
-import type { Kind } from './sim/model'
+import type { Kind, Region } from './sim/model'
 import type { NodeStats } from './sim/engine'
 import { waitLabel } from './sim/metrics'
 
-export type ComponentNode = Node<{ kind: Kind; stats?: NodeStats }, 'component'>
+export type ComponentNode = Node<{ kind: Kind; region?: Region; stats?: NodeStats }, 'component'>
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR')
 

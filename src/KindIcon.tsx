@@ -3,6 +3,14 @@ import type { Kind } from './sim/model'
 
 /** Line symbols from the usual architecture-diagram vocabulary. */
 const PATHS: Record<Kind, ReactNode> = {
+  // A globe with a pointer: each user is sent to the closest place.
+  dns: (
+    <>
+      <circle cx="10" cy="10" r="7" />
+      <ellipse cx="10" cy="10" rx="3" ry="7" />
+      <path d="M3 10h14M14 14l7 3-3 1.5L16.5 22z" />
+    </>
+  ),
   client: (
     <>
       <circle cx="9" cy="8" r="3" />
