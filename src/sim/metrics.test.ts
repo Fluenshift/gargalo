@@ -28,6 +28,7 @@ const tick = (nodes: Record<string, NodeStats>): TickResult => ({
   rps: 0,
   botRps: 0,
   served: 0,
+  duplicates: 0,
   failed: { overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0 },
   breakers: {},
   servedByClass: { static: 0, read: 0, write: 0, bot: 0 },

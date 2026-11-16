@@ -207,5 +207,62 @@ export const BLACK_FRIDAY: Level = {
   start: withPayment({}),
 }
 
+export const FINTECH_LEVELS: Level[] = [
+  {
+    id: 'transferencia-duplicada',
+    title: 'Transferência duplicada',
+    briefing:
+      'Você entrou numa fintech. Toda transferência passa pela API do banco parceiro, que falha à toa em 15% das chamadas, mesmo sem carga. O time anterior pôs 2 tentativas extras e o app parou de dar erro, mas clientes reclamam de Pix pago duas vezes: às vezes a API faz a transferência e só a resposta se perde. Nenhuma transferência pode sair duplicada. Orçamento de $450.',
+    durationS: 60,
+    mix: { static: 0.3, read: 0.4, write: 0.3 },
+    traffic: [{ from: 0, rps: 900 }],
+    failures: [],
+    goals: { minAvailability: 0.98, maxP99Ms: 1000, maxCost: 450, maxDuplicates: 0 },
+    tweaks: { payment: { flaky: 0.15 } },
+    start: withPayment({ retries: 2 }),
+  },
+  {
+    id: 'livro-razao',
+    title: 'Livro-razão',
+    briefing:
+      'O livro-razão grava cada centavo que entra e sai: são 2.600 req/s, 60% escritas, e um banco aguenta 1.000 req/s. Réplica só ajuda leitura. Um lojista gigante concentra 35% de todas as operações na conta dele. A fintech paga até $1.050 por mês.',
+    durationS: 60,
+    mix: { static: 0.1, read: 0.3, write: 0.6 },
+    traffic: [{ from: 0, rps: 2600 }],
+    hotKey: 0.35,
+    failures: [],
+    goals: { minAvailability: 0.99, maxP99Ms: 600, maxCost: 1050 },
+  },
+  {
+    id: 'clientes-na-europa',
+    title: 'Clientes na Europa',
+    briefing:
+      'A fintech abriu em Portugal e 60% dos clientes agora estão na Europa. Tudo roda em São Paulo, a 200 ms de ida e volta de Frankfurt, e o app de quem está lá ficou lento. Quase tudo é consulta de saldo e extrato; transferências são 0,5%. O p99 tem que ficar abaixo de 150 ms. Orçamento de $800.',
+    durationS: 60,
+    mix: { static: 0.4, read: 0.595, write: 0.005 },
+    traffic: [{ from: 0, rps: 1200 }],
+    users: { sa: 0.4, eu: 0.6 },
+    failures: [],
+    goals: { minAvailability: 0.99, maxP99Ms: 150, maxCost: 800, maxStaleReads: 0.02 },
+  },
+]
+
+export const FECHAMENTO_DO_MES: Level = {
+  id: 'fechamento-do-mes',
+  title: 'Fechamento do mês',
+  briefing:
+    'Último dia do mês: metade dos clientes está no Brasil e metade nos Estados Unidos, e o tráfego dobra para 3.000 req/s aos 15s. Aos 20s a região de São Paulo inteira cai e só volta aos 35s. Consultas e transferências (10%) precisam continuar. Orçamento de $1.200.',
+  durationS: 60,
+  mix: { static: 0.3, read: 0.6, write: 0.1 },
+  traffic: [
+    { from: 0, rps: 1500 },
+    { from: 15, rps: 3000 },
+  ],
+  users: { sa: 0.5, us: 0.5 },
+  regionOutages: [{ region: 'sa', from: 20, to: 35 }],
+  failures: [],
+  goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 1200 },
+}
+
 /** Every level of the career. `src/career.ts` arranges them into companies. */
-export const LEVELS: Level[] = [...STARTUP_LEVELS, ...ECOMMERCE_LEVELS, BLACK_FRIDAY]
+export const LEVELS: Level[] = [...STARTUP_LEVELS, ...ECOMMERCE_LEVELS, BLACK_FRIDAY, ...FINTECH_LEVELS, FECHAMENTO_DO_MES]

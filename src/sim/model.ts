@@ -111,6 +111,8 @@ export interface Spec {
    * regional outage takes it down, and calls through it pay no round trip of their own.
    */
   global?: boolean
+  /** Share of the calls that fail at random whatever the load (network blips): a retry usually gets through. */
+  flaky?: number
 }
 
 export interface StepContext {
@@ -122,6 +124,8 @@ export interface StepContext {
   downstreamCapacity: number
   /** Kinds of the pieces connected into this node. */
   sources: Kind[]
+  /** Round trip to the farthest piece feeding this node, in ms: 0 when they share its region. */
+  sourceRttMs: number
 }
 
 export interface StepResult {
@@ -380,7 +384,7 @@ export const SPECS: Record<Kind, Spec> = {
     targets: [],
     maxOut: 0,
     description: 'Cópia do banco que responde leituras. Recebe as escritas do primário com atraso.',
-    step: (arriving, state, { sources }) => {
+    step: (arriving, state, { sources, sourceRttMs }) => {
       // Without a link from the primary it never gets a change: every read may be old.
       if (!sources.includes('db')) return { load: arriving, state: { pending: 0 }, lagMs: Infinity, staleRate: 1 }
       // Replicated writes use what the reads leave of the capacity; the rest piles up.
@@ -388,7 +392,8 @@ export const SPECS: Record<Kind, Spec> = {
       const applied = Math.min(pending, Math.max(0, REPLICA_CAPACITY - arriving.read - arriving.static))
       const behind = pending - applied
       const utilization = Math.min(0.95, (arriving.static + arriving.read + applied) / REPLICA_CAPACITY)
-      const lagMs = REPLICA_BASE_LAG_MS / (1 - utilization) + (behind > 0 ? (behind / Math.max(applied, 1)) * 1000 : 0)
+      // A primary in another region ships each change across it: half a round trip more.
+      const lagMs = REPLICA_BASE_LAG_MS / (1 - utilization) + sourceRttMs / 2 + (behind > 0 ? (behind / Math.max(applied, 1)) * 1000 : 0)
       return {
         load: { ...arriving, write: applied },
         state: { pending: behind },
@@ -415,7 +420,15 @@ export interface ArchEdge {
   backoff?: boolean
   /** Stops calling a target that fails most calls, failing fast for a while. */
   breaker?: boolean
+  /** Each call carries an idempotency key: the target runs a repeated write only once. */
+  idempotent?: boolean
 }
+
+/**
+ * Share of the failed write calls the target had already carried out: only the
+ * answer got lost on the way back (a timeout). Retrying one runs the write again.
+ */
+export const ANSWER_LOST = 0.3
 
 /** Most extra attempts a link may make. */
 export const MAX_RETRIES = 3
@@ -445,6 +458,8 @@ export interface Goals {
   maxCost: number
   /** Largest share of reads that may come back outdated, 0..1. No limit when absent. */
   maxStaleReads?: number
+  /** Largest share of the writes that may run twice (a transfer paid two times), 0..1. No limit when absent. */
+  maxDuplicates?: number
 }
 
 export interface Level {
@@ -460,7 +475,7 @@ export interface Level {
    * How pieces behave differently in this level (a catalog so large the cache
    * rarely hits). The briefing must say it: the parts list shows the usual specs.
    */
-  tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity'>>>>
+  tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity' | 'flaky'>>>>
   failures: Failure[]
   /** A whole region going dark: every piece running there is down. */
   regionOutages?: { region: Region; from: number; to: number }[]

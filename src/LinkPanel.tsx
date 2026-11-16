@@ -3,7 +3,7 @@ import { MAX_RETRIES } from './sim/model'
 import type { ArchEdge } from './sim/model'
 
 /** How a link calls its target: what the player can set on a selected connection. */
-export type LinkPolicy = Pick<ArchEdge, 'retries' | 'backoff' | 'breaker'>
+export type LinkPolicy = Pick<ArchEdge, 'retries' | 'backoff' | 'breaker' | 'idempotent'>
 
 const RETRY_CHOICES = Array.from({ length: MAX_RETRIES + 1 }, (_, i) => i)
 
@@ -100,6 +100,19 @@ export function LinkPanel({
         <span>
           <strong>Circuit breaker</strong>
           Se mais da metade das chamadas falha, para de chamar por 5 s e falha na hora. Depois deixa passar 10% para testar.
+        </span>
+      </label>
+
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={policy.idempotent ?? false}
+          disabled={!editable}
+          onChange={(e) => onChange({ ...policy, idempotent: e.target.checked })}
+        />
+        <span>
+          <strong>Chave de idempotência</strong>
+          Cada chamada leva um código. Se a resposta se perde e a tentativa se repete, o destino reconhece o código e não executa de novo: sem ela, uma escrita pode sair duas vezes.
         </span>
       </label>
 

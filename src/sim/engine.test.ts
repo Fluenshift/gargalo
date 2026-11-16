@@ -598,21 +598,68 @@ describe('connectRefusal', () => {
 })
 
 /** `start` plus `edges` (new pieces named `kind#n`), minus the `drop` edges. */
-function extend(start: Architecture, edges: [string, string, Partial<ArchEdge>?][], drop: [string, string][] = []): Architecture {
-  const nodes = [...start.nodes]
+function extend(
+  start: Architecture,
+  edges: [string, string, Partial<ArchEdge>?][],
+  drop: [string, string][] = [],
+  dropNodes: string[] = [],
+): Architecture {
+  const nodes = start.nodes.filter((n) => !dropNodes.includes(n.id))
   for (const [a, b] of edges)
     for (const id of [a, b]) if (!nodes.some((n) => n.id === id)) nodes.push({ id, kind: id.split('#')[0] as Kind })
   return {
     nodes,
     edges: [
-      ...start.edges.filter((e) => !drop.some(([s, t]) => s === e.source && t === e.target)),
+      ...start.edges.filter(
+        (e) => !drop.some(([s, t]) => s === e.source && t === e.target) && !dropNodes.includes(e.source) && !dropNodes.includes(e.target),
+      ),
       ...edges.map(([source, target, p]) => ({ source, target, ...p })),
     ],
   }
 }
 /** `n` new servers behind the load balancer, each connected to `to`. */
-const servers = (n: number, to = ['cache']): [string, string][] =>
-  Array.from({ length: n }, (_, i) => [['lb', `server#${i}`] as [string, string], ...to.map((t) => [`server#${i}`, t] as [string, string])]).flat()
+const servers = (n: number, to = ['cache'], lb = 'lb', tag = ''): [string, string][] =>
+  Array.from({ length: n }, (_, i) => [[lb, `server#${tag}${i}`] as [string, string], ...to.map((t) => [`server#${tag}${i}`, t] as [string, string])]).flat()
+/** Moves the nodes whose id matches into `region`. */
+const inRegion = (a: Architecture, region: Region, match: (id: string) => boolean): Architecture => ({
+  ...a,
+  nodes: a.nodes.map((n) => (match(n.id) ? { ...n, region } : n)),
+})
+/** Four more servers and `n` partitions in place of the database. */
+const ledger = (n: number) =>
+  extend(STARTUP_LEGACY, [...servers(4), ...Array.from({ length: n }, (_, i) => ['cache', `shard#${i}`] as [string, string])], [], ['db'])
+/** A geographic DNS and a second stack in Frankfurt reading from a local replica; writes cross to the primary. */
+const europe = () =>
+  inRegion(
+    extend(
+      STARTUP_LEGACY,
+      [
+        ['client', 'dns'], ['dns', 'cdn'], ['dns', 'cdn#eu'], ['cdn#eu', 'lb#eu'], ...servers(3, ['cache#eu'], 'lb#eu', 'eu'),
+        ['cache#eu', 'replica#eu'], ['cache#eu', 'db'], ['db', 'replica#eu'],
+      ],
+      [['client', 'cdn']],
+    ),
+    'eu',
+    (id) => id.includes('#eu'),
+  )
+/** Two stacks behind a geographic DNS, `us` servers in Virginia, and the primary database in `primary`. */
+const monthEnd = (primary: Region, us: number) =>
+  inRegion(
+    inRegion(
+      extend(
+        STARTUP_LEGACY,
+        [
+          ['client', 'dns'], ['dns', 'cdn'], ['dns', 'cdn#us'], ['cdn#us', 'lb#us'], ...servers(us, ['cache#us'], 'lb#us', 'us'),
+          ['cache#us', 'db'], ...servers(2, ['cache'], 'lb', 'sa'), ['cache', 'replica#sa'], ['db', 'replica#sa'],
+        ],
+        [['client', 'cdn']],
+      ),
+      'us',
+      (id) => id.includes('#us'),
+    ),
+    primary,
+    (id) => id === 'db',
+  )
 const legacyTo = (target: string): [string, string][] =>
   STARTUP_LEGACY.nodes.filter((n) => n.kind === 'server').map((n) => [n.id, target])
 const workers = (n: number): [string, string][] =>
@@ -677,6 +724,23 @@ describe('levels', () => {
     ['black-friday', false, BLACK_FRIDAY.start!],
     ['black-friday', false, blackFriday(false)],
     ['black-friday', true, blackFriday(true)],
+    // Fintech, all starting from a team like the Startup's.
+    // Retries hide the flaky partner API but pay some transfers twice; an idempotency key stops that.
+    ['transferencia-duplicada', false, byId('transferencia-duplicada').start!],
+    ['transferencia-duplicada', false, paymentPolicy(byId('transferencia-duplicada').start!, { retries: 0 })],
+    ['transferencia-duplicada', true, paymentPolicy(byId('transferencia-duplicada').start!, { retries: 2, idempotent: true })],
+    // Writes outgrow one database; replicas only add reads, and the hot account needs a fourth partition.
+    ['livro-razao', false, extend(STARTUP_LEGACY, [...servers(4), ...replicas(2)])],
+    ['livro-razao', false, ledger(3)],
+    ['livro-razao', true, ledger(4)],
+    // Everything in São Paulo is 200 ms away from Frankfurt.
+    ['clientes-na-europa', false, STARTUP_LEGACY],
+    ['clientes-na-europa', true, europe()],
+    // The primary in the region that falls stops the transfers; too few servers in Virginia drown in the failover.
+    ['fechamento-do-mes', false, extend(STARTUP_LEGACY, servers(4))],
+    ['fechamento-do-mes', false, monthEnd('sa', 8)],
+    ['fechamento-do-mes', false, monthEnd('us', 5)],
+    ['fechamento-do-mes', true, monthEnd('us', 8)],
   ]
   it.each(cases)('%s: design passes = %s', (id, shouldPass, a) => {
     const { summary } = runLevel(a, byId(id))

@@ -153,7 +153,7 @@ function save(key: string, value: unknown) {
   }
 }
 
-/** Retries, backoff and breaker set on a link (kept in the edge's data). */
+/** Retries, backoff, breaker and idempotency key set on a link (kept in the edge's data). */
 const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
 
 function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
@@ -163,11 +163,12 @@ function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
   }
 }
 
-/** "3 retries com backoff · breaker", or undefined for a plain link. */
+/** "3 retries com backoff · breaker · chave de idempotência", or undefined for a plain link. */
 function policyLabel(p: LinkPolicy): string | undefined {
   const parts: string[] = []
   if (p.retries) parts.push(`${p.retries} ${p.retries === 1 ? 'retry' : 'retries'}${p.backoff ? ' com backoff' : ''}`)
   if (p.breaker) parts.push('breaker')
+  if (p.idempotent) parts.push('chave de idempotência')
   return parts.length ? parts.join(' · ') : undefined
 }
 
@@ -232,6 +233,8 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
     )
   if (summary.staleReadRate >= 0.01)
     out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas atrasam mais quando recebem muitas escritas ou estão cheias de leituras; uma réplica sem ligação do banco nunca é atualizada.`)
+  if (!summary.passed.duplicates)
+    out.push(`${pct(summary.duplicateRate)} das escritas foram executadas duas vezes: a resposta se perdeu e a tentativa extra repetiu o pedido. Ligue a chave de idempotência na ligação, para o destino reconhecer a repetição.`)
   if (summary.backlogAtEnd >= 1)
     out.push(`A rodada terminou com ${count(summary.backlogAtEnd)} mensagens esperando na fila. Se o backlog não esvazia, o problema só foi adiado: ponha mais workers.`)
   if (summary.async.lost >= 1)
@@ -1061,6 +1064,14 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
                   ok={measured?.passed.stale}
                 />
               )}
+              {g.maxDuplicates !== undefined && (
+                <GoalRow
+                  name="Transferências duplicadas"
+                  required={`≤ ${pct(g.maxDuplicates)}`}
+                  value={measured && pct(measured.duplicateRate)}
+                  ok={measured?.passed.duplicates}
+                />
+              )}
               <tr>
                 <th scope="row">Custo por 1 mi de req.</th>
                 <td>—</td>
@@ -1175,7 +1186,7 @@ function Result({
     <section className={`result ${summary.passed.all ? 'result--pass' : 'result--fail'}`} aria-live="polite">
       <h2>
         {summary.passed.all
-          ? 'Fase concluída. As três metas foram cumpridas.'
+          ? 'Fase concluída. Todas as metas foram cumpridas.'
           : 'Ainda não. Veja no selo da folha qual meta falhou.'}
       </h2>
       {neck && (

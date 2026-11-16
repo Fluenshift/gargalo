@@ -16,7 +16,7 @@ export interface SavedEdge {
   id: string
   source: string
   target: string
-  data?: { retries?: number; backoff?: boolean; breaker?: boolean }
+  data?: { retries?: number; backoff?: boolean; breaker?: boolean; idempotent?: boolean }
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
@@ -62,6 +62,7 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
     if (Number.isInteger(data.retries) && (data.retries as number) >= 0 && (data.retries as number) <= MAX_RETRIES) policy.retries = data.retries as number
     if (data.backoff === true) policy.backoff = true
     if (data.breaker === true) policy.breaker = true
+    if (data.idempotent === true) policy.idempotent = true
     edges.push({
       id: typeof e.id === 'string' ? e.id : `${e.source}->${e.target}`,
       source: e.source,

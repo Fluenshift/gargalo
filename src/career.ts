@@ -49,6 +49,16 @@ export const COMPANIES: Company[] = [
     // What the Startup left behind.
     start: STARTUP_LEGACY,
   },
+  {
+    id: 'fintech',
+    name: 'Fintech global',
+    budget: 'Uma fintech com clientes em três continentes. Dinheiro não pode sumir nem sair duas vezes, e a conta de nuvem já é grande.',
+    levels: [level('transferencia-duplicada'), level('livro-razao'), level('clientes-na-europa')],
+    boss: level('fechamento-do-mes'),
+    unlocks: ['shard', 'dns'],
+    // A team that grew from a startup like yours.
+    start: STARTUP_LEGACY,
+  },
 ]
 
 export type Status = 'done' | 'open' | 'locked'

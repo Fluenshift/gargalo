@@ -204,6 +204,6 @@ describe('progress migration', () => {
   })
 
   it('points at the last level when everything is done', () => {
-    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('black-friday')
+    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('fechamento-do-mes')
   })
 })

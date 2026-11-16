@@ -41,7 +41,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import { ANSWER_LOST, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -95,6 +95,8 @@ export interface TickResult extends Percentiles {
   servedByClass: ClassLoad
   /** Answers that came back with outdated data (reads on a lagging replica). */
   stale: number
+  /** Writes carried out a second time by a retry whose first answer got lost. */
+  duplicates: number
   failed: Record<FailureReason, number>
   async: AsyncWork
   nodes: Record<string, NodeStats>
@@ -117,7 +119,9 @@ export interface RunSummary extends Percentiles {
   backlogAtEnd: number
   /** Share of the reads answered with outdated data. */
   staleReadRate: number
-  passed: { availability: boolean; p99: boolean; cost: boolean; stale: boolean; all: boolean }
+  /** Share of the writes carried out twice. */
+  duplicateRate: number
+  passed: { availability: boolean; p99: boolean; cost: boolean; stale: boolean; duplicates: boolean; all: boolean }
 }
 
 const USER_CLASSES: UserClass[] = ['static', 'read', 'write']
@@ -318,6 +322,7 @@ export function simulateTick(
   const passRate = new Map<string, number>()
   let served = 0
   let stale = 0
+  let duplicates = 0
   const servedByClass = zero()
   // Splits a loss between the users still waiting (`waiting` share) and acknowledged work
   // (`asyncShare`); the rest is ghost work nobody counts. What a bot loses is nobody's loss.
@@ -341,8 +346,13 @@ export function simulateTick(
     // A crashed piece takes nothing in; whatever it holds waits for it to come back.
     if (spec.step && !isNodeDown) {
       const downstreamCapacity = (children.get(node.id) ?? []).reduce((sum, id) => sum + effectiveCapacity(id), 0)
-      const sources = (parents.get(node.id) ?? []).map((id) => byId.get(id)!.kind)
-      const next = spec.step(arrived, state.get(node.id), { downstreamCapacity, sources })
+      const feeders = (parents.get(node.id) ?? []).map((id) => byId.get(id)!)
+      const sources = feeders.map((n) => n.kind)
+      const sourceRttMs = Math.max(
+        0,
+        ...feeders.filter((n) => !pieces[n.kind].global).map((n) => REGION_RTT_MS[regionOf(n)][regionOf(node)]),
+      )
+      const next = spec.step(arrived, state.get(node.id), { downstreamCapacity, sources, sourceRttMs })
       a = next.load
       dropped = next.dropped ?? dropped
       refused = next.refused ?? refused
@@ -352,7 +362,10 @@ export function simulateTick(
       staleRate = next.staleRate ?? 0
     }
     const load = CLASSES.reduce((sum, c) => sum + a[c], 0)
-    const pass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
+    // What capacity lets through, then what survives the random blips of a flaky piece.
+    const capPass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
+    const blips = spec.flaky ?? 0
+    const pass = capPass * (1 - blips)
     const totalArrived = CLASSES.reduce((sum, c) => sum + arrived[c], 0)
     const totalDropped = CLASSES.reduce((sum, c) => sum + dropped[c], 0)
     const totalRefused = CLASSES.reduce((sum, c) => sum + refused[c], 0)
@@ -390,7 +403,8 @@ export function simulateTick(
       const outWaiting = acknowledges ? 0 : waiting
       const outAsync = acknowledges ? asyncShare + waiting : asyncShare
 
-      lose(c, a[c] * (1 - pass), outWaiting, outAsync, isNodeDown ? 'down' : 'overload')
+      lose(c, a[c] * (1 - capPass), outWaiting, outAsync, isNodeDown ? 'down' : 'overload')
+      lose(c, a[c] * capPass * blips, outWaiting, outAsync, 'down')
       const survivors = a[c] * pass
       const endsHere = survivors * (spec.serves[c] ?? 0)
       if (counts) {
@@ -432,6 +446,8 @@ export function simulateTick(
           // users get an answer is settled below, once the target's outcome this second is known.
           const { attempts } = retryOutcome(down.get(target) ? 0 : lastSuccess(target, c), policy.retries ?? 0, policy.backoff ?? false)
           const tried = users * open
+          // Each retry follows a failure that, now and then, had already gone through.
+          if (c === 'write' && !policy.idempotent) duplicates += tried * (attempts - 1) * ANSWER_LOST
           if (counts) {
             const calls = policyCalls.get(key) ?? zero()
             calls[c] += tried
@@ -542,7 +558,7 @@ export function simulateTick(
     }
   }
 
-  return { t, rps, botRps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, breakers, latencies }
+  return { t, rps, botRps, served, servedByClass, stale, duplicates, failed, async, ...latencyPercentiles(latencies), nodes, edges, breakers, latencies }
 }
 
 /** The item that `r` (in [0, 1)) falls on when each item owns its weight of the line. */
@@ -584,6 +600,8 @@ export function summarize(
   const last = ticks.at(-1)
   const readsServed = ticks.reduce((s, t) => s + t.servedByClass.read, 0)
   const staleReadRate = readsServed > 0 ? ticks.reduce((s, t) => s + t.stale, 0) / readsServed : 0
+  const writes = ticks.reduce((s, t) => s + t.rps * level.mix.write, 0)
+  const duplicateRate = writes > 0 ? ticks.reduce((s, t) => s + t.duplicates, 0) / writes : 0
   const backlogAtEnd = last ? Object.values(last.nodes).reduce((s, n) => s + (n.backlog ?? 0), 0) : 0
   const availability = total === 0 ? 1 : served / total
   const latency = latencyPercentiles(ticks.flatMap((t) => t.latencies))
@@ -593,10 +611,11 @@ export function summarize(
     p99: latency.p99Ms <= level.goals.maxP99Ms,
     cost: cost <= level.goals.maxCost,
     stale: staleReadRate <= (level.goals.maxStaleReads ?? 1),
+    duplicates: duplicateRate <= (level.goals.maxDuplicates ?? 1),
     all: false,
   }
-  passed.all = passed.availability && passed.p99 && passed.cost && passed.stale
-  return { availability, ...latency, cost, failed, async, backlogAtEnd, staleReadRate, passed }
+  passed.all = passed.availability && passed.p99 && passed.cost && passed.stale && passed.duplicates
+  return { availability, ...latency, cost, failed, async, backlogAtEnd, staleReadRate, duplicateRate, passed }
 }
 
 export function runLevel(arch: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
