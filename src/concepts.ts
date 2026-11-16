@@ -516,6 +516,24 @@ export const GLOSSARY: GlossaryEntry[] = [
     definition:
       'Ativo-passivo: uma região atende e a outra espera. Ativo-ativo: as duas atendem. Ganha disponibilidade e latência local, mas custa o dobro e replica dados entre regiões; com um primário, escritas ainda cruzam até ele e param se a região cair.',
   },
+  {
+    id: 'rest',
+    term: 'REST',
+    definition:
+      'Estilo de API com uma URL por recurso (GET /produtos/42) e os verbos do HTTP. Simples e fácil de depurar; como cada leitura é um GET, a CDN pode guardar a resposta. Pode exigir várias idas e voltas para montar uma tela.',
+  },
+  {
+    id: 'graphql',
+    term: 'GraphQL',
+    definition:
+      'A tela pede numa consulta só os campos de que precisa, e uma ida e volta traz tudo. Reduz requisições, mas vai tudo num único POST: a CDN não guarda as leituras, e uma consulta pesada pode custar caro no servidor.',
+  },
+  {
+    id: 'grpc',
+    term: 'gRPC',
+    definition:
+      'Chamadas binárias sobre HTTP/2, com conexão aberta e contrato tipado. Mais rápido entre serviços internos, mas o navegador não fala gRPC: não serve a ligação que sai dos usuários.',
+  },
 ]
 
 export type Segment = string | { text: string; entry: GlossaryEntry }

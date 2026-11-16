@@ -58,7 +58,7 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { HOME_REGION, REGIONS, SPECS, canConnect, connectRefusal, levelRegions, regionOf, totalCost } from './sim/model'
+import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, canConnect, connectRefusal, levelRegions, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
 const nodeTypes = { component: NodeCard, region: RegionArea }
@@ -208,6 +208,7 @@ function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
 /** "3 retries com backoff · breaker · chave de idempotência", or undefined for a plain link. */
 function policyLabel(p: LinkPolicy): string | undefined {
   const parts: string[] = []
+  if (p.protocol && p.protocol !== 'rest') parts.push(PROTOCOLS[p.protocol].label)
   if (p.retries) parts.push(`${p.retries} ${p.retries === 1 ? 'retry' : 'retries'}${p.backoff ? ' com backoff' : ''}`)
   if (p.breaker) parts.push('breaker')
   if (p.idempotent) parts.push('chave de idempotência')
@@ -1038,6 +1039,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             <LinkPanel
               from={SPECS[nodes.find((n) => n.id === selectedLink.source)!.data.kind].label}
               to={SPECS[nodes.find((n) => n.id === selectedLink.target)!.data.kind].label}
+              fromKind={nodes.find((n) => n.id === selectedLink.source)!.data.kind}
+              toKind={nodes.find((n) => n.id === selectedLink.target)!.data.kind}
               policy={policyOf(selectedLink)}
               state={tick ? (tick.breakers[`${selectedLink.source}->${selectedLink.target}`] ?? 'closed') : undefined}
               editable={editable}
@@ -1051,6 +1054,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
           {inspected && (
             <Inspector
               kind={inspected}
+              level={level}
               onClose={closeInfo}
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}

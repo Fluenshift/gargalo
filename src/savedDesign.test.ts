@@ -25,6 +25,25 @@ describe('parseDesign', () => {
     expect(design?.edges[1].data).toBeUndefined()
   })
 
+  it('keeps a protocol the link can use and drops the rest back to REST', () => {
+    const nodes = [node('client', 'client'), node('cdn', 'cdn'), node('lb', 'lb'), node('server', 'server'), node('db', 'db')]
+    const link = (source: string, target: string, protocol: unknown) => ({ id: `${source}->${target}`, source, target, data: { protocol } })
+    const design = parseDesign(
+      JSON.stringify({
+        nodes,
+        edges: [
+          link('client', 'cdn', 'graphql'), // a browser speaks GraphQL
+          link('lb', 'server', 'grpc'), // internal link
+          link('client', 'server', 'grpc'), // a browser does not speak gRPC
+          link('server', 'db', 'graphql'), // the database takes no API calls
+          link('cdn', 'lb', 'soap'), // unknown
+          link('cdn', 'server', 'rest'), // the default is not stored
+        ],
+      }),
+    )
+    expect(design?.edges.map((e) => e.data?.protocol)).toEqual(['graphql', 'grpc', undefined, undefined, undefined, undefined])
+  })
+
   it('drops run stats and other leftovers from the nodes', () => {
     const withStats = { ...valid, nodes: [{ ...node('client', 'client'), data: { kind: 'client', stats: { load: 9 } } }] }
     expect(parseDesign(JSON.stringify({ ...withStats, edges: [] }))?.nodes[0].data).toEqual({ kind: 'client' })

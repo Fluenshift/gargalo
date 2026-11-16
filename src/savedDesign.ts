@@ -1,8 +1,8 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, REGIONS, SPECS } from './sim/model'
-import type { Kind, Region } from './sim/model'
+import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, protocolRefusal } from './sim/model'
+import type { Kind, Protocol, Region } from './sim/model'
 
 export interface SavedNode {
   id: string
@@ -16,12 +16,14 @@ export interface SavedEdge {
   id: string
   source: string
   target: string
-  data?: { retries?: number; backoff?: boolean; breaker?: boolean; idempotent?: boolean }
+  data?: { retries?: number; backoff?: boolean; breaker?: boolean; idempotent?: boolean; protocol?: Protocol }
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 
 const isRegion = (v: unknown): v is Region => typeof v === 'string' && Object.hasOwn(REGIONS, v)
+
+const isProtocol = (v: unknown): v is Protocol => typeof v === 'string' && Object.hasOwn(PROTOCOLS, v)
 
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && Object.hasOwn(SPECS, v)
 
@@ -63,6 +65,12 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
     if (data.backoff === true) policy.backoff = true
     if (data.breaker === true) policy.breaker = true
     if (data.idempotent === true) policy.idempotent = true
+    // REST is the default and is not stored; a protocol the link cannot use falls back to it.
+    if (isProtocol(data.protocol) && data.protocol !== 'rest') {
+      const source = nodes.find((n) => n.id === e.source)!.data.kind
+      const target = nodes.find((n) => n.id === e.target)!.data.kind
+      if (!protocolRefusal(source, target, data.protocol)) policy.protocol = data.protocol
+    }
     edges.push({
       id: typeof e.id === 'string' ? e.id : `${e.source}->${e.target}`,
       source: e.source,

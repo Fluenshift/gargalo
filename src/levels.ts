@@ -219,6 +219,7 @@ export const FINTECH_LEVELS: Level[] = [
     failures: [],
     goals: { minAvailability: 0.98, maxP99Ms: 1000, maxCost: 450, maxDuplicates: 0 },
     tweaks: { payment: { flaky: 0.15 } },
+    endpoints: { static: 'GET /comprovantes/:id', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
     start: withPayment({ retries: 2 }),
   },
   {
@@ -230,6 +231,7 @@ export const FINTECH_LEVELS: Level[] = [
     mix: { static: 0.1, read: 0.3, write: 0.6 },
     traffic: [{ from: 0, rps: 2600 }],
     hotKey: 0.35,
+    endpoints: { static: 'GET /extratos/:mes.pdf', read: 'GET /contas/:id/extrato', write: 'POST /lancamentos' },
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 600, maxCost: 1050 },
   },
@@ -242,6 +244,7 @@ export const FINTECH_LEVELS: Level[] = [
     mix: { static: 0.4, read: 0.595, write: 0.005 },
     traffic: [{ from: 0, rps: 1200 }],
     users: { sa: 0.4, eu: 0.6 },
+    endpoints: { static: 'GET /app/:arquivo', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 150, maxCost: 800, maxStaleReads: 0.02 },
   },
@@ -260,6 +263,7 @@ export const FECHAMENTO_DO_MES: Level = {
   ],
   users: { sa: 0.5, us: 0.5 },
   regionOutages: [{ region: 'sa', from: 20, to: 35 }],
+  endpoints: { static: 'GET /faturas/:id.pdf', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
   failures: [],
   goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 1200 },
 }

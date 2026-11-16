@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { CONCEPTS, splitTerms } from './concepts'
 import type { GlossaryEntry } from './concepts'
 import { KindIcon } from './KindIcon'
-import { REGIONS, SPECS } from './sim/model'
-import type { Kind, Region } from './sim/model'
+import { REGIONS, SPECS, endpointsOf } from './sim/model'
+import type { Kind, Level, Region } from './sim/model'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR')
 
@@ -14,6 +14,7 @@ const fmt = (n: number) => n.toLocaleString('pt-BR')
  */
 export function Inspector({
   kind,
+  level,
   onClose,
   focusOnOpen = false,
   escapeCloses = true,
@@ -21,6 +22,8 @@ export function Inspector({
   region,
 }: {
   kind: Kind
+  /** The level on screen: a server lists its routes. */
+  level?: Level
   onClose: () => void
   /** Move focus to the panel when it opens or changes piece (opened from the parts list). */
   focusOnOpen?: boolean
@@ -119,6 +122,37 @@ export function Inspector({
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {kind === 'server' && level && (
+        <section>
+          <h3 id={`${titleId}-routes`}>Endpoints</h3>
+          <table className="routes" aria-labelledby={`${titleId}-routes`}>
+            <thead>
+              <tr>
+                <th scope="col">Tráfego</th>
+                <th scope="col">CPU</th>
+                <th scope="col">Consultas</th>
+                <th scope="col">Resposta</th>
+              </tr>
+            </thead>
+            {endpointsOf(level).map((e) => (
+              <tbody key={e.class}>
+                <tr>
+                  <th scope="rowgroup" colSpan={4} className="routes__route">
+                    {e.route}
+                  </th>
+                </tr>
+                <tr>
+                  <td>{Math.round(e.share * 1000) / 10}%</td>
+                  <td>{e.cpuMs} ms</td>
+                  <td>{e.queries}</td>
+                  <td>{e.responseKb} kB</td>
+                </tr>
+              </tbody>
+            ))}
+          </table>
         </section>
       )}
 
