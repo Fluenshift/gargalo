@@ -38,6 +38,8 @@ import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
 import { Profile } from './Profile'
+import { Item } from '@astryxdesign/core/Item'
+import { List } from '@astryxdesign/core/List'
 import { Stars } from './Stars'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
 import type { LevelResult, Results } from './score'
@@ -316,34 +318,39 @@ export default function App() {
                 </button>
               </span>
             </div>
-            {[...company.levels, company.boss].map((l, i) => {
-              const status = levelStatus(l.id, passed)
-              const isBoss = l === company.boss
-              const current = l.id === stage.level.id
-              return (
-                <button
-                  key={l.id}
-                  className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
-                  aria-current={current ? 'step' : undefined}
-                  disabled={status === 'locked'}
-                  title={status === 'locked' ? (isBoss ? 'Conclua as fases da empresa para enfrentar o chefão' : 'Conclua a fase anterior') : undefined}
-                  onClick={() => play(l.id)}
-                >
-                  <span className="levels__n">{i + 1}</span>
-                  <span className="levels__title">
-                    {l.title}
-                    {isBoss && <span className="levels__boss">Chefão</span>}
-                  </span>
-                  {status === 'done' && (
-                    <span className="levels__marks">
-                      <span className="tick" aria-label="concluída">✓</span>
-                      {results[l.id] && <Stars count={results[l.id].stars} />}
-                    </span>
-                  )}
-                  {status === 'locked' && <LockIcon label="bloqueada" />}
-                </button>
-              )
-            })}
+            <List density="compact">
+              {[...company.levels, company.boss].map((l, i) => {
+                const status = levelStatus(l.id, passed)
+                const isBoss = l === company.boss
+                const current = l.id === stage.level.id
+                return (
+                  <Item
+                    key={l.id}
+                    marker={<span className="levels__n">{i + 1}</span>}
+                    label={
+                      <>
+                        {l.title}
+                        {isBoss && <span className="levels__boss">Chefão</span>}
+                      </>
+                    }
+                    endContent={
+                      status === 'done' ? (
+                        <span className="levels__marks">
+                          <span className="tick" aria-label="concluída">✓</span>
+                          {results[l.id] && <Stars count={results[l.id].stars} />}
+                        </span>
+                      ) : status === 'locked' ? (
+                        <LockIcon label="bloqueada" />
+                      ) : undefined
+                    }
+                    isSelected={current}
+                    aria-current={current ? 'step' : undefined}
+                    isDisabled={status === 'locked'}
+                    onClick={() => play(l.id)}
+                  />
+                )
+              })}
+            </List>
           </nav>
         }
       />

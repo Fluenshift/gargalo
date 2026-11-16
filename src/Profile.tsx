@@ -1,17 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { Dialog, DialogHeader } from '@astryxdesign/core/Dialog'
+import { ProgressBar } from '@astryxdesign/core/ProgressBar'
 import { ACHIEVEMENTS, RANKS, achievements, rankFor, totalXp } from './score'
 import type { Results } from './score'
 
 const xp = (n: number) => `${n.toLocaleString('pt-BR')} XP`
 
-/** Modal with the player's rank, XP and achievements. The native dialog traps focus, closes on Escape and returns focus to the opener. */
+/** Modal with the player's rank, XP and achievements, on Astryx Dialog (focus trap, Escape and focus return come from the library). */
 export function Profile({ results, onClose }: { results: Results; onClose: () => void }) {
-  const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => {
-    const d = ref.current
-    if (d && !d.open) d.showModal()
-  }, [])
-
   const total = totalXp(results)
   const rank = rankFor(total)
   const earned = new Set(achievements(results))
@@ -19,18 +14,11 @@ export function Profile({ results, onClose }: { results: Results; onClose: () =>
   const share = rank.next ? (total - from) / (total - from + rank.next.missing) : 1
 
   return (
-    <dialog ref={ref} className="profile" aria-labelledby="profile-title" onClose={onClose} onKeyDown={(e) => e.key === 'Escape' && ref.current?.close()} onClick={(e) => e.target === e.currentTarget && ref.current?.close()}>
-      <header className="profile__head">
-        <h2 id="profile-title">Perfil</h2>
-        <button type="button" className="ghost" onClick={() => ref.current?.close()}>
-          Fechar
-        </button>
-      </header>
+    <Dialog isOpen purpose="info" width={480} onOpenChange={(open) => !open && onClose()}>
+      <DialogHeader title="Perfil" onOpenChange={(open) => !open && onClose()} />
       <p className="profile__rank">{rank.title}</p>
       <p className="profile__xp">{xp(total)}</p>
-      <div className="profile__bar" role="progressbar" aria-label="Progresso para o próximo nível" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
-        <span style={{ width: `${share * 100}%` }} />
-      </div>
+      <ProgressBar label="Progresso para o próximo nível" isLabelHidden value={Math.round(share * 100)} max={100} />
       <p className="profile__next">{rank.next ? `Faltam ${xp(rank.next.missing)} para ${rank.next.title}.` : 'Você chegou ao nível mais alto.'}</p>
 
       <h3>
@@ -50,6 +38,6 @@ export function Profile({ results, onClose }: { results: Results; onClose: () =>
           </li>
         ))}
       </ul>
-    </dialog>
+    </Dialog>
   )
 }
