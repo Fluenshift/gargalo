@@ -37,6 +37,10 @@ import { KindIcon } from './KindIcon'
 import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
+import { Profile } from './Profile'
+import { Stars } from './Stars'
+import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
+import type { LevelResult, Results } from './score'
 import { NodeCard } from './NodeCard'
 import { RegionArea } from './RegionArea'
 import type { RegionAreaNode } from './RegionArea'
@@ -173,6 +177,8 @@ function policyLabel(p: LinkPolicy): string | undefined {
 }
 
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1)}%`
+const THRIFTY_PCT = Math.round(THRIFTY_SHARE * 100)
+const FAST_PCT = Math.round(FAST_SHARE * 100)
 const ms = (n: number) => `${Math.round(n)} ms`
 const money = (n: number) => `$${n.toFixed(2).replace('.', ',')}`
 const count = (n: number) => Math.round(n).toLocaleString('pt-BR')
@@ -246,20 +252,32 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
 
 export default function App() {
   const [progress, setProgress] = useState<Progress>(() => loadProgress(readStorage))
+  const [results, setResults] = useState<Results>(() => loadResults(readStorage(RESULTS_KEY), progress.passed))
+  const resultsRef = useRef(results)
   const [view, setView] = useState<'board' | 'map'>('board')
+  const [profileOpen, setProfileOpen] = useState(false)
   const { passed, current } = progress
   const stage = findStage(current)!
   const { company } = stage
 
   useEffect(() => save(CURRENT_KEY, current), [current])
 
-  const markPassed = useCallback((id: string) => {
+  /** Saves a finished run (passed list and best result) and returns the XP it added. */
+  const markPassed = useCallback((id: string, result: LevelResult) => {
     setProgress((prev) => {
       if (prev.passed.includes(id)) return prev
       const next = [...prev.passed, id]
       save(PASSED_KEY, next)
       return { ...prev, passed: next }
     })
+    const gain = xpGain(resultsRef.current, id, result)
+    const next = record(resultsRef.current, id, result)
+    if (next !== resultsRef.current) {
+      resultsRef.current = next
+      setResults(next)
+      save(RESULTS_KEY, next)
+    }
+    return gain
   }, [])
 
   const play = (levelId: string) => {
@@ -267,11 +285,19 @@ export default function App() {
     setView('board')
   }
 
+  const profile = profileOpen && <Profile results={results} onClose={() => setProfileOpen(false)} />
+
   if (view === 'map')
-    return <CareerMap passed={passed} current={current} onPlay={play} onClose={() => setView('board')} />
+    return (
+      <>
+        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} />
+        {profile}
+      </>
+    )
 
   return (
     <ReactFlowProvider key={stage.level.id}>
+      {profile}
       <Board
         stage={stage}
         onPassed={markPassed}
@@ -281,9 +307,14 @@ export default function App() {
               <h2 id="levels-company">
                 <span className="levels__where">Empresa {stage.companyIndex + 1}</span> {company.name}
               </h2>
-              <button type="button" className="levels__map" onClick={() => setView('map')}>
-                Mapa da carreira
-              </button>
+              <span className="levels__links">
+                <button type="button" className="levels__map" onClick={() => setView('map')}>
+                  Mapa da carreira
+                </button>
+                <button type="button" className="levels__map" onClick={() => setProfileOpen(true)}>
+                  Perfil
+                </button>
+              </span>
             </div>
             {[...company.levels, company.boss].map((l, i) => {
               const status = levelStatus(l.id, passed)
@@ -303,7 +334,12 @@ export default function App() {
                     {l.title}
                     {isBoss && <span className="levels__boss">Chefão</span>}
                   </span>
-                  {status === 'done' && <span className="tick" aria-label="concluída">✓</span>}
+                  {status === 'done' && (
+                    <span className="levels__marks">
+                      <span className="tick" aria-label="concluída">✓</span>
+                      {results[l.id] && <Stars count={results[l.id].stars} />}
+                    </span>
+                  )}
                   {status === 'locked' && <LockIcon label="bloqueada" />}
                 </button>
               )
@@ -318,7 +354,7 @@ export default function App() {
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPassed: (id: string) => void }) {
+function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
   const { level } = stage
   const { fitView } = useReactFlow()
   /** Id of a just-added node to bring into view once React Flow has measured it. */
@@ -352,9 +388,13 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
     return () => clearInterval(id)
   }, [running])
 
+  const recorded = useRef<typeof run>(null)
+  const [gain, setGain] = useState(0)
   useEffect(() => {
-    if (finished && run.summary.passed.all) onPassed(level.id)
-  }, [finished, run, onPassed, level.id])
+    if (!finished || !run.summary.passed.all || recorded.current === run) return
+    recorded.current = run
+    setGain(onPassed(level.id, resultOf(run.summary, level)))
+  }, [finished, run, onPassed, level])
 
   const editable = !running
   const clearRun = useCallback(() => {
@@ -1020,6 +1060,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
               ticks={run.ticks}
               arch={arch}
               levelId={level.id}
+              xpGained={gain}
               onSeek={(t) => {
                 setPlaying(false)
                 setShown(t + 1)
@@ -1169,6 +1210,7 @@ function Result({
   ticks,
   arch,
   levelId,
+  xpGained,
   onSeek,
   onConcept,
 }: {
@@ -1176,12 +1218,17 @@ function Result({
   ticks: TickResult[]
   arch: Architecture
   levelId: string
+  /** XP this run added to the saved result. */
+  xpGained: number
   /** Shows the given second on the canvas. */
   onSeek: (t: number) => void
   onConcept: (kind: Kind, opener: HTMLElement) => void
 }) {
   const events = timeline(arch, ticks)
   const neck = bottleneck(arch, ticks)
+  const level = findStage(levelId)!.level
+  const stars = summary.passed.all ? resultOf(summary, level).stars : 0
+  const gaps = starGaps(summary, level)
   return (
     <section className={`result ${summary.passed.all ? 'result--pass' : 'result--fail'}`} aria-live="polite">
       <h2>
@@ -1189,6 +1236,14 @@ function Result({
           ? 'Fase concluída. Todas as metas foram cumpridas.'
           : 'Ainda não. Veja no selo da folha qual meta falhou.'}
       </h2>
+      {summary.passed.all && (
+        <div className="stars-line">
+          <Stars count={stars} />
+          {xpGained > 0 && <span className="stars-line__xp">+{xpGained} XP</span>}
+          {!gaps.thrifty.earned && <p className="hint">Gaste até {THRIFTY_PCT}% do orçamento ({money(gaps.thrifty.limit)}) para ganhar mais uma estrela.</p>}
+          {!gaps.fast.earned && <p className="hint">Deixe o p99 até {FAST_PCT}% da meta ({ms(gaps.fast.limit)}) para ganhar mais uma estrela.</p>}
+        </div>
+      )}
       {neck && (
         <p className="debrief__neck">
           Gargalo principal: <strong>{SPECS[neck.kind].label}</strong>. {BOTTLENECK_TEXT[neck.reason](neck.lost)}{' '}
