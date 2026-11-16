@@ -55,7 +55,7 @@ import type { Architecture, Kind, Level } from './sim/model'
 
 const nodeTypes = { component: NodeCard }
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'replica', 'queue', 'worker']
+const PALETTE: Kind[] = ['cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
 const COLUMN: Record<Kind, number> = {
   client: 0,
   cdn: 200,
@@ -65,13 +65,14 @@ const COLUMN: Record<Kind, number> = {
   server: 600,
   cache: 820,
   db: 1020,
+  shard: 1020,
   queue: 820,
   worker: 1020,
   replica: 1240,
   payment: 820,
 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160 }
+const FIRST_ROW: Partial<Record<Kind, number>> = { queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340 }
 const TICK_MS = 120
 const TOAST_MS = 6000
 const PANEL_KEY = 'gargalo:panel'

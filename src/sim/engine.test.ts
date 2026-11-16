@@ -457,6 +457,64 @@ describe('retries and circuit breakers', () => {
   })
 })
 
+describe('partitioned database', () => {
+  /** lb → `servers` servers, each to every partition. */
+  const sharded = (servers: number, shards: number): Architecture => {
+    const edges: [string, string][] = [['client', 'lb']]
+    for (let i = 0; i < servers; i++) {
+      edges.push(['lb', `server#${i}`])
+      for (let s = 0; s < shards; s++) edges.push([`server#${i}`, `shard#${s}`])
+    }
+    return arch(edges)
+  }
+  // Writes a single database (1.000 req/s) cannot take.
+  const writes = (hotKey?: number): Level => ({
+    ...steady,
+    mix: { static: 0, read: 0.4, write: 0.6 },
+    traffic: [{ from: 0, rps: 2400 }],
+    ...(hotKey === undefined ? {} : { hotKey }),
+  })
+
+  it('takes reads and writes, and each partition adds capacity', () => {
+    expect(runLevel(fanOut(7, 'db', [['client', 'lb']]), writes()).summary.passed.availability).toBe(false)
+    const { summary, ticks } = runLevel(sharded(7, 3), writes())
+    expect(summary.passed.availability).toBe(true)
+    for (let s = 0; s < 3; s++) expect(ticks[0].nodes[`shard#${s}`].load).toBeCloseTo(800)
+  })
+
+  it('a hot key takes down one partition while the others have room to spare', () => {
+    const { summary, ticks } = runLevel(sharded(7, 3), writes(0.5))
+    // The first partition gets the hot half plus its third of the rest: 1.600 req/s.
+    expect(ticks[0].nodes['shard#0'].load).toBeCloseTo(1600)
+    expect(ticks[0].nodes['shard#1'].load).toBeCloseTo(400)
+    expect(ticks[0].nodes['shard#1'].utilization).toBeLessThan(0.5)
+    expect(summary.passed.availability).toBe(false)
+  })
+
+  it('more partitions do not cool a hot key', () => {
+    const three = runLevel(sharded(7, 3), writes(0.5)).ticks[0].nodes['shard#0'].load
+    const four = runLevel(sharded(7, 4), writes(0.5)).ticks[0].nodes['shard#0'].load
+    expect(four).toBeGreaterThan(1000)
+    expect(three - four).toBeLessThan(250)
+  })
+
+  it('a partition that goes down loses its own keys only', () => {
+    const level: Level = { ...writes(), failures: [{ kind: 'shard', index: 1, from: 0, to: 10 }] }
+    const tick = runLevel(sharded(7, 3), level).ticks[0]
+    expect(tick.failed.down).toBeCloseTo(800)
+    expect(tick.served).toBeCloseTo(1600)
+  })
+
+  it('hangs below servers, caches and workers, never above them', () => {
+    const a = arch([['client', 'server']], ['cache', 'worker', 'shard', 'db'])
+    expect(canConnect(a, 'server', 'shard')).toBe(true)
+    expect(canConnect(a, 'cache', 'shard')).toBe(true)
+    expect(canConnect(a, 'worker', 'shard')).toBe(true)
+    expect(canConnect(a, 'shard', 'db')).toBe(false)
+    expect(canConnect(a, 'shard', 'server')).toBe(false)
+  })
+})
+
 describe('canConnect', () => {
   const a = arch([['client', 'lb']], ['server', 'db', 'cdn'])
   it('enforces allowed targets and max outputs', () => {

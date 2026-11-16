@@ -176,6 +176,25 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Lotar a réplica de leituras: sem fôlego para aplicar as escritas, o atraso de replicação dispara.',
     ],
   },
+  shard: {
+    whatIs:
+      'Uma partição do banco: guarda só uma fatia das chaves. Aguenta 1.000 req/s, $130/mês, 15 ms; cai acima de 2×. Lê e escreve.',
+    whenToUse:
+      'Quando as escritas passam do que um banco aguenta: réplica só soma leitura. Ligue servidores, caches e workers a todas.',
+    gains: [
+      'Única forma de escalar escrita: cada partição soma 1.000 req/s.',
+      'Carga igual entre elas; se uma cai, só as chaves dela se perdem.',
+    ],
+    costs: [
+      'Consulta que cruza partições (scatter-gather, join) fica cara.',
+      'Escolher a chave de partição é difícil, e mudar exige rebalancear.',
+      'Chave quente cai inteira em uma partição: somar partições não a esfria.',
+    ],
+    mistakes: [
+      'Somar partições contra chave quente: as outras ociosas, a sobrecarregada cai.',
+      'Contar com failover: a partição que cai leva as chaves dela junto.',
+    ],
+  },
   queue: {
     whatIs:
       'Guarda as escritas e responde ao usuário na hora; workers consomem depois, no ritmo deles. Cabem 20.000 mensagens, e acima disso ela recusa.',
@@ -350,6 +369,31 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'primario',
     term: 'primário',
     definition: 'O banco que recebe as escritas e as repassa às réplicas.',
+  },
+  {
+    id: 'particao',
+    term: 'partição',
+    forms: ['partições', 'sharding', 'shard', 'shards'],
+    definition:
+      'Fatia do banco com parte das chaves, em uma máquina própria. Divide leituras e escritas entre várias, ao contrário da réplica, que só soma leitura.',
+  },
+  {
+    id: 'chave-particao',
+    term: 'chave de partição',
+    definition:
+      'O campo que decide em qual partição cada dado fica. Uma boa chave espalha a carga por igual; uma ruim concentra tudo em uma só.',
+  },
+  {
+    id: 'chave-quente',
+    term: 'chave quente',
+    forms: ['chaves quentes', 'hot key'],
+    definition:
+      'Chave que recebe uma fatia enorme do tráfego, como um produto viral. Cai inteira em uma partição, e acrescentar partições não a esfria.',
+  },
+  {
+    id: 'scatter-gather',
+    term: 'scatter-gather',
+    definition: 'Consulta que pergunta a todas as partições e junta as respostas. Fica mais lenta e cara a cada partição.',
   },
   {
     id: 'assincrono',

@@ -58,6 +58,14 @@ const PATHS: Record<Kind, ReactNode> = {
       <path d="M8 9.5v9c0 1.2 2.7 2.2 6 2.2s6-1 6-2.2v-9" />
     </>
   ),
+  // A cylinder cut into slices: one partition of the data.
+  shard: (
+    <>
+      <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
+      <path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13" />
+      <path d="M9.5 8v13M14.5 8v13" />
+    </>
+  ),
   queue: (
     <>
       <rect x="2.5" y="7" width="15" height="10" rx="1" />

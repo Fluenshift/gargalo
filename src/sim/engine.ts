@@ -30,6 +30,10 @@
 // calling a target that fails most calls, fails fast for a while and then
 // lets a probe through.
 //
+// A node splits what it forwards evenly among its targets, except among
+// partitions of the data: each gets an equal key range, and the level's hot key
+// lands whole on one of them.
+//
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
@@ -236,6 +240,20 @@ export function simulateTick(
     const route = pieces[node.kind].route
     return (route ? route(targets, c) : targets).map((target) => target.id)
   }
+  // The partition that holds the hot key is the first one created, the same whoever sends to it.
+  const created = new Map(arch.nodes.map((n, i) => [n.id, i]))
+  /** Share of a node's forwarded class-`c` load each target gets: equal, except that partitions split keys. */
+  const shares = (targets: string[], c: RequestClass): number[] => {
+    const even = 1 / targets.length
+    const keyed = targets.filter((id) => pieces[byId.get(id)!.kind].partitioned)
+    if (keyed.length === 0) return targets.map(() => even)
+    // A bot scrapes the whole catalogue; only people pile onto the viral key.
+    const hot = c === 'bot' ? 0 : (level.hotKey ?? 0)
+    const hotId = keyed.reduce((a, b) => (created.get(a)! <= created.get(b)! ? a : b))
+    return targets.map((id) =>
+      !keyed.includes(id) ? even : even * (1 - hot) + (id === hotId ? even * keyed.length * hot : 0),
+    )
+  }
 
   const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
 
@@ -374,8 +392,9 @@ export function simulateTick(
         lose(c, forward, outWaiting, outAsync, 'noRoute')
         continue
       }
-      for (const target of targets) {
-        const share = forward / targets.length
+      const split = shares(targets, c)
+      for (const [i, target] of targets.entries()) {
+        const share = forward * split[i]
         const key = `${node.id}->${target}`
         const policy = policies.get(key)
         let sent = share
@@ -428,16 +447,15 @@ export function simulateTick(
       }
       const ends = spec.serves[c] ?? 0
       const targets = routable(node, c)
-      const onward = targets.length
-        ? targets.reduce((sum, target) => {
-            const key = `${node.id}->${target}`
-            const policy = policies.get(key)
-            const s = success.get(target)?.[c] ?? 0
-            if (!policy || (!(policy.retries ?? 0) && !policy.breaker)) return sum + s
-            const open = breakers[key] === 'open' ? 0 : 1
-            return sum + open * retryOutcome(s, policy.retries ?? 0, policy.backoff ?? false).success
-          }, 0) / targets.length
-        : 0
+      const split = targets.length ? shares(targets, c) : []
+      const onward = targets.reduce((sum, target, i) => {
+        const key = `${node.id}->${target}`
+        const policy = policies.get(key)
+        const s = success.get(target)?.[c] ?? 0
+        if (!policy || (!(policy.retries ?? 0) && !policy.breaker)) return sum + split[i] * s
+        const open = breakers[key] === 'open' ? 0 : 1
+        return sum + split[i] * open * retryOutcome(s, policy.retries ?? 0, policy.backoff ?? false).success
+      }, 0)
       result[c] = through * (ends + (1 - ends) * onward)
     }
     success.set(node.id, result)
@@ -485,7 +503,7 @@ export function simulateTick(
           break
         }
         const targets = routable(node, c)
-        const next = targets.length ? targets[Math.floor(rng() * targets.length)] : undefined
+        const next = targets.length ? pick(targets, shares(targets, c), rng()) : undefined
         // An open breaker fails the call on the spot.
         const key = next && `${node.id}->${next}`
         if (key && breakers[key] === 'open') break
@@ -496,6 +514,15 @@ export function simulateTick(
   }
 
   return { t, rps, botRps, served, servedByClass, stale, failed, async, ...latencyPercentiles(latencies), nodes, edges, breakers, latencies }
+}
+
+/** The item that `r` (in [0, 1)) falls on when each item owns its weight of the line. */
+function pick<T>(items: T[], weights: number[], r: number): T {
+  for (const [i, item] of items.entries()) {
+    r -= weights[i]
+    if (r < 0) return item
+  }
+  return items[items.length - 1]
 }
 
 /** Mean queueing delay of an M/M/1 queue at this utilization, capped so it stays finite. */
