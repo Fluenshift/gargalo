@@ -37,6 +37,8 @@ import { KindIcon } from './KindIcon'
 import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
+import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
+import type { Daily, DailyRecord } from './daily'
 import { Profile } from './Profile'
 import { Stars } from './Stars'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
@@ -101,6 +103,43 @@ interface MenuState {
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
+/** What the board needs to play a level: a career stage or the daily challenge. */
+interface Play {
+  level: Level
+  /** The drawing when no design is saved. */
+  start: Architecture
+  /** Pieces in the palette. */
+  pieces: Kind[]
+  unlock: (kind: Kind) => ReturnType<typeof pieceUnlock>
+  /** Caption of the goals sheet. */
+  sheet: string
+  /** Makes a result worth sharing; the Result then offers to copy it. */
+  share?: (stars: number, cost: number, p99Ms: number) => string
+}
+
+const DAILY_PIECES: Kind[] = ['client', 'cdn', 'limiter', 'lb', 'server', 'cache', 'db']
+
+function careerPlay(stage: Stage): Play {
+  return {
+    level: stage.level,
+    start: startArchitecture(stage),
+    pieces: PALETTE,
+    unlock: (kind) => pieceUnlock(kind, stage.companyIndex),
+    sheet: `Folha ${stage.number}/${stage.company.levels.length + 1}`,
+  }
+}
+
+function dailyPlay(daily: Daily): Play {
+  return {
+    level: daily.level,
+    start: { nodes: [{ id: 'client', kind: 'client' }], edges: [] },
+    pieces: PALETTE.filter((k) => DAILY_PIECES.includes(k)),
+    unlock: () => ({ unlocked: true }),
+    sheet: daily.date.split('-').reverse().join('/'),
+    share: (stars, cost, p99Ms) => shareText(daily, stars, cost, p99Ms),
+  }
+}
+
 const designKey = (level: Level) => `gargalo:design:${level.id}`
 
 interface Design {
@@ -109,8 +148,7 @@ interface Design {
 }
 
 /** The level's starting architecture laid out in columns, pieces of the same kind stacked. */
-function freshDesign(stage: Stage): Design {
-  const arch = startArchitecture(stage)
+function freshDesign(arch: Architecture): Design {
   const nodes = arch.nodes.map((n): ComponentNode => {
     // Kinds that share a column with another (payment above the cache) keep their own row.
     const same = arch.nodes.filter((m) => m.kind === n.kind && regionOf(m) === regionOf(n))
@@ -135,10 +173,10 @@ function freshDesign(stage: Stage): Design {
   }
 }
 
-function loadDesign(stage: Stage): Design {
-  const raw = readStorage(designKey(stage.level))
+function loadDesign(play: Play): Design {
+  const raw = readStorage(designKey(play.level))
   // Storage unavailable or holding something the board cannot draw: start from scratch.
-  return (raw && parseDesign(raw)) || freshDesign(stage)
+  return (raw && parseDesign(raw)) || freshDesign(play.start)
 }
 
 function readStorage(key: string): string | null {
@@ -256,6 +294,17 @@ export default function App() {
   const resultsRef = useRef(results)
   const [view, setView] = useState<'board' | 'map'>('board')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [dailyRecord, setDailyRecord] = useState<DailyRecord>(() => loadDaily(readStorage(DAILY_KEY)))
+  const dailyRef = useRef(dailyRecord)
+  /** The daily challenge being played, or null while on the career. */
+  const [daily, setDaily] = useState<Daily | null>(null)
+  const [today, setToday] = useState(() => localDate(new Date()))
+  // A tab left open past midnight picks up the new day when it is looked at again.
+  useEffect(() => {
+    const refresh = () => setToday(localDate(new Date()))
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [])
   const { passed, current } = progress
   const stage = findStage(current)!
   const { company } = stage
@@ -280,26 +329,86 @@ export default function App() {
     return gain
   }, [])
 
+  /** Saves a finished daily run, keeping the best stars of the date, and returns the XP it added. */
+  const markDaily = useCallback((date: string, result: LevelResult) => {
+    const before = dailyRef.current
+    if (result.stars === 0 || result.stars <= (before[date] ?? 0)) return 0
+    const next = { ...before, [date]: result.stars }
+    dailyRef.current = next
+    setDailyRecord(next)
+    save(DAILY_KEY, next)
+    return dailyXp(next, date) - dailyXp(before, date)
+  }, [])
+
   const play = (levelId: string) => {
     setProgress((prev) => ({ ...prev, current: levelId }))
+    setDaily(null)
     setView('board')
   }
 
-  const profile = profileOpen && <Profile results={results} onClose={() => setProfileOpen(false)} />
+  const openDaily = () => {
+    setDaily(dailyLevel(today))
+    setView('board')
+  }
+  const days = streak(dailyRecord, today)
+  const todayNumber = dailyLevel(today).number
+
+  const profile = profileOpen && <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
 
   if (view === 'map')
     return (
       <>
-        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} />
+        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} dailyNumber={todayNumber} streak={days} />
         {profile}
       </>
+    )
+
+  const dailyLinks = (
+    <span className="levels__links">
+      {daily ? (
+        <button type="button" className="levels__map" onClick={() => setDaily(null)}>
+          Voltar à carreira
+        </button>
+      ) : (
+        <button type="button" className="levels__map" onClick={openDaily}>
+          Desafio do dia #{todayNumber}
+        </button>
+      )}
+      <button type="button" className="levels__map" onClick={() => setView('map')}>
+        Mapa da carreira
+      </button>
+      <button type="button" className="levels__map" onClick={() => setProfileOpen(true)}>
+        Perfil
+      </button>
+    </span>
+  )
+  const streakNote = days > 0 && <p className="levels__streak">Sequência: {days} {days === 1 ? 'dia' : 'dias'}</p>
+
+  if (daily)
+    return (
+      <ReactFlowProvider key={daily.level.id}>
+        {profile}
+        <Board
+          play={dailyPlay(daily)}
+          onPassed={(_, result) => markDaily(daily.date, result)}
+          nav={
+            <nav className="levels" aria-labelledby="levels-company">
+              <div className="levels__head">
+                <h2 id="levels-company">{daily.level.title}</h2>
+                {dailyLinks}
+              </div>
+              {streakNote}
+            </nav>
+          }
+        />
+      </ReactFlowProvider>
     )
 
   return (
     <ReactFlowProvider key={stage.level.id}>
       {profile}
       <Board
-        stage={stage}
+        play={careerPlay(stage)}
         onPassed={markPassed}
         nav={
           <nav className="levels" aria-labelledby="levels-company">
@@ -307,15 +416,9 @@ export default function App() {
               <h2 id="levels-company">
                 <span className="levels__where">Empresa {stage.companyIndex + 1}</span> {company.name}
               </h2>
-              <span className="levels__links">
-                <button type="button" className="levels__map" onClick={() => setView('map')}>
-                  Mapa da carreira
-                </button>
-                <button type="button" className="levels__map" onClick={() => setProfileOpen(true)}>
-                  Perfil
-                </button>
-              </span>
+              {dailyLinks}
             </div>
+            {streakNote}
             {[...company.levels, company.boss].map((l, i) => {
               const status = levelStatus(l.id, passed)
               const isBoss = l === company.boss
@@ -354,12 +457,12 @@ export default function App() {
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
-  const { level } = stage
+function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
+  const { level } = play
   const { fitView } = useReactFlow()
   /** Id of a just-added node to bring into view once React Flow has measured it. */
   const pendingFit = useRef<string | null>(null)
-  const [initial] = useState(() => loadDesign(stage))
+  const [initial] = useState(() => loadDesign(play))
   const [nodes, setNodes, onNodesChange] = useNodesState<ComponentNode>(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges)
   const [run, setRun] = useState<{ ticks: TickResult[]; summary: RunSummary } | null>(null)
@@ -662,7 +765,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
   }, [])
 
   const reset = () => {
-    const fresh = freshDesign(stage)
+    const fresh = freshDesign(play.start)
     setNodes(fresh.nodes)
     setEdges(fresh.edges)
     setUndoStack([])
@@ -782,8 +885,8 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
         <section className="parts" aria-labelledby="parts-title">
           <h2 id="parts-title">Peças</h2>
           <ul>
-            {PALETTE.map((kind) => {
-              const unlock = pieceUnlock(kind, stage.companyIndex)
+            {play.pieces.map((kind) => {
+              const unlock = play.unlock(kind)
               return (
               <li key={kind} className={unlock.unlocked ? undefined : 'is-locked'}>
                 <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked || atMax(kind)}>
@@ -1059,7 +1162,8 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
               summary={run.summary}
               ticks={run.ticks}
               arch={arch}
-              levelId={level.id}
+              level={level}
+              share={play.share}
               xpGained={gain}
               onSeek={(t) => {
                 setPlaying(false)
@@ -1072,7 +1176,7 @@ function Board({ stage, nav, onPassed }: { stage: Stage; nav: ReactNode; onPasse
           <table className="sheet">
             <caption>
               <span className="sheet__n">
-                Folha {stage.number}/{stage.company.levels.length + 1}
+                {play.sheet}
               </span>
               <span className="sheet__title">{level.title}</span>
             </caption>
@@ -1209,7 +1313,8 @@ function Result({
   summary,
   ticks,
   arch,
-  levelId,
+  level,
+  share,
   xpGained,
   onSeek,
   onConcept,
@@ -1217,7 +1322,9 @@ function Result({
   summary: RunSummary
   ticks: TickResult[]
   arch: Architecture
-  levelId: string
+  level: Level
+  /** Builds the text to copy for a passing run (the daily challenge). */
+  share?: Play['share']
   /** XP this run added to the saved result. */
   xpGained: number
   /** Shows the given second on the canvas. */
@@ -1226,7 +1333,7 @@ function Result({
 }) {
   const events = timeline(arch, ticks)
   const neck = bottleneck(arch, ticks)
-  const level = findStage(levelId)!.level
+  const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
   const stars = summary.passed.all ? resultOf(summary, level).stars : 0
   const gaps = starGaps(summary, level)
   return (
@@ -1240,6 +1347,23 @@ function Result({
         <div className="stars-line">
           <Stars count={stars} />
           {xpGained > 0 && <span className="stars-line__xp">+{xpGained} XP</span>}
+          {share && (
+            <button
+              type="button"
+              className="ghost"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(share(stars, summary.cost, summary.p99Ms))
+                  setCopied('ok')
+                } catch {
+                  setCopied('fail')
+                }
+              }}
+            >
+              {copied === 'ok' ? 'Copiado' : 'Copiar resultado'}
+            </button>
+          )}
+          {copied === 'fail' && <p className="hint">Não deu para copiar. Seu navegador bloqueou a área de transferência.</p>}
           {!gaps.thrifty.earned && <p className="hint">Gaste até {THRIFTY_PCT}% do orçamento ({money(gaps.thrifty.limit)}) para ganhar mais uma estrela.</p>}
           {!gaps.fast.earned && <p className="hint">Deixe o p99 até {FAST_PCT}% da meta ({ms(gaps.fast.limit)}) para ganhar mais uma estrela.</p>}
         </div>
@@ -1255,13 +1379,13 @@ function Result({
       {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
-      {hints(summary, ticks, arch, findStage(levelId)!.level).map((h) => (
+      {hints(summary, ticks, arch, level).map((h) => (
         <p key={h} className="hint">
           {h}
         </p>
       ))}
       {summary.passed.all &&
-        ALTERNATIVES[levelId]?.map((text) => (
+        ALTERNATIVES[level.id]?.map((text) => (
           <p key={text} className="hint">
             <strong>Outro caminho:</strong> {text}
           </p>

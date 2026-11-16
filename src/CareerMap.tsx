@@ -18,6 +18,9 @@ export function CareerMap({
   onPlay,
   onClose,
   onProfile,
+  onDaily,
+  dailyNumber,
+  streak,
 }: {
   passed: Passed
   results: Results
@@ -25,6 +28,10 @@ export function CareerMap({
   onPlay: (levelId: string) => void
   onClose: () => void
   onProfile: () => void
+  onDaily: () => void
+  dailyNumber: number
+  /** Days passed in a row on the daily challenge. */
+  streak: number
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => heading.current?.focus(), [])
@@ -53,6 +60,10 @@ export function CareerMap({
           peças novas.
         </p>
         <div className="career__actions">
+          <button type="button" className="ghost" onClick={onDaily}>
+            Desafio do dia #{dailyNumber}
+          </button>
+          {streak > 0 && <span className="career__streak">Sequência: {streak} {streak === 1 ? 'dia' : 'dias'}</span>}
           <button type="button" className="ghost" onClick={onProfile}>
             Perfil
           </button>
