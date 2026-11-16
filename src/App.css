@@ -1299,10 +1299,12 @@ ul {
   color: var(--ink-soft);
 }
 
-.career__back {
+.career__actions {
   grid-column: 2;
   grid-row: 1 / span 3;
   align-self: start;
+  display: flex;
+  gap: 8px;
 }
 
 .career__track {
@@ -1618,7 +1620,7 @@ ul {
     font-size: 32px;
   }
 
-  .career__back {
+  .career__actions {
     grid-column: 1;
     grid-row: auto;
     justify-self: start;
@@ -1772,4 +1774,144 @@ ul {
 
 .region-area.is-down .region-area__label {
   color: var(--hot);
+}
+
+.levels__marks {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.stars {
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.levels__links {
+  display: flex;
+  gap: 14px;
+}
+
+.stars-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-top: 6px;
+}
+
+.stars-line .stars {
+  font-size: 22px;
+}
+
+.stars-line__xp {
+  font-weight: 500;
+}
+
+.stars-line .hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.profile {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 24px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+}
+
+.profile::backdrop {
+  background: rgb(36 36 36 / 0.4);
+}
+
+.profile__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile h2,
+.profile__rank {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.profile h2 {
+  font-size: 28px;
+}
+
+.profile__rank {
+  font-size: 40px;
+  line-height: 1.1;
+  margin-top: 12px;
+}
+
+.profile__xp,
+.profile__next {
+  margin: 2px 0;
+}
+
+.profile__next {
+  color: var(--ink-soft);
+}
+
+.profile__bar {
+  height: 6px;
+  margin: 10px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.profile__bar span {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+}
+
+.profile h3 {
+  margin: 20px 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+.profile__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.profile__list li {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.profile__list li > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile__list li.is-locked {
+  color: var(--ink-soft);
+}
+
+.profile__desc,
+.profile__state {
+  font-size: 13px;
+}
+
+.profile__state {
+  color: var(--ink-soft);
 }

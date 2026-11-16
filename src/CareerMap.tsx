@@ -4,6 +4,8 @@ import { COMPANIES, bossBeaten, companyOpen, levelStatus } from './career'
 import type { Passed, Status } from './career'
 import { KindIcon } from './KindIcon'
 import { LockIcon } from './LockIcon'
+import { Stars } from './Stars'
+import type { Results } from './score'
 import { SPECS } from './sim/model'
 
 const STATUS_TEXT: Record<Status, string> = { done: 'Concluída', open: 'Aberta', locked: 'Bloqueada' }
@@ -11,14 +13,18 @@ const STATUS_TEXT: Record<Status, string> = { done: 'Concluída', open: 'Aberta'
 /** Companies drawn as a row of title blocks, joined by the promotion between them. */
 export function CareerMap({
   passed,
+  results,
   current,
   onPlay,
   onClose,
+  onProfile,
 }: {
   passed: Passed
+  results: Results
   current: string
   onPlay: (levelId: string) => void
   onClose: () => void
+  onProfile: () => void
 }) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => heading.current?.focus(), [])
@@ -46,9 +52,14 @@ export function CareerMap({
           Cada empresa é um capítulo. Passe pelas fases, enfrente o chefão e seja promovido para uma empresa maior, com
           peças novas.
         </p>
-        <button type="button" className="ghost career__back" onClick={onClose}>
-          Voltar para a fase
-        </button>
+        <div className="career__actions">
+          <button type="button" className="ghost" onClick={onProfile}>
+            Perfil
+          </button>
+          <button type="button" className="ghost" onClick={onClose}>
+            Voltar para a fase
+          </button>
+        </div>
       </header>
 
       <ol className="career__track">
@@ -91,6 +102,7 @@ export function CareerMap({
                           </span>
                           <span className="step__status">
                             {status === 'done' && <span className="tick" aria-hidden>✓</span>}
+                            {results[l.id] && <Stars count={results[l.id].stars} />}
                             {status === 'locked' && <LockIcon />}
                             {STATUS_TEXT[status]}
                           </span>
