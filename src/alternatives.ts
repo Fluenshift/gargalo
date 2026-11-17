@@ -54,6 +54,9 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'replica-parada': [
     'Injeção de dependência, cache na frente, 2 réplicas e 8 servidores passam por $730 de $750, com o p99 perto de 370 ms. Só o cache, sem réplica, deixa o primário sobrecarregado: o que o cache não acerta cai todo nele. A opção do if, com 3 réplicas, também passa, mas custa $780 e estoura o orçamento de $750: sem o cache na frente, o preço sobe. O singleton não libera nenhuma ligação: o cliente continua escondido dentro do serviço.',
   ],
+  'sql-espalhado': [
+    'O Repository com 3 servidores a mais e 2 partições passa por $685 de $750, com o p99 perto de 520 ms. Com só 1 servidor a mais, os servidores afogam e a disponibilidade cai para perto de 96%. O Adapter e o ORM não liberam nenhuma partição: elas ficam no desenho sem receber nada, e a disponibilidade despenca para perto de 36%. Uma fila na frente do primário segura as escritas, mas o banco só grava 1.000 por segundo, o atraso cresce sem parar, e com 5 ou 6 workers a conta passa de $775 e estoura o orçamento.',
+  ],
   'servidor-velho': [
     'Strategy com menos conexões passa por $370 de $400, com o p99 perto de 390 ms: o velho recebe 200 req/s, na medida do que aguenta. Round robin, hash consistente e o sorteio dividem igual, então o velho recebe 250 req/s e perde requisições. Apagar o velho deixa 3 servidores a cerca de 83%, com o p99 perto de 740 ms, e falha. Qualquer servidor a mais estoura os $400. A opção do if também passa, mas é um caso especial escondido no balanceador, que a próxima necessidade (hash consistente) vai obrigar a repetir.',
   ],

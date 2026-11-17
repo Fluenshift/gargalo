@@ -63,6 +63,7 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'black-friday': ['folga', 'limiter', 'replica'],
   'transferencia-duplicada': ['idempotencia', 'falha-transitoria', 'retry'],
   'livro-razao': ['db', 'chave-quente', 'particao'],
+  'sql-espalhado': ['repository', 'adapter', 'particao'],
   'clientes-na-europa': ['regiao', 'consistencia-forte', 'consistencia-eventual', 'latencia-entre-regioes'],
   'fechamento-do-mes': ['cap', 'failover', 'ativo-passivo'],
   'pedidos-em-loop': ['n-mais-um', 'db'],

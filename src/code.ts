@@ -304,3 +304,86 @@ class Balanceador {
     },
   ],
 }
+
+/** Account SQL is copied all over the service, so no query knows which partition holds the account. */
+export const SCATTERED_SQL: CodeChallenge = {
+  id: 'sql-espalhado',
+  class: 'write',
+  title: 'SQL espalhado',
+  code: `// POST /lancamentos, e mais 30 lugares parecidos
+async function lancar(contaId: string, valor: number) {
+  // Cada função monta o próprio SQL e usa o mesmo banco.
+  await db.query('INSERT INTO lancamentos (conta_id, valor) VALUES ($1, $2)', [contaId, valor])
+  await db.query('UPDATE contas SET saldo = saldo + $2 WHERE id = $1', [contaId, valor])
+}
+
+// GET /relatorios/saldos
+async function saldos() {
+  return db.query('SELECT c.id, SUM(l.valor) FROM contas c JOIN lancamentos l ON l.conta_id = c.id GROUP BY c.id')
+}`,
+  bug: [],
+  locks: {
+    links: [
+      { from: 'server', to: ['shard'] },
+      { from: 'cache', to: ['shard'] },
+      { from: 'worker', to: ['shard'] },
+    ],
+    reason: 'O SQL das contas está copiado em 30 lugares e ninguém sabe em qual partição a conta mora. Para particionar, o acesso aos dados precisa passar por um lugar só.',
+  },
+  options: [
+    {
+      id: 'repository',
+      label: 'Pôr todo acesso às contas num ContaRepository',
+      code: `class ContaRepository {
+  constructor(private particoes: Banco[]) {}
+
+  // A partição sai da chave: a mesma conta cai sempre no mesmo lugar.
+  private daConta(contaId: string) {
+    return this.particoes[hash(contaId) % this.particoes.length]
+  }
+
+  lancar(contaId: string, valor: number) {
+    return this.daConta(contaId).transacao(async (db) => {
+      await db.query('INSERT INTO lancamentos (conta_id, valor) VALUES ($1, $2)', [contaId, valor])
+      await db.query('UPDATE contas SET saldo = saldo + $2 WHERE id = $1', [contaId, valor])
+    })
+  }
+}`,
+      fixes: true,
+      explanation:
+        'Repository: o serviço pede "lance nesta conta" e só o repositório sabe onde ela mora. Com o acesso num lugar só, dá para dividir as contas entre partições sem mexer em mais nada.',
+      work: [],
+      allows: [
+        { from: 'server', to: ['shard'] },
+        { from: 'cache', to: ['shard'] },
+        { from: 'worker', to: ['shard'] },
+      ],
+    },
+    {
+      id: 'adapter',
+      label: 'Trocar o driver por um Adapter de banco',
+      code: `interface Banco {
+  query(sql: string, params?: unknown[]): Promise<Linha[]>
+}
+
+class PostgresAdapter implements Banco { /* ... */ }
+const db: Banco = new PostgresAdapter(process.env.DB_PRIMARIO)`,
+      fixes: false,
+      explanation:
+        'O Adapter deixa trocar o banco por outro, mas as 30 consultas continuam montando o próprio SQL, com JOIN entre contas. Ninguém ainda escolhe a partição pela conta.',
+      work: [],
+    },
+    {
+      id: 'orm',
+      label: 'Migrar as consultas para um ORM',
+      code: `const conta = await orm.conta.update({
+  where: { id: contaId },
+  data: { saldo: { increment: valor }, lancamentos: { create: { valor } } },
+})`,
+      fixes: false,
+      explanation:
+        'O ORM escreve o SQL por você, mas continua espalhado pelo serviço e falando com um banco só. Trocar a forma de escrever as consultas não diz onde cada conta está.',
+      work: [],
+    },
+  ],
+}

@@ -549,6 +549,20 @@ export const GLOSSARY: GlossaryEntry[] = [
       'O serviço recebe de fora o que usa (a conexão do banco, o cache) em vez de criar por dentro. Quem monta a aplicação decide quem está do outro lado, e dá para pôr uma réplica ou um cache sem mexer no serviço. Um singleton global ou um if dentro do método continuam escondendo a escolha.',
   },
   {
+    id: 'repository',
+    term: 'Repository',
+    forms: ['repositório'],
+    definition:
+      'Padrão de projeto: todo acesso a um tipo de dado passa por uma classe só, e o resto do código pede "a conta 42" em vez de montar SQL. Como só o repositório sabe onde os dados moram, dá para particionar o banco ou trocar de onde lê sem mexer no serviço.',
+  },
+  {
+    id: 'adapter',
+    term: 'Adapter',
+    forms: ['adaptador'],
+    definition:
+      'Padrão de projeto: uma interface comum na frente de uma biblioteca ou serviço, para dar para trocar um pelo outro. Troca o driver do banco, mas não muda as consultas: se o SQL está espalhado, ele continua espalhado.',
+  },
+  {
     id: 'strategy',
     term: 'Strategy',
     forms: ['estratégia'],
