@@ -163,7 +163,7 @@ export function Inspector({
                   <tr>
                     <td colSpan={4} className="routes__code">
                       <span className="routes__flag">{fixed ? 'código corrigido' : 'código com problema'}</span>
-                      <button type="button" className="ghost ghost--small" onClick={() => onOpenCode?.(challenge.id)}>
+                      <button type="button" className="btn btn--ghost btn--small" onClick={() => onOpenCode?.(challenge.id)}>
                         Ver código
                       </button>
                     </td>

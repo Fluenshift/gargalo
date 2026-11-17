@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle'
 import { useEffect, useRef } from 'react'
 import { BrandMark } from './BrandMark'
 import { COMPANIES, bossBeaten, companyOpen, levelStatus } from './career'
@@ -62,19 +63,20 @@ export function CareerMap({
           peças novas.
         </p>
         <div className="career__actions">
-          <button type="button" className="ghost" onClick={onDaily}>
+          <button type="button" className="btn btn--ghost" onClick={onDaily}>
             Desafio do dia #{dailyNumber}
           </button>
-          <button type="button" className="ghost" onClick={onFree}>
+          <button type="button" className="btn btn--ghost" onClick={onFree}>
             Modo livre
           </button>
           {streak > 0 && <span className="career__streak">Sequência: {streak} {streak === 1 ? 'dia' : 'dias'}</span>}
-          <button type="button" className="ghost" onClick={onProfile}>
+          <button type="button" className="btn btn--ghost" onClick={onProfile}>
             Perfil
           </button>
-          <button type="button" className="ghost" onClick={onClose}>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
             Voltar para a fase
           </button>
+          <ThemeToggle />
         </div>
       </header>
 

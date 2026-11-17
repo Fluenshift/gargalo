@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent, ReactNode } from 'react'
 import {
@@ -1080,6 +1081,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
         </section>
+
+        <ThemeToggle />
       </aside>
 
       <main className="stage">
@@ -1257,10 +1260,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
         <footer className="console">
           <div className="console__actions">
-            <button className="run" onClick={start} disabled={running || !!play.free?.blocked}>
+            <button className="btn btn--primary run" onClick={start} disabled={running || !!play.free?.blocked} aria-busy={running}>
               {running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
             </button>
-            <button className="ghost" onClick={reset} disabled={running}>
+            <button className="btn btn--ghost" onClick={reset} disabled={running}>
               {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
             </button>
             {play.free?.blocked && <p className="hint" role="status">Para rodar, corrija o tráfego: {play.free.blocked}</p>}
@@ -1529,7 +1532,7 @@ function Result({
           {share && (
             <button
               type="button"
-              className="ghost"
+              className="btn btn--ghost"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(share(stars, summary.cost, summary.p99Ms))
