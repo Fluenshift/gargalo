@@ -822,15 +822,17 @@ describe('code challenges', () => {
   for (const level of LEVELS.filter((l) => l.code?.every((ch) => !ch.locks && ch.options.every((o) => !o.settings)))) {
     const start = level.start ?? STARTUP_LEGACY
     for (const ch of level.code!) {
-      it(`${level.id}: the bug fails and only the right options pass, on every seed`, () => {
-        for (let seed = 1; seed <= 20; seed++) {
-          expect(runLevel(start, level, seed).summary.passed.all, `bug, seed ${seed}`).toBe(false)
-          for (const option of ch.options) {
-            const { summary } = runLevel({ ...start, fixes: { [ch.id]: option.id } }, level, seed)
-            expect(summary.passed.all, `${option.id}, seed ${seed}`).toBe(option.fixes)
-          }
-        }
+      it(`${level.id}: the bug fails on every seed`, () => {
+        for (let seed = 1; seed <= 20; seed++) expect(runLevel(start, level, seed).summary.passed.all, `seed ${seed}`).toBe(false)
       })
+      for (const option of ch.options) {
+        it(`${level.id}: ${option.id} ${option.fixes ? 'passes' : 'fails'} on every seed`, () => {
+          for (let seed = 1; seed <= 20; seed++) {
+            const { summary } = runLevel({ ...start, fixes: { [ch.id]: option.id } }, level, seed)
+            expect(summary.passed.all, `seed ${seed}`).toBe(option.fixes)
+          }
+        })
+      }
     }
   }
 })
