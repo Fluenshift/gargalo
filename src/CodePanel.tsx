@@ -1,5 +1,9 @@
 import { useEffect, useId, useRef } from 'react'
-import type { CodeChallenge } from './sim/model'
+import { SPECS } from './sim/model'
+import type { CodeChallenge, Link } from './sim/model'
+
+const linkNames = (links: Link[]) =>
+  links.flatMap((l) => l.to.map((t) => `${SPECS[l.from].label} → ${SPECS[t].label}`)).join(', ')
 
 /**
  * The code of one endpoint, read-only, and the fixes to choose from. The panel
@@ -57,6 +61,7 @@ export function CodePanel({
         <pre className="code" tabIndex={0} aria-label="Código do endpoint, somente leitura">
           {challenge.code}
         </pre>
+        {challenge.locks && !option?.fixes && <p className="code-panel__lock">Bloqueado: {linkNames(challenge.locks.links)}</p>}
       </section>
 
       <fieldset className="fixes" disabled={!editable}>
@@ -67,6 +72,7 @@ export function CodePanel({
             <span className="fix__body">
               <span className="fix__label">{o.label}</span>
               <pre className="code code--option">{o.code}</pre>
+              <span className="fix__opens">{o.allows ? `Libera: ${linkNames(o.allows)}` : challenge.locks ? 'Não libera nenhuma ligação' : null}</span>
             </span>
           </label>
         ))}

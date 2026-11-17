@@ -1,7 +1,7 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, protocolRefusal } from './sim/model'
+import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, openEdges, protocolRefusal } from './sim/model'
 import type { Kind, Level, Protocol, Region } from './sim/model'
 
 export interface SavedNode {
@@ -94,5 +94,7 @@ export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; e
     })
   }
   const fixes = parseFixes(value.fixes, level)
-  return { nodes, edges, ...(fixes ? { fixes } : {}) }
+  // Links the picked code forbids cannot come back from storage.
+  const open = new Set(openEdges({ nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })), edges, ...(fixes ? { fixes } : {}) }, level))
+  return { nodes, edges: edges.filter((e) => open.has(e)), ...(fixes ? { fixes } : {}) }
 }
