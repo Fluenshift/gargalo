@@ -818,7 +818,8 @@ describe('code challenges', () => {
   })
 
   // The drawing as the level opens: only the code decides. Every right option passes, every wrong one fails.
-  for (const level of LEVELS.filter((l) => l.code)) {
+  // Challenges that lock links need a redrawn design, tested on their own below.
+  for (const level of LEVELS.filter((l) => l.code?.every((ch) => !ch.locks))) {
     const start = level.start ?? STARTUP_LEGACY
     for (const ch of level.code!) {
       it(`${level.id}: the bug fails and only the right options pass, on every seed`, () => {
@@ -831,5 +832,66 @@ describe('code challenges', () => {
         }
       })
     }
+  }
+})
+
+describe('code that locks links', () => {
+  const level = LEVELS.find((l) => l.id === 'replica-parada')!
+  const ch = level.code![0]
+  const servers = Array.from({ length: 8 }, (_, i) => `s${i}`)
+
+  /** Eight servers behind a load balancer, reading through `reads` and writing to the primary. */
+  function design(fix: string | undefined, reads: 'cache' | 'replica', replicas: number): Architecture {
+    const rs = Array.from({ length: replicas }, (_, i) => `r${i}`)
+    const nodes: Architecture['nodes'] = [
+      { id: 'client', kind: 'client' },
+      { id: 'lb', kind: 'lb' },
+      { id: 'cache', kind: 'cache' },
+      { id: 'db', kind: 'db' },
+      ...servers.map((id) => ({ id, kind: 'server' as const })),
+      ...rs.map((id) => ({ id, kind: 'replica' as const })),
+    ]
+    const edges: ArchEdge[] = [{ source: 'client', target: 'lb' }, ...rs.map((r) => ({ source: 'db', target: r }))]
+    for (const s of servers) {
+      edges.push({ source: 'lb', target: s })
+      if (reads === 'cache') edges.push({ source: s, target: 'cache' })
+      else edges.push({ source: s, target: 'db' }, ...rs.map((r) => ({ source: s, target: r })))
+    }
+    if (reads === 'cache') edges.push({ source: 'cache', target: 'db' }, ...rs.map((r) => ({ source: 'cache', target: r })))
+    return { nodes, edges, ...(fix ? { fixes: { [ch.id]: fix } } : {}) }
+  }
+
+  it('refuses Servidor → Réplica with the reason until the code takes the dependency', () => {
+    const a = design(undefined, 'cache', 1)
+    expect(connectRefusal(a, 's0', 'r0', level)).toBe(ch.locks!.reason)
+    expect(canConnect(a, 's0', 'r0', level)).toBe(false)
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'singleton' } }, 's0', 'r0', level)).toBe(ch.locks!.reason)
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'injecao' } }, 's0', 'r0', level)).toBeNull()
+    // The if opens the replica but not the cache.
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'if-leitura' } }, 's0', 'r0', level)).toBeNull()
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'if-leitura' } }, 's0', 'cache', level)).toBe(ch.locks!.reason)
+    // Other levels have no such lock.
+    expect(connectRefusal(a, 's0', 'r0')).toBeNull()
+  })
+
+  it('every wrong option says why it does not solve it', () => {
+    for (const option of ch.options.filter((o) => !o.fixes)) expect(option.explanation.length).toBeGreaterThan(40)
+  })
+
+  const cases: [string, () => Architecture, boolean][] = [
+    ['injection with a cache and two replicas', () => design('injecao', 'cache', 2), true],
+    ['the drawing as the level opens', () => level.start!, false],
+    ['injection with the cache and no replica', () => design('injecao', 'cache', 0), false],
+    ['the if with one replica', () => design('if-leitura', 'replica', 1), false],
+    ['the if with two replicas', () => design('if-leitura', 'replica', 2), false],
+    ['the if with three replicas', () => design('if-leitura', 'replica', 3), false],
+    // A locked link on the drawing carries nothing.
+    ['the if with the cache drawn anyway', () => design('if-leitura', 'cache', 2), false],
+    ['the singleton with the cache drawn anyway', () => design('singleton', 'cache', 2), false],
+  ]
+  for (const [name, build, passes] of cases) {
+    it(`${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
   }
 })

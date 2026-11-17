@@ -47,6 +47,7 @@ export const COMPANIES: Company[] = [
     levels: [
       level('checkout-travando'),
       level('catalogo-gigante'),
+      level('replica-parada'),
       level('catalogo-sem-paginacao'),
       level('bot-de-precos'),
       level('pagamento-instavel'),
