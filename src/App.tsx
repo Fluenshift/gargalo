@@ -40,6 +40,10 @@ import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgres
 import type { Progress, Stage } from './career'
 import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
+import { FreeSystems } from './FreeSystems'
+import { TrafficEditor } from './TrafficEditor'
+import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, updateDesign, updateTraffic, validateTraffic } from './freeMode'
+import type { FreeSystem, SavedDesign } from './freeMode'
 import { Profile } from './Profile'
 import { Stars } from './Stars'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
@@ -116,6 +120,13 @@ interface Play {
   sheet: string
   /** Makes a result worth sharing; the Result then offers to copy it. */
   share?: (stars: number, cost: number, p99Ms: number) => string
+  /** A free-mode system: no goals to pass, nothing recorded, the drawing lives on the system. */
+  free?: {
+    design: SavedDesign | null
+    onDesign: (design: unknown) => void
+    /** Why the simulation cannot run yet, when it cannot. */
+    blocked?: string
+  }
 }
 
 const DAILY_PIECES: Kind[] = ['client', 'cdn', 'limiter', 'lb', 'server', 'cache', 'db']
@@ -138,6 +149,17 @@ function dailyPlay(daily: Daily): Play {
     unlock: () => ({ unlocked: true }),
     sheet: daily.date.split('-').reverse().join('/'),
     share: (stars, cost, p99Ms) => shareText(daily, stars, cost, p99Ms),
+  }
+}
+
+function freePlay(system: FreeSystem, level: Level, blocked?: string, onDesign: (design: unknown) => void = () => {}): Play {
+  return {
+    level,
+    start: { nodes: [{ id: 'client', kind: 'client' }], edges: [] },
+    pieces: [...PALETTE, 'payment'],
+    unlock: () => ({ unlocked: true }),
+    sheet: 'Modo livre',
+    free: { design: system.design, onDesign, blocked },
   }
 }
 
@@ -177,6 +199,7 @@ function freshDesign(arch: Architecture): Design {
 }
 
 function loadDesign(play: Play): Design {
+  if (play.free) return (play.free.design as Design | null) ?? freshDesign(play.start)
   const raw = readStorage(designKey(play.level))
   // Storage unavailable or holding something the board cannot draw: start from scratch.
   return (raw && parseDesign(raw, play.level)) || freshDesign(play.start)
@@ -297,6 +320,23 @@ export default function App() {
   const [results, setResults] = useState<Results>(() => loadResults(readStorage(RESULTS_KEY), progress.passed))
   const resultsRef = useRef(results)
   const [view, setView] = useState<'board' | 'map'>('board')
+  /** Free mode: the list (id null) or a system being played; null while on the career or the daily. */
+  const [free, setFree] = useState<{ id: string | null } | null>(null)
+  const [systems, setSystems] = useState<FreeSystem[]>(() => loadSystems(readStorage(FREE_KEY)))
+  // The latest saved list, readable from the board's callbacks without re-rendering the app.
+  // `render` is false for the board's drawing, which the board already shows.
+  const [store] = useState(() => {
+    const self = {
+      list: systems,
+      commit(next: FreeSystem[], render = true) {
+        if (next === self.list) return
+        self.list = next
+        save(FREE_KEY, next)
+        if (render) setSystems(next)
+      },
+    }
+    return self
+  })
   const [profileOpen, setProfileOpen] = useState(false)
   const [dailyRecord, setDailyRecord] = useState<DailyRecord>(() => loadDaily(readStorage(DAILY_KEY)))
   const dailyRef = useRef(dailyRecord)
@@ -347,13 +387,41 @@ export default function App() {
   const play = (levelId: string) => {
     setProgress((prev) => ({ ...prev, current: levelId }))
     setDaily(null)
+    setFree(null)
     setView('board')
   }
 
   const openDaily = () => {
+    setFree(null)
     setDaily(dailyLevel(today))
     setView('board')
   }
+  const saveDesign = (id: string, design: unknown) => store.commit(updateDesign(store.list, id, design), false)
+  const openFreeList = () => {
+    setSystems(store.list)
+    setFree({ id: null })
+    setView('board')
+  }
+  const openSystem = (id: string) => {
+    setSystems(store.list)
+    setFree({ id })
+  }
+  const createFree = (templateId?: string) => {
+    const t = TEMPLATES.find((x) => x.id === templateId)
+    const { list, system } = createSystem(store.list, {
+      ...(t ? { name: t.name, traffic: t.traffic, question: t.question, design: t.start ? freshDesign(t.start) : null } : {}),
+    })
+    store.commit(list)
+    setFree({ id: system.id })
+  }
+  const importFree = (text: string): string | null => {
+    const result = importSystem(text)
+    if (!result.ok) return result.error
+    store.commit([...store.list, result.system])
+    return null
+  }
+  const system = free?.id ? systems.find((s) => s.id === free.id) : undefined
+  const freeLevel = useMemo(() => (system ? levelOf(system) : null), [system])
   const days = streak(dailyRecord, today)
   const todayNumber = dailyLevel(today).number
 
@@ -362,20 +430,25 @@ export default function App() {
   if (view === 'map')
     return (
       <>
-        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} dailyNumber={todayNumber} streak={days} />
+        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
         {profile}
       </>
     )
 
   const dailyLinks = (
     <span className="levels__links">
-      {daily ? (
-        <button type="button" className="levels__map" onClick={() => setDaily(null)}>
+      {daily || free ? (
+        <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
           Voltar à carreira
         </button>
       ) : (
         <button type="button" className="levels__map" onClick={openDaily}>
           Desafio do dia #{todayNumber}
+        </button>
+      )}
+      {!free && (
+        <button type="button" className="levels__map" onClick={openFreeList}>
+          Modo livre
         </button>
       )}
       <button type="button" className="levels__map" onClick={() => setView('map')}>
@@ -387,6 +460,56 @@ export default function App() {
     </span>
   )
   const streakNote = days > 0 && <p className="levels__streak">Sequência: {days} {days === 1 ? 'dia' : 'dias'}</p>
+
+  if (free && !system)
+    return (
+      <>
+        {profile}
+        <FreeSystems
+          systems={systems}
+          onOpen={openSystem}
+          onCreate={createFree}
+          onRename={(id, name) => store.commit(renameSystem(store.list, id, name))}
+          onDuplicate={(id) => store.commit(duplicateSystem(store.list, id).list)}
+          onDelete={(id) => store.commit(deleteSystem(store.list, id))}
+          onImport={importFree}
+          onClose={() => setFree(null)}
+        />
+      </>
+    )
+
+  if (system && freeLevel) {
+    const errors = validateTraffic(system.traffic)
+    return (
+      <ReactFlowProvider key={freeLevel.id}>
+        {profile}
+        <Board
+          play={freePlay(system, freeLevel, errors[0], (design) => saveDesign(system.id, design))}
+          onPassed={() => 0}
+          nav={
+            <>
+              <nav className="levels" aria-labelledby="levels-company">
+                <div className="levels__head">
+                  <h2 id="levels-company">
+                    <span className="levels__where">Modo livre</span> {system.name}
+                  </h2>
+                  <span className="levels__links">
+                    <button type="button" className="levels__map" onClick={openFreeList}>
+                      Meus sistemas
+                    </button>
+                    <button type="button" className="levels__map" onClick={() => setFree(null)}>
+                      Voltar à carreira
+                    </button>
+                  </span>
+                </div>
+              </nav>
+              <TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />
+            </>
+          }
+        />
+      </ReactFlowProvider>
+    )
+  }
 
   if (daily)
     return (
@@ -486,7 +609,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   )
   const cost = totalCost(arch)
 
-  useEffect(() => save(designKey(level), { nodes, edges, fixes }), [level, nodes, edges, fixes])
+  const onDesign = useRef(play.free?.onDesign)
+  useEffect(() => {
+    if (onDesign.current) onDesign.current({ nodes, edges })
+    else save(designKey(level), { nodes, edges, fixes })
+  }, [level, nodes, edges, fixes])
 
   useEffect(() => {
     const added = nodes.find((n) => n.id === pendingFit.current)
@@ -504,10 +631,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const recorded = useRef<typeof run>(null)
   const [gain, setGain] = useState(0)
   useEffect(() => {
-    if (!finished || !run.summary.passed.all || recorded.current === run) return
+    if (play.free || !finished || !run.summary.passed.all || recorded.current === run) return
     recorded.current = run
     setGain(onPassed(level.id, resultOf(run.summary, level)))
-  }, [finished, run, onPassed, level])
+  }, [finished, run, onPassed, level, play.free])
 
   const editable = !running
   const clearRun = useCallback(() => {
@@ -515,6 +642,13 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     setShown(0)
     setPlaying(false)
   }, [])
+  // A free system whose traffic changed no longer has the run on screen to show.
+  const lastLevel = useRef(level)
+  useEffect(() => {
+    if (lastLevel.current === level) return
+    lastLevel.current = level
+    clearRun()
+  }, [level, clearRun])
 
   // Removal, undo and the context menu. Every removal goes through `commitRemoval`.
   const nodesRef = useRef(nodes)
@@ -790,6 +924,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }
 
   const start = () => {
+    if (play.free?.blocked) return
     setMenu(null)
     setRun(runLevel(arch, level, Date.now() & 0xffff))
     setShown(0)
@@ -868,6 +1003,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
+  // Free mode has no goals: the sheet only shows what was measured.
+  const free = !!play.free
   const measured = finished ? run.summary : undefined
   const saturated = tick && mostSaturated(tick)
   const perMillion = costPerMillion(cost, level)
@@ -1120,12 +1257,13 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
         <footer className="console">
           <div className="console__actions">
-            <button className="run" onClick={start} disabled={running}>
+            <button className="run" onClick={start} disabled={running || !!play.free?.blocked}>
               {running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
             </button>
             <button className="ghost" onClick={reset} disabled={running}>
-              Recomeçar fase
+              {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
             </button>
+            {play.free?.blocked && <p className="hint" role="status">Para rodar, corrija o tráfego: {play.free.blocked}</p>}
           </div>
 
           <div className="meters">
@@ -1197,6 +1335,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               ticks={run.ticks}
               arch={arch}
               level={level}
+              free={!!play.free}
               share={play.share}
               xpGained={gain}
               onSeek={(t) => {
@@ -1217,24 +1356,24 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             <thead>
               <tr>
                 <th scope="col">Meta</th>
-                <th scope="col">Exigido</th>
+                {!free && <th scope="col">Exigido</th>}
                 <th scope="col">Medido</th>
               </tr>
             </thead>
             <tbody>
               <GoalRow
                 name="Disponibilidade"
-                required={`≥ ${pct(g.minAvailability)}`}
+                required={free ? undefined : `≥ ${pct(g.minAvailability)}`}
                 value={measured && pct(measured.availability)}
-                ok={measured?.passed.availability}
+                ok={free ? undefined : measured?.passed.availability}
               />
               <GoalRow
                 name="Latência p99"
-                required={`≤ ${ms(g.maxP99Ms)}`}
+                required={free ? undefined : `≤ ${ms(g.maxP99Ms)}`}
                 value={measured && ms(measured.p99Ms)}
-                ok={measured?.passed.p99}
+                ok={free ? undefined : measured?.passed.p99}
               />
-              <GoalRow name="Custo mensal" required={`≤ $${g.maxCost}`} value={`$${cost}`} ok={cost <= g.maxCost} />
+              <GoalRow name="Custo mensal" required={free ? undefined : `≤ $${g.maxCost}`} value={`$${cost}`} ok={free ? undefined : cost <= g.maxCost} />
               {g.maxStaleReads !== undefined && (
                 <GoalRow
                   name="Leituras desatualizadas"
@@ -1253,7 +1392,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               )}
               <tr>
                 <th scope="row">Custo por 1 mi de req.</th>
-                <td>—</td>
+                {!free && <td>—</td>}
                 <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
               </tr>
             </tbody>
@@ -1298,15 +1437,15 @@ function TrashIcon() {
   )
 }
 
-function GoalRow({ name, required, value, ok }: { name: string; required: string; value?: string; ok?: boolean }) {
-  const state = value === undefined ? '' : ok ? 'is-ok' : 'is-fail'
+function GoalRow({ name, required, value, ok }: { name: string; required?: string; value?: string; ok?: boolean }) {
+  const state = value === undefined || ok === undefined ? '' : ok ? 'is-ok' : 'is-fail'
   return (
     <tr className={state}>
       <th scope="row">{name}</th>
-      <td>{required}</td>
+      {required !== undefined && <td>{required}</td>}
       <td>
         {value ?? '—'}
-        {value !== undefined && <span className="sheet__mark">{ok ? ' ✓' : ' ✗'}</span>}
+        {value !== undefined && ok !== undefined && <span className="sheet__mark">{ok ? ' ✓' : ' ✗'}</span>}
       </td>
     </tr>
   )
@@ -1348,6 +1487,7 @@ function Result({
   ticks,
   arch,
   level,
+  free,
   share,
   xpGained,
   onSeek,
@@ -1357,6 +1497,8 @@ function Result({
   ticks: TickResult[]
   arch: Architecture
   level: Level
+  /** Free mode: nothing to pass, so no verdict, stars or XP. */
+  free: boolean
   /** Builds the text to copy for a passing run (the daily challenge). */
   share?: Play['share']
   /** XP this run added to the saved result. */
@@ -1368,16 +1510,19 @@ function Result({
   const events = timeline(arch, ticks)
   const neck = bottleneck(arch, ticks)
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
-  const stars = summary.passed.all ? resultOf(summary, level).stars : 0
+  const won = summary.passed.all && !free
+  const stars = won ? resultOf(summary, level).stars : 0
   const gaps = starGaps(summary, level)
   return (
-    <section className={`result ${summary.passed.all ? 'result--pass' : 'result--fail'}`} aria-live="polite">
+    <section className={`result ${free ? 'result--free' : won ? 'result--pass' : 'result--fail'}`} aria-live="polite">
       <h2>
-        {summary.passed.all
-          ? 'Fase concluída. Todas as metas foram cumpridas.'
-          : 'Ainda não. Veja no selo da folha qual meta falhou.'}
+        {free
+          ? 'Rodada concluída. O selo da folha mostra o que foi medido.'
+          : won
+            ? 'Fase concluída. Todas as metas foram cumpridas.'
+            : 'Ainda não. Veja no selo da folha qual meta falhou.'}
       </h2>
-      {summary.passed.all && (
+      {won && (
         <div className="stars-line">
           <Stars count={stars} />
           {xpGained > 0 && <span className="stars-line__xp">+{xpGained} XP</span>}
@@ -1418,7 +1563,7 @@ function Result({
           {h}
         </p>
       ))}
-      {summary.passed.all &&
+      {won &&
         ALTERNATIVES[level.id]?.map((text) => (
           <p key={text} className="hint">
             <strong>Outro caminho:</strong> {text}
