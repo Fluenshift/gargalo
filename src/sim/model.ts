@@ -49,6 +49,8 @@ export interface RouteTarget {
 
 export interface Spec {
   label: string
+  /** Divides requests among servers: the balance setting applies to it. */
+  balances?: boolean
   /** Requests per second one instance handles before it starts dropping. */
   capacity: number
   /** Service time with an idle instance, in ms. */
@@ -274,6 +276,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   gateway: {
     label: 'API Gateway',
+    balances: true,
     api: true,
     capacity: 10_000,
     baseLatencyMs: 5,
@@ -287,6 +290,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   lb: {
     label: 'Load Balancer',
+    balances: true,
     api: true,
     capacity: 20_000,
     baseLatencyMs: 1,
@@ -423,11 +427,16 @@ export const SPECS: Record<Kind, Spec> = {
   },
 }
 
+/** How a balancing piece picks the next target. */
+export type Balance = 'round-robin' | 'least-conn' | 'hash'
+
 export interface ArchNode {
   id: string
   kind: Kind
   /** Where it runs; the home region when absent. */
   region?: Region
+  /** How a balancing piece divides its targets, when the level's code lets the player choose; round robin otherwise. */
+  balance?: Balance
 }
 
 export interface ArchEdge {
@@ -544,6 +553,11 @@ export interface Level {
    * rarely hits). The briefing must say it: the parts list shows the usual specs.
    */
   tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity' | 'flaky'>>>>
+  /**
+   * Pieces of the starting drawing that differ from their kind, by id: an old server that
+   * takes half. By id, not by order, so deleting it takes the difference away with it.
+   */
+  nodeTweaks?: { id: string; capacity: number }[]
   failures: Failure[]
   /** A whole region going dark: every piece running there is down. */
   regionOutages?: { region: Region; from: number; to: number }[]
@@ -693,6 +707,12 @@ export interface CodeOption {
   work: Work[]
   /** Links of the challenge's lock that this change opens. */
   allows?: Link[]
+  /** Settings this change gives the player on the pieces. */
+  settings?: 'balance'[]
+  /** How balancing pieces divide once this code is in, without a setting. */
+  balance?: Balance
+  /** Why a change that passes is still a poor one. */
+  caveat?: string
 }
 
 /** Links from one kind of piece to others. */
@@ -726,6 +746,27 @@ export function lockedLink(level: Pick<Level, 'code'> | undefined, fixes: Archit
     if (!hasLink(picked?.allows, from, to)) return ch.locks.reason
   }
   return null
+}
+
+/** The options the design picked, one per challenge of the level. */
+const pickedOptions = (level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes']): CodeOption[] =>
+  (level?.code ?? []).flatMap((ch) => ch.options.filter((o) => o.id === fixes?.[ch.id]))
+
+/** Whether the level's code, as fixed, lets the player set how balancing pieces divide. */
+export const canSetBalance = (level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes']): boolean =>
+  pickedOptions(level, fixes).some((o) => o.settings?.includes('balance'))
+
+/** How a balancing piece divides in this design: the code's own way, the player's setting when the code allows one, round robin otherwise. */
+export function balanceOf(node: ArchNode, level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes'], pieces: Record<string, Spec> = SPECS): Balance {
+  if (!pieces[node.kind].balances) return 'round-robin'
+  const forced = pickedOptions(level, fixes).find((o) => o.balance)?.balance
+  if (forced) return forced
+  return canSetBalance(level, fixes) ? (node.balance ?? 'round-robin') : 'round-robin'
+}
+
+/** What one instance handles: its kind's capacity, unless the level says this one differs. */
+export function instanceCapacity(level: Pick<Level, 'nodeTweaks'>, node: ArchNode, pieces: Record<string, Spec> = SPECS): number {
+  return level.nodeTweaks?.find((tw) => tw.id === node.id)?.capacity ?? pieces[node.kind].capacity
 }
 
 /** The links of a design that its code does not forbid. */
