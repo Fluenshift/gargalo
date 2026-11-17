@@ -76,8 +76,8 @@ export function CareerMap({
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Voltar para a fase
           </button>
-          <ThemeToggle />
         </div>
+        <ThemeToggle />
       </header>
 
       <ol className="career__track">

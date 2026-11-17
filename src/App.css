@@ -1542,7 +1542,7 @@ ul {
 
 .career__actions {
   grid-column: 2;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   align-self: start;
   display: flex;
   gap: var(--space-8);
@@ -2680,8 +2680,21 @@ ul {
   }
 }
 
-.career__actions .theme-toggle {
-  align-self: center;
+/* Beside the lede, under the page actions; on a phone it follows them. */
+.career__head > .theme-toggle {
+  grid-column: 2;
+  grid-row: 3;
+  justify-self: end;
+  align-self: end;
+}
+
+@media (max-width: 860px) {
+  .career__head > .theme-toggle {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    margin-top: var(--space-10);
+  }
 }
 
 /* A part of a page drawn in one theme regardless of the page's (/design). */

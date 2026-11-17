@@ -86,8 +86,8 @@ export function FreeSystems({
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Voltar para a fase
           </button>
-          <ThemeToggle />
         </div>
+        <ThemeToggle />
       </header>
 
       <p className={`free__message${message ? ` is-${message.tone}` : ''}`} role="status" aria-live="polite">

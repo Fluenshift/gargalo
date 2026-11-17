@@ -332,8 +332,8 @@ export default function DesignPage() {
           <a className="btn btn--ghost" href="/">
             Voltar ao jogo
           </a>
-          <ThemeToggle />
         </div>
+        <ThemeToggle />
       </header>
       <div className="ds-sheets">
         <Sheet theme="light" />
