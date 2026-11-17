@@ -34,6 +34,7 @@ export const COMPANIES: Company[] = [
       level('primeiro-deploy'),
       level('banco-nao-aguenta'),
       level('imagens-pesadas'),
+      level('pedidos-em-loop'),
       level('caiu-de-madrugada'),
     ],
     boss: level('materia-na-tv'),
@@ -43,7 +44,13 @@ export const COMPANIES: Company[] = [
     id: 'ecommerce',
     name: 'E-commerce',
     budget: 'Uma loja online que fatura de verdade. O caixa aguenta mais, mas cada pedido perdido é dinheiro na mesa.',
-    levels: [level('checkout-travando'), level('catalogo-gigante'), level('bot-de-precos'), level('pagamento-instavel')],
+    levels: [
+      level('checkout-travando'),
+      level('catalogo-gigante'),
+      level('catalogo-sem-paginacao'),
+      level('bot-de-precos'),
+      level('pagamento-instavel'),
+    ],
     boss: level('black-friday'),
     unlocks: ['queue', 'worker', 'replica', 'limiter', 'gateway'],
     // What the Startup left behind.
@@ -53,7 +60,7 @@ export const COMPANIES: Company[] = [
     id: 'fintech',
     name: 'Fintech global',
     budget: 'Uma fintech com clientes em três continentes. Dinheiro não pode sumir nem sair duas vezes, e a conta de nuvem já é grande.',
-    levels: [level('transferencia-duplicada'), level('livro-razao'), level('clientes-na-europa')],
+    levels: [level('transferencia-duplicada'), level('livro-razao'), level('extrato-lento'), level('clientes-na-europa')],
     boss: level('fechamento-do-mes'),
     unlocks: ['shard', 'dns'],
     // A team that grew from a startup like yours.

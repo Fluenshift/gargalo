@@ -502,6 +502,8 @@ export const MAX_RETRIES = 3
 export interface Architecture {
   nodes: ArchNode[]
   edges: ArchEdge[]
+  /** Option the player picked for each of the level's code challenges, by challenge id. */
+  fixes?: Record<string, string>
 }
 
 export interface TrafficPhase {
@@ -554,6 +556,8 @@ export interface Level {
   hotKey?: number
   /** What the routes are called in this system (e.g. `POST /transferencias`); generic ones when absent. */
   endpoints?: Partial<Record<UserClass, string>>
+  /** Bugs in the application's code, each fixed by picking one of its options. */
+  code?: CodeChallenge[]
   goals: Goals
   /**
    * What is already on the drawing when the level opens (the previous team's work).
@@ -659,4 +663,47 @@ export function endpointsOf(level: Level): Endpoint[] {
     .filter((c) => level.mix[c] > 0)
     .map((c) => ({ ...ENDPOINT_DEFAULTS[c], route: level.endpoints?.[c] ?? ENDPOINT_DEFAULTS[c].route, class: c, share: level.mix[c] }))
     .sort((a, b) => b.share - a.share)
+}
+
+/**
+ * How much one request of some classes costs on some pieces, compared with a
+ * plain one: N+1 queries make each read count as many on the database.
+ */
+export interface Work {
+  kinds: Kind[]
+  classes: RequestClass[]
+  /** Load one request puts on the piece, in plain requests. */
+  factor: number
+  /** Time added to each request there, in ms. */
+  extraMs?: number
+}
+
+export interface CodeOption {
+  id: string
+  /** What the player picks, in a few words. */
+  label: string
+  /** The code after the change. */
+  code: string
+  fixes: boolean
+  /** Why it works, or why it does not. */
+  explanation: string
+  /** What the requests cost with this change; nothing extra when empty. */
+  work: Work[]
+}
+
+export interface CodeChallenge {
+  id: string
+  /** The endpoint with the bug. */
+  class: UserClass
+  title: string
+  /** The code as the level opens, read-only. */
+  code: string
+  /** What the requests cost while the bug is there. */
+  bug: Work[]
+  options: CodeOption[]
+}
+
+/** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
+export function levelWork(level: Level, arch: Pick<Architecture, 'fixes'>): Work[] {
+  return (level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)
 }
