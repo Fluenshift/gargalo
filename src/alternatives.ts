@@ -54,6 +54,9 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'replica-parada': [
     'Injeção de dependência, cache na frente, 2 réplicas e 8 servidores passam por $730 de $750, com o p99 perto de 370 ms. Só o cache, sem réplica, deixa o primário sobrecarregado: o que o cache não acerta cai todo nele. A opção do if, com 3 réplicas, também passa, mas custa $780 e estoura o orçamento de $750: sem o cache na frente, o preço sobe. O singleton não libera nenhuma ligação: o cliente continua escondido dentro do serviço.',
   ],
+  'servidor-velho': [
+    'Strategy com menos conexões passa por $370 de $400, com o p99 perto de 390 ms: o velho recebe 200 req/s, na medida do que aguenta. Round robin, hash consistente e o sorteio dividem igual, então o velho recebe 250 req/s e perde requisições. Apagar o velho deixa 3 servidores a cerca de 83%, com o p99 perto de 740 ms, e falha. Qualquer servidor a mais estoura os $400. A opção do if também passa, mas é um caso especial escondido no balanceador, que a próxima necessidade (hash consistente) vai obrigar a repetir.',
+  ],
   'catalogo-sem-paginacao': [
     'Comprimir com gzip piora: o banco lê as mesmas 5.000 linhas, o servidor monta o JSON inteiro e ainda gasta CPU para comprimir, e a disponibilidade fica perto de 77%. Guardar a lista inteira no cache alivia o banco, mas cada requisição ainda monta 5.000 produtos: o p99 segue acima de 2 segundos. Só a paginação reduz o que o banco lê e o que o servidor monta, e o p99 cai para perto de 135 ms.',
   ],

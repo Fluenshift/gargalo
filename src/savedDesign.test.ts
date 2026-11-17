@@ -18,6 +18,15 @@ describe('parseDesign', () => {
     expect(design?.edges).toEqual(valid.edges)
   })
 
+  it('keeps a balance on a balancing piece and drops it elsewhere or when invalid', () => {
+    const lb = (balance: unknown) => ({ ...node('lb', 'lb'), data: { kind: 'lb', balance } })
+    const read = (nodes: unknown[]) => parseDesign(JSON.stringify({ ...valid, nodes: [...valid.nodes, ...nodes] }))?.nodes
+    expect(read([lb('least-conn')])?.[2].data.balance).toBe('least-conn')
+    expect(read([lb('hash')])?.[2].data.balance).toBe('hash')
+    expect(read([lb('random')])?.[2].data.balance).toBeUndefined()
+    expect(read([{ ...node('s2', 'server'), data: { kind: 'server', balance: 'hash' } }])?.[2].data.balance).toBeUndefined()
+  })
+
   it('keeps a link policy and drops values out of range', () => {
     const edges = [
       { id: 'a', source: 'client', target: 'server', data: { retries: 2, backoff: true, breaker: true, idempotent: true } },

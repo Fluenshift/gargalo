@@ -72,7 +72,15 @@ export function CodePanel({
             <span className="fix__body">
               <span className="fix__label">{o.label}</span>
               <pre className="code code--option">{o.code}</pre>
-              <span className="fix__opens">{o.allows ? `Libera: ${linkNames(o.allows)}` : challenge.locks ? 'Não libera nenhuma ligação' : null}</span>
+              <span className="fix__opens">
+                {o.allows
+                  ? `Libera: ${linkNames(o.allows)}`
+                  : o.settings?.includes('balance')
+                    ? 'Libera: escolher o algoritmo no Load Balancer'
+                    : challenge.locks
+                      ? 'Não libera nenhuma ligação'
+                      : null}
+              </span>
             </span>
           </label>
         ))}
@@ -83,6 +91,7 @@ export function CodePanel({
           <>
             <h3>{option.fixes ? 'Resolve ✓' : 'Não resolve ✗'}</h3>
             <p>{option.explanation}</p>
+            {option.fixes && option.caveat && <p className="code-panel__caveat">Atenção: {option.caveat}</p>}
             <p className="code-panel__hint">Rode a simulação para ver o efeito no desenho.</p>
           </>
         )}
