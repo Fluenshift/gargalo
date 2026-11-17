@@ -51,6 +51,7 @@ export const COMPANIES: Company[] = [
       level('catalogo-sem-paginacao'),
       level('bot-de-precos'),
       level('pagamento-instavel'),
+      level('servidor-velho'),
     ],
     boss: level('black-friday'),
     unlocks: ['queue', 'worker', 'replica', 'limiter', 'gateway'],

@@ -229,3 +229,78 @@ class ProdutoService {
     },
   ],
 }
+
+/** The in-house load balancer hands the same share to every server, old or new. */
+export const FIXED_ROUND_ROBIN: CodeChallenge = {
+  id: 'round-robin-fixo',
+  class: 'read',
+  title: 'O servidor velho',
+  code: `// O load balancer é código da casa.
+class Balanceador {
+  private proximo = 0
+
+  escolher(servidores: Servidor[]) {
+    // Um de cada vez, na ordem: a máquina velha recebe tanto quanto as novas.
+    this.proximo = (this.proximo + 1) % servidores.length
+    return servidores[this.proximo]
+  }
+}`,
+  bug: [],
+  options: [
+    {
+      id: 'strategy',
+      label: 'Extrair uma interface Estrategia e injetar a escolhida',
+      code: `interface Estrategia {
+  escolher(servidores: Servidor[]): Servidor
+}
+
+class MenosConexoes implements Estrategia {
+  escolher(servidores: Servidor[]) {
+    return minBy(servidores, (s) => s.conexoes / s.capacidade)
+  }
+}
+
+class Balanceador {
+  constructor(private estrategia: Estrategia) {}
+  escolher(servidores: Servidor[]) {
+    return this.estrategia.escolher(servidores)
+  }
+}`,
+      fixes: true,
+      explanation:
+        'Strategy: o algoritmo vira uma peça trocável e o balanceador não muda mais. Agora o Load Balancer mostra o seletor: escolha menos conexões, que manda para cada servidor na medida do que ele aguenta.',
+      work: [],
+      settings: ['balance'],
+    },
+    {
+      id: 'if-velho',
+      label: 'Pôr um if para o servidor velho no escolher',
+      code: `escolher(servidores: Servidor[]) {
+  this.proximo = (this.proximo + 1) % servidores.length
+  const s = servidores[this.proximo]
+  // O velho só atende uma vez a cada duas.
+  if (s.velho) {
+    this.pulouVelho = !this.pulouVelho
+    if (this.pulouVelho) return this.escolher(servidores)
+  }
+  return s
+}`,
+      fixes: true,
+      explanation:
+        'O velho passa a receber metade e a fase passa. Mas é um caso especial escondido no balanceador: a próxima necessidade (hash consistente para um cache local por servidor) vira outro if no mesmo método.',
+      caveat: 'Funciona, mas não escala.',
+      work: [],
+      balance: 'least-conn',
+    },
+    {
+      id: 'aleatorio',
+      label: 'Trocar o % n por um sorteio',
+      code: `escolher(servidores: Servidor[]) {
+  return servidores[Math.floor(Math.random() * servidores.length)]
+}`,
+      fixes: false,
+      explanation: 'Sorteando, cada servidor ainda recebe a mesma parte em média. A máquina velha continua afogando.',
+      work: [],
+    },
+  ],
+}

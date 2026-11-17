@@ -1,4 +1,4 @@
-import { HIDDEN_CLIENT, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
+import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
 import type { ArchEdge, Architecture, Level } from './sim/model'
 
 /** The Startup's levels and boss. */
@@ -152,6 +152,7 @@ function withPayment(link: Omit<ArchEdge, 'source' | 'target'>): Architecture {
 /** A catalog so large that few products are looked at twice: the cache rarely hits. */
 const LONG_TAIL_CATALOG: Level['tweaks'] = { cache: { serves: { read: 0.3, bot: 0.3 } } }
 
+const FOUR_SERVERS = ['server-1', 'server-2', 'server-3', 'server-4']
 const EIGHT_SERVERS = Array.from({ length: 8 }, (_, i) => `server-${i + 1}`)
 
 export const ECOMMERCE_LEVELS: Level[] = [
@@ -257,6 +258,36 @@ export const ECOMMERCE_LEVELS: Level[] = [
     ],
     goals: { minAvailability: 0.94, maxP99Ms: 800, maxCost: 450 },
     start: withPayment({ retries: 3 }),
+  },
+  {
+    id: 'servidor-velho',
+    title: 'O servidor velho',
+    briefing:
+      'Um dos quatro servidores é uma máquina antiga: aguenta 200 req/s, metade dos outros. O load balancer é código da casa e manda a mesma parte para todos, então a máquina velha afoga com 1.000 req/s. Trocar a máquina ou comprar outra estoura o orçamento de $400. Leia o código do balanceador.',
+    durationS: 30,
+    mix: { static: 0.3, read: 0.5, write: 0.2 },
+    traffic: [{ from: 0, rps: 1000 }],
+    failures: [],
+    code: [FIXED_ROUND_ROBIN],
+    nodeTweaks: [{ id: 'server-1', capacity: 200 }],
+    goals: { minAvailability: 0.99, maxP99Ms: 450, maxCost: 400 },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'lb', kind: 'lb' },
+        ...FOUR_SERVERS.map((id) => ({ id, kind: 'server' as const })),
+        { id: 'cache', kind: 'cache' },
+        { id: 'db', kind: 'db' },
+      ],
+      edges: [
+        { source: 'client', target: 'lb' },
+        ...FOUR_SERVERS.flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'cache' },
+        ]),
+        { source: 'cache', target: 'db' },
+      ],
+    },
   },
 ]
 

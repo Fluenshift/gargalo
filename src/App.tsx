@@ -63,7 +63,7 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, canConnect, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
+import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, balanceOf, canConnect, canSetBalance, instanceCapacity, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
 const nodeTypes = { component: NodeCard, region: RegionArea }
@@ -182,7 +182,7 @@ function freshDesign(arch: Architecture): Design {
       id: n.id,
       type: 'component',
       position: { x: COLUMN[n.kind], y },
-      data: { kind: n.kind, ...(n.region ? { region: n.region } : {}) },
+      data: { kind: n.kind, ...(n.region ? { region: n.region } : {}), ...(n.balance ? { balance: n.balance } : {}) },
       // The users and pieces run by another company stay on the drawing.
       ...(n.kind === 'client' || SPECS[n.kind].external ? { deletable: false } : {}),
     }
@@ -226,7 +226,7 @@ const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
 
 function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
   return {
-    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, ...(n.data.region ? { region: n.data.region } : {}) })),
+    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, ...(n.data.region ? { region: n.data.region } : {}), ...(n.data.balance ? { balance: n.data.balance } : {}) })),
     edges: edges.map((e) => ({ source: e.source, target: e.target, ...policyOf(e) })),
   }
 }
@@ -806,7 +806,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
         id,
         type: 'component',
         position: { x: node.position.x + 32, y: node.position.y + 32 },
-        data: { kind: node.data.kind, ...(node.data.region ? { region: node.data.region } : {}) },
+        data: { kind: node.data.kind, ...(node.data.region ? { region: node.data.region } : {}), ...(node.data.balance ? { balance: node.data.balance } : {}) },
         selected: true,
       },
     ])
@@ -889,6 +889,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const selectedEdges = edges.filter((e) => e.selected)
   const selectedLink = selected.length === 0 && selectedEdges.length === 1 ? selectedEdges[0] : undefined
   const codeChallenge = level.code?.find((c) => c.id === codeId)
+  /** The picked code divides on its own, so the player has no say in it. */
+  const forcedBalance = !!level.code?.some((c) => c.options.some((o) => o.balance && o.id === fixes[c.id]))
   const inspected = listInfo?.kind ?? (selected.length === 1 ? selected[0].data.kind : null)
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
@@ -942,7 +944,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const multiRegion = regionChoices.length > 0
 
   const displayNodes = useMemo((): (ComponentNode | RegionAreaNode)[] => {
-    const cards = tick ? nodes.map((n) => ({ ...n, data: { ...n.data, stats: tick.nodes[n.id] } })) : nodes
+    const cards = nodes.map((n) => {
+      const capacity = instanceCapacity(level, { id: n.id, kind: n.data.kind })
+      const data = { ...n.data, ...(capacity !== SPECS[n.data.kind].capacity ? { capacity } : {}), ...(tick ? { stats: tick.nodes[n.id] } : {}) }
+      return { ...n, data }
+    })
     if (!multiRegion) return cards
     const PAD = 28
     const areas = regionChoices.flatMap((region): RegionAreaNode[] => {
@@ -1237,6 +1243,20 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               onClose={closeInfo}
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}
+              capacity={!listInfo && selected.length === 1 ? instanceCapacity(level, { id: selected[0].id, kind: selected[0].data.kind }) : undefined}
+              balance={
+                !listInfo && selected.length === 1 && SPECS[selected[0].data.kind].balances && (canSetBalance(level, fixes) || forcedBalance)
+                  ? {
+                      value: balanceOf({ id: selected[0].id, ...selected[0].data }, level, fixes),
+                      forced: forcedBalance,
+                      editable,
+                      onChange: (b) => {
+                        clearRun()
+                        setNodes((ns) => ns.map((n) => (n.id === selected[0].id ? { ...n, data: { ...n.data, balance: b } } : n)))
+                      },
+                    }
+                  : undefined
+              }
               region={
                 multiRegion && !listInfo && selected.length === 1 && !SPECS[selected[0].data.kind].global
                   ? {

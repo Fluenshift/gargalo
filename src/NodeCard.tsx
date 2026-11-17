@@ -3,11 +3,11 @@ import type { Node, NodeProps } from '@xyflow/react'
 import { useControlScale, useEditor } from './editorContext'
 import { KindIcon } from './KindIcon'
 import { SPECS } from './sim/model'
-import type { Kind, Region } from './sim/model'
+import type { Balance, Kind, Region } from './sim/model'
 import type { NodeStats } from './sim/engine'
 import { waitLabel } from './sim/metrics'
 
-export type ComponentNode = Node<{ kind: Kind; region?: Region; stats?: NodeStats }, 'component'>
+export type ComponentNode = Node<{ kind: Kind; region?: Region; balance?: Balance; /** What this piece handles when the level makes it differ from its kind. */ capacity?: number; stats?: NodeStats }, 'component'>
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR')
 
@@ -26,6 +26,7 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
   const { stats } = data
   const state = heat(stats)
   const finite = spec.capacity !== Infinity
+  const odd = data.capacity !== undefined && data.capacity !== spec.capacity
 
   return (
     <div className={`node node--${data.kind} heat--${state}${selected ? ' is-selected' : ''}`}>
@@ -65,10 +66,11 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
         </>
       ) : (
         <div className="node__spec">
-          {finite ? `${fmt(spec.capacity)} req/s` : 'origem do tráfego'}
+          {finite ? `${fmt(data.capacity ?? spec.capacity)} req/s` : 'origem do tráfego'}
           {spec.cost > 0 && <span>${spec.cost}/mês</span>}
         </div>
       )}
+      {odd && <div className="node__tag">máquina antiga</div>}
       {spec.maxOut > 0 && <Handle type="source" position={Position.Right} />}
       {selected && editable && deletable && (
         <button

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
-import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, canConnect, connectRefusal, protocolRefusal } from './model'
-import type { ArchEdge, Architecture, Kind, Level, Protocol, Region, Spec } from './model'
+import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, balanceOf, canConnect, canSetBalance, connectRefusal, instanceCapacity, protocolRefusal } from './model'
+import type { ArchEdge, Architecture, CodeChallenge, Kind, Level, Protocol, Region, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
 function arch(edges: [string, string][], extra: string[] = []): Architecture {
@@ -818,19 +818,21 @@ describe('code challenges', () => {
   })
 
   // The drawing as the level opens: only the code decides. Every right option passes, every wrong one fails.
-  // Challenges that lock links need a redrawn design, tested on their own below.
-  for (const level of LEVELS.filter((l) => l.code?.every((ch) => !ch.locks))) {
+  // Challenges that lock links or open a setting need a redrawn design, tested on their own below.
+  for (const level of LEVELS.filter((l) => l.code?.every((ch) => !ch.locks && ch.options.every((o) => !o.settings)))) {
     const start = level.start ?? STARTUP_LEGACY
     for (const ch of level.code!) {
-      it(`${level.id}: the bug fails and only the right options pass, on every seed`, () => {
-        for (let seed = 1; seed <= 20; seed++) {
-          expect(runLevel(start, level, seed).summary.passed.all, `bug, seed ${seed}`).toBe(false)
-          for (const option of ch.options) {
-            const { summary } = runLevel({ ...start, fixes: { [ch.id]: option.id } }, level, seed)
-            expect(summary.passed.all, `${option.id}, seed ${seed}`).toBe(option.fixes)
-          }
-        }
+      it(`${level.id}: the bug fails on every seed`, () => {
+        for (let seed = 1; seed <= 20; seed++) expect(runLevel(start, level, seed).summary.passed.all, `seed ${seed}`).toBe(false)
       })
+      for (const option of ch.options) {
+        it(`${level.id}: ${option.id} ${option.fixes ? 'passes' : 'fails'} on every seed`, () => {
+          for (let seed = 1; seed <= 20; seed++) {
+            const { summary } = runLevel({ ...start, fixes: { [ch.id]: option.id } }, level, seed)
+            expect(summary.passed.all, `seed ${seed}`).toBe(option.fixes)
+          }
+        })
+      }
     }
   }
 })
@@ -894,4 +896,82 @@ describe('code that locks links', () => {
       for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
     })
   }
+})
+
+describe('balancing strategy', () => {
+  // Four servers, the first one an old machine that takes half.
+  const challenge: CodeChallenge = {
+    id: 'lb',
+    class: 'read',
+    title: '',
+    code: '',
+    bug: [],
+    options: [
+      { id: 'strategy', label: '', code: '', fixes: true, explanation: '', work: [], settings: ['balance'] },
+      { id: 'other', label: '', code: '', fixes: false, explanation: '', work: [] },
+    ],
+  }
+  const old: Level = { ...steady, traffic: [{ from: 0, rps: 1000 }], nodeTweaks: [{ id: 'server#0', capacity: 200 }], code: [challenge] }
+  const a = fanOut(4, 'db', [['client', 'lb']])
+  const leastConn = (fix: string): Architecture => ({
+    nodes: a.nodes.map((n) => (n.kind === 'lb' ? { ...n, balance: 'least-conn' } : n)),
+    edges: a.edges,
+    fixes: { lb: fix },
+  })
+
+  it('round robin drowns a server with half the capacity; least connections does not', () => {
+    const rr = simulateTick(a, old, 0, mulberry32(1))
+    expect(rr.nodes['server#0'].load).toBeCloseTo(250)
+    expect(rr.nodes['server#0'].dropRate).toBeGreaterThan(0.1)
+    const lc = simulateTick(leastConn('strategy'), old, 0, mulberry32(1))
+    expect(lc.nodes['server#0'].load).toBeCloseTo(1000 * (200 / 1400))
+    expect(lc.nodes['server#0'].dropRate).toBeCloseTo(0)
+    expect(lc.nodes['server#1'].utilization).toBeCloseTo(lc.nodes['server#0'].utilization)
+  })
+
+  it('ignores the setting until the code lets the player choose', () => {
+    const locked = simulateTick(leastConn('other'), old, 0, mulberry32(1))
+    expect(locked.nodes['server#0'].load).toBeCloseTo(250)
+    expect(balanceOf(leastConn('other').nodes.find((n) => n.kind === 'lb')!, old, { lb: 'other' })).toBe('round-robin')
+    expect(canSetBalance(old, { lb: 'strategy' })).toBe(true)
+    expect(canSetBalance(old, undefined)).toBe(false)
+  })
+
+  it('a tweak follows the piece by id: deleting the old server takes it away', () => {
+    expect(instanceCapacity(old, { id: 'server#0', kind: 'server' })).toBe(200)
+    expect(instanceCapacity(old, { id: 'server#1', kind: 'server' })).toBe(SPECS.server.capacity)
+  })
+
+  const level = LEVELS.find((l) => l.id === 'servidor-velho')!
+  const start = level.start!
+  const fixed = (fix: string, balance?: 'least-conn' | 'hash'): Architecture => ({
+    nodes: start.nodes.map((n) => (n.kind === 'lb' && balance ? { ...n, balance } : n)),
+    edges: start.edges,
+    fixes: { [level.code![0].id]: fix },
+  })
+  const cases: [string, () => Architecture, boolean][] = [
+    ['Strategy with least connections', () => fixed('strategy', 'least-conn'), true],
+    ['the drawing as the level opens', () => start, false],
+    ['Strategy left on round robin', () => fixed('strategy'), false],
+    ['Strategy with hashing', () => fixed('strategy', 'hash'), false],
+    ['the random draw', () => fixed('aleatorio'), false],
+    // Works today, and the challenge says why it is still a poor change.
+    ['the if for the old server', () => fixed('if-velho'), true],
+    [
+      'deleting the old server',
+      () => ({ nodes: start.nodes.filter((n) => n.id !== 'server-1'), edges: start.edges.filter((e) => e.source !== 'server-1' && e.target !== 'server-1') }),
+      false,
+    ],
+  ]
+  for (const [name, build, passes] of cases) {
+    it(`servidor-velho: ${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
+
+  it('the option that passes without scaling says so', () => {
+    const option = level.code![0].options.find((o) => o.id === 'if-velho')!
+    expect(option.fixes).toBe(true)
+    expect(option.caveat).toBeTruthy()
+  })
 })

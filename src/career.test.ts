@@ -48,6 +48,7 @@ describe('career data', () => {
       'catalogo-sem-paginacao',
       'bot-de-precos',
       'pagamento-instavel',
+      'servidor-velho',
     ])
     expect(COMPANIES[1].boss).toBe(BLACK_FRIDAY)
   })

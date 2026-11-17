@@ -4,9 +4,15 @@ import { CONCEPTS, splitTerms } from './concepts'
 import type { GlossaryEntry } from './concepts'
 import { KindIcon } from './KindIcon'
 import { REGIONS, SPECS, endpointsOf } from './sim/model'
-import type { Kind, Level, Region } from './sim/model'
+import type { Balance, Kind, Level, Region } from './sim/model'
 
 const fmt = (n: number) => n.toLocaleString('pt-BR')
+
+const BALANCES: { id: Balance; label: string; hint: string }[] = [
+  { id: 'round-robin', label: 'Round robin', hint: 'Um de cada vez, na ordem: todos recebem a mesma parte.' },
+  { id: 'least-conn', label: 'Menos conexões', hint: 'Cada servidor recebe na medida do que aguenta.' },
+  { id: 'hash', label: 'Hash consistente', hint: 'A mesma chave vai sempre ao mesmo servidor; se um cai, só as chaves dele mudam.' },
+]
 
 /**
  * What a piece is, when to use it and what it trades. `children` render at the
@@ -22,6 +28,8 @@ export function Inspector({
   region,
   fixes,
   onOpenCode,
+  balance,
+  capacity,
 }: {
   kind: Kind
   /** The level on screen: a server lists its routes. */
@@ -36,6 +44,10 @@ export function Inspector({
   fixes?: Record<string, string>
   /** Opens the code of a challenge; absent where the level has none. */
   onOpenCode?: (challengeId: string) => void
+  /** How this balancer divides: chosen when the code allows it, `forced` (read-only) when the code decides. */
+  balance?: { value: Balance; forced: boolean; editable: boolean; onChange: (b: Balance) => void }
+  /** What this very piece handles, when the level makes it differ from its kind. */
+  capacity?: number
   /** Regions to choose from for the selected piece; absent on single-region levels and for global pieces. */
   region?: { value: Region; choices: Region[]; editable: boolean; onChange: (r: Region) => void }
 }) {
@@ -88,6 +100,7 @@ export function Inspector({
     )
 
   const finite = spec.capacity !== Infinity
+  const shownCapacity = capacity ?? spec.capacity
 
   return (
     <aside className="inspector" aria-labelledby={titleId}>
@@ -101,8 +114,8 @@ export function Inspector({
             {!finite
               ? 'Origem do tráfego'
               : spec.external
-                ? `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, de outra empresa`
-                : `${fmt(spec.capacity)} req/s, ${spec.baseLatencyMs} ms, $${spec.cost}/mês`}
+                ? `${fmt(shownCapacity)} req/s, ${spec.baseLatencyMs} ms, de outra empresa`
+                : `${fmt(shownCapacity)} req/s, ${spec.baseLatencyMs} ms, $${spec.cost}/mês${shownCapacity !== spec.capacity ? ' · máquina antiga' : ''}`}
           </p>
         </div>
         <button type="button" className="inspector__close" onClick={onClose} aria-label="Fechar painel" title="Fechar (Esc)">
@@ -128,6 +141,34 @@ export function Inspector({
               </button>
             ))}
           </div>
+        </section>
+      )}
+
+      {balance && (
+        <section>
+          <h3 id={`${titleId}-balance`}>Como divide</h3>
+          {balance.forced ? (
+            <p className="inspector__note">
+              Dividido pelo código: o velho recebe metade. Para escolher o algoritmo, troque a correção no código.
+            </p>
+          ) : (
+            <>
+              <div className="segmented segmented--wrap" role="group" aria-labelledby={`${titleId}-balance`}>
+                {BALANCES.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    aria-pressed={balance.value === b.id}
+                    disabled={!balance.editable}
+                    onClick={() => balance.onChange(b.id)}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+              <p className="inspector__note">{BALANCES.find((b) => b.id === balance.value)?.hint}</p>
+            </>
+          )}
         </section>
       )}
 
