@@ -19,6 +19,7 @@ export function CareerMap({
   onClose,
   onProfile,
   onDaily,
+  onFree,
   dailyNumber,
   streak,
 }: {
@@ -29,6 +30,7 @@ export function CareerMap({
   onClose: () => void
   onProfile: () => void
   onDaily: () => void
+  onFree: () => void
   dailyNumber: number
   /** Days passed in a row on the daily challenge. */
   streak: number
@@ -62,6 +64,9 @@ export function CareerMap({
         <div className="career__actions">
           <button type="button" className="ghost" onClick={onDaily}>
             Desafio do dia #{dailyNumber}
+          </button>
+          <button type="button" className="ghost" onClick={onFree}>
+            Modo livre
           </button>
           {streak > 0 && <span className="career__streak">Sequência: {streak} {streak === 1 ? 'dia' : 'dias'}</span>}
           <button type="button" className="ghost" onClick={onProfile}>
