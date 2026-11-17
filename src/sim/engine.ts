@@ -41,7 +41,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { ANSWER_LOST, PROTOCOLS, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import { ANSWER_LOST, PROTOCOLS, levelWork, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -284,6 +284,12 @@ export function simulateTick(
 
   const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
 
+  // What one request costs on each piece, from the code as the player left it.
+  const work = levelWork(level, arch)
+  const workOf = (node: ArchNode, c: RequestClass) => work.filter((w) => w.kinds.includes(node.kind) && w.classes.includes(c))
+  const weight = (node: ArchNode, c: RequestClass) => workOf(node, c).reduce((f, w) => f * w.factor, 1)
+  const extraMs = (node: ArchNode, c: RequestClass) => workOf(node, c).reduce((ms, w) => ms + (w.extraMs ?? 0), 0)
+
   /**
    * Share of class `c` a node ends. An HTTP cache only keeps what the protocol of the
    * links into it lets it keep, in proportion to those links.
@@ -375,7 +381,7 @@ export function simulateTick(
       if (next.lagMs !== undefined) extra = { ...extra, lagMs: next.lagMs, staleRate: next.staleRate ?? 0 }
       staleRate = next.staleRate ?? 0
     }
-    const load = CLASSES.reduce((sum, c) => sum + a[c], 0)
+    const load = CLASSES.reduce((sum, c) => sum + a[c] * weight(node, c), 0)
     // What capacity lets through, then what survives the random blips of a flaky piece.
     const capPass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
     const blips = spec.flaky ?? 0
@@ -552,7 +558,7 @@ export function simulateTick(
       while (node) {
         if (rng() >= (passRate.get(node.id) ?? 0)) break
         const spec = pieces[node.kind]
-        latency += spec.baseLatencyMs - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
+        latency += spec.baseLatencyMs + extraMs(node, c) - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
         if (spec.acknowledges?.includes(c) || rng() < servesOf(node, c)) {
           latencies.push(Math.max(0, latency))
           break

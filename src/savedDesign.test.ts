@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { parseDesign } from './savedDesign'
+import { LEVELS } from './levels'
+
+const loop = LEVELS.find((l) => l.id === 'pedidos-em-loop')!
 
 const node = (id: string, kind: string) => ({ id, type: 'component', position: { x: 0, y: 0 }, data: { kind } })
 const valid = {
@@ -63,6 +66,20 @@ describe('parseDesign', () => {
       { kind: 'server' },
       { kind: 'dns' },
     ])
+  })
+
+  it("keeps the picks for the level's code challenges and drops the rest", () => {
+    const raw = (fixes: unknown) => JSON.stringify({ ...valid, fixes })
+    expect(parseDesign(raw({ 'n-mais-um': 'where-in' }), loop)?.fixes).toEqual({ 'n-mais-um': 'where-in' })
+    expect(parseDesign(raw({ 'n-mais-um': 'nope', outro: 'where-in', 'sem-indice': 'indice' }), loop)?.fixes).toBeUndefined()
+    expect(parseDesign(raw({ 'n-mais-um': 7 }), loop)?.fixes).toBeUndefined()
+    expect(parseDesign(raw('where-in'), loop)?.fixes).toBeUndefined()
+    // Without the level, any string pick is kept and the engine ignores unknown ones.
+    expect(parseDesign(raw({ a: 'b', c: 1 }))?.fixes).toEqual({ a: 'b' })
+  })
+
+  it('has no fixes when none were saved', () => {
+    expect(parseDesign(JSON.stringify(valid), loop)).not.toHaveProperty('fixes')
   })
 
   it.each([

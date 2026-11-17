@@ -48,4 +48,13 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'fechamento-do-mes': [
     'Com o primário só em São Paulo, a queda de 15 s para as transferências: a disponibilidade fica abaixo da meta mesmo com leitura nos Estados Unidos. Mover o primário para a Virgínia protege as escritas, mas os clientes brasileiros pagam 120 ms em cada uma.',
   ],
+  'pedidos-em-loop': [
+    'O JOIN também passa, no mesmo lugar: uma consulta traz o pedido e os produtos, com o p99 perto de 417 ms nos dois casos. Guardar cada produto no cache piora: o laço continua com 20 idas ao cache por página, a disponibilidade cai para perto de 68% e o p99 passa de 880 ms. Aumentar o pool de conexões não muda nada: o banco recebe as mesmas 21 consultas por página, e a disponibilidade segue perto de 82%.',
+  ],
+  'catalogo-sem-paginacao': [
+    'Comprimir com gzip piora: o banco lê as mesmas 5.000 linhas, o servidor monta o JSON inteiro e ainda gasta CPU para comprimir, e a disponibilidade fica perto de 77%. Guardar a lista inteira no cache alivia o banco, mas cada requisição ainda monta 5.000 produtos: o p99 segue acima de 2 segundos. Só a paginação reduz o que o banco lê e o que o servidor monta, e o p99 cai para perto de 135 ms.',
+  ],
+  'extrato-lento': [
+    'LIMIT 50 sem índice quase não muda nada: o banco ainda acha e ordena todos os lançamentos da conta antes de cortar, e a disponibilidade fica perto de 46%. Selecionar só as colunas usadas também não: a resposta encolhe, mas a tabela continua sendo varrida. Com o índice, o p99 cai para perto de 175 ms, e cada escrita fica 10% mais cara no banco.',
+  ],
 }

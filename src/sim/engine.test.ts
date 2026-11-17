@@ -793,3 +793,43 @@ describe('levels', () => {
     expect(summary.passed.all).toBe(shouldPass)
   })
 })
+
+describe('code challenges', () => {
+  it('a bug multiplies the load a request puts on a piece and adds its time there', () => {
+    const level: Level = {
+      ...steady,
+      code: [
+        {
+          id: 'bug',
+          class: 'read',
+          title: '',
+          code: '',
+          bug: [{ kinds: ['db'], classes: ['read'], factor: 3, extraMs: 50 }],
+          options: [{ id: 'fix', label: '', code: '', fixes: true, explanation: '', work: [] }],
+        },
+      ],
+    }
+    const a = fanOut(3, 'db', [['client', 'lb']])
+    const buggy = simulateTick(a, { ...level, traffic: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    const fixed = simulateTick({ ...a, fixes: { bug: 'fix' } }, { ...level, traffic: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    expect(buggy.nodes.db.load).toBeCloseTo(900)
+    expect(fixed.nodes.db.load).toBeCloseTo(300)
+    expect(buggy.p50Ms - fixed.p50Ms).toBeGreaterThan(40)
+  })
+
+  // The drawing as the level opens: only the code decides. Every right option passes, every wrong one fails.
+  for (const level of LEVELS.filter((l) => l.code)) {
+    const start = level.start ?? STARTUP_LEGACY
+    for (const ch of level.code!) {
+      it(`${level.id}: the bug fails and only the right options pass, on every seed`, () => {
+        for (let seed = 1; seed <= 20; seed++) {
+          expect(runLevel(start, level, seed).summary.passed.all, `bug, seed ${seed}`).toBe(false)
+          for (const option of ch.options) {
+            const { summary } = runLevel({ ...start, fixes: { [ch.id]: option.id } }, level, seed)
+            expect(summary.passed.all, `${option.id}, seed ${seed}`).toBe(option.fixes)
+          }
+        }
+      })
+    }
+  }
+})

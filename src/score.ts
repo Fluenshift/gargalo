@@ -22,9 +22,9 @@ export const XP_PER_STAR = 50
 export const RANKS: { title: string; xp: number }[] = [
   { title: 'Estagiário', xp: 0 },
   { title: 'Júnior', xp: 400 },
-  { title: 'Pleno', xp: 1400 },
-  { title: 'Sênior', xp: 2800 },
-  { title: 'Staff', xp: 4200 },
+  { title: 'Pleno', xp: 1600 },
+  { title: 'Sênior', xp: 3300 },
+  { title: 'Staff', xp: 4900 },
 ]
 
 /** The best run kept for a level. */

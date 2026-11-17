@@ -534,6 +534,27 @@ export const GLOSSARY: GlossaryEntry[] = [
     definition:
       'Chamadas binárias sobre HTTP/2, com conexão aberta e contrato tipado. Mais rápido entre serviços internos, mas o navegador não fala gRPC: não serve a ligação que sai dos usuários.',
   },
+  {
+    id: 'n-mais-um',
+    term: 'N+1',
+    forms: ['consulta N+1'],
+    definition:
+      'Uma consulta para a lista e mais uma para cada item dela, num laço. Com 20 itens são 21 idas ao banco por requisição. Trazer tudo de uma vez (WHERE id IN) ou com um JOIN troca as 20 por 1; cachear cada item mantém o laço.',
+  },
+  {
+    id: 'paginacao',
+    term: 'paginação',
+    forms: ['paginar'],
+    definition:
+      'Devolver a lista em páginas pequenas (LIMIT, com um cursor para a próxima) em vez de tudo de uma vez. O banco lê menos, o servidor monta um JSON menor e a tela mostra o mesmo. Comprimir ou cachear a lista inteira não tira o custo de montá-la.',
+  },
+  {
+    id: 'indice',
+    term: 'índice',
+    forms: ['índices'],
+    definition:
+      'Estrutura que leva o banco direto às linhas de uma chave, já ordenadas, em vez de varrer a tabela inteira. Acelera a leitura, e cada escrita fica um pouco mais cara porque também atualiza o índice. LIMIT sozinho não ajuda: sem índice ele ainda acha e ordena tudo.',
+  },
 ]
 
 export type Segment = string | { text: string; entry: GlossaryEntry }
