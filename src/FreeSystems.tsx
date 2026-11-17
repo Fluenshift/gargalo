@@ -1,3 +1,4 @@
+import { ThemeToggle } from './ThemeToggle'
 import { useEffect, useRef, useState } from 'react'
 import { BrandMark } from './BrandMark'
 import { TEMPLATES, exportFileName, exportSystem } from './freeMode'
@@ -75,17 +76,18 @@ export function FreeSystems({
           salvo aqui neste navegador.
         </p>
         <div className="career__actions">
-          <button type="button" className="ghost" onClick={() => onCreate()}>
+          <button type="button" className="btn btn--ghost" onClick={() => onCreate()}>
             Novo sistema em branco
           </button>
-          <button type="button" className="ghost" onClick={() => fileInput.current?.click()}>
+          <button type="button" className="btn btn--ghost" onClick={() => fileInput.current?.click()}>
             Importar JSON
           </button>
           <input ref={fileInput} type="file" accept=".json,application/json" hidden aria-label="Arquivo do sistema" onChange={(e) => importFile(e.target.files?.[0])} />
-          <button type="button" className="ghost" onClick={onClose}>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
             Voltar para a fase
           </button>
         </div>
+        <ThemeToggle />
       </header>
 
       <p className={`free__message${message ? ` is-${message.tone}` : ''}`} role="status" aria-live="polite">
@@ -147,7 +149,7 @@ export function FreeSystems({
                   </div>
                 ) : (
                   <div className="free__actions">
-                    <button type="button" className="ghost" onClick={() => onOpen(s.id)}>
+                    <button type="button" className="btn btn--ghost" onClick={() => onOpen(s.id)}>
                       Abrir
                     </button>
                     <button type="button" className="levels__map" onClick={() => setRenaming({ id: s.id, text: s.name })}>
@@ -187,7 +189,7 @@ export function FreeSystems({
               <p>{t.about}</p>
               <p className="hint">{t.question}</p>
               <div className="free__actions">
-                <button type="button" className="ghost" onClick={() => onCreate(t.id)}>
+                <button type="button" className="btn btn--ghost" onClick={() => onCreate(t.id)}>
                   Criar a partir deste
                 </button>
               </div>

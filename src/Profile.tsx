@@ -26,7 +26,7 @@ export function Profile({ results, daily, today, onClose }: { results: Results; 
     <dialog ref={ref} className="profile" aria-labelledby="profile-title" onClose={onClose} onKeyDown={(e) => e.key === 'Escape' && ref.current?.close()} onClick={(e) => e.target === e.currentTarget && ref.current?.close()}>
       <header className="profile__head">
         <h2 id="profile-title">Perfil</h2>
-        <button type="button" className="ghost" onClick={() => ref.current?.close()}>
+        <button type="button" className="btn btn--ghost" onClick={() => ref.current?.close()}>
           Fechar
         </button>
       </header>
