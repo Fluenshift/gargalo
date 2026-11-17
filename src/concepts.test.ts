@@ -67,6 +67,7 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'fechamento-do-mes': ['cap', 'failover', 'ativo-passivo'],
   'pedidos-em-loop': ['n-mais-um', 'db'],
   'catalogo-sem-paginacao': ['paginacao', 'server'],
+  'replica-parada': ['injecao-dependencia', 'replica', 'cache'],
   'extrato-lento': ['indice', 'db'],
 }
 

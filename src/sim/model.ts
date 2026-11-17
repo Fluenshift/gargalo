@@ -566,18 +566,18 @@ export interface Level {
   start?: Architecture
 }
 
-export function canConnect(arch: Architecture, sourceId: string, targetId: string): boolean {
+export function canConnect(arch: Architecture, sourceId: string, targetId: string, level?: Pick<Level, 'code'>): boolean {
   const source = arch.nodes.find((n) => n.id === sourceId)
   const target = arch.nodes.find((n) => n.id === targetId)
   if (!source || !target || source.id === target.id) return false
-  return connectRefusal(arch, sourceId, targetId) === null
+  return connectRefusal(arch, sourceId, targetId, level) === null
 }
 
 const listPT = (items: string[]) =>
   items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ou ${items[items.length - 1]}`
 
 /** Why the player cannot draw this connection, in words for them; null when it is allowed. */
-export function connectRefusal(arch: Architecture, sourceId: string, targetId: string): string | null {
+export function connectRefusal(arch: Architecture, sourceId: string, targetId: string, level?: Pick<Level, 'code'>): string | null {
   const source = arch.nodes.find((n) => n.id === sourceId)
   const target = arch.nodes.find((n) => n.id === targetId)
   if (!source || !target || source.id === target.id) return null
@@ -586,6 +586,8 @@ export function connectRefusal(arch: Architecture, sourceId: string, targetId: s
     if (spec.targets.length === 0) return `${spec.label} não se liga a nenhuma peça: é o fim do caminho.`
     return `Não dá para ligar ${spec.label} a ${SPECS[target.kind].label}. Daqui só se chega a ${listPT(spec.targets.map((k) => SPECS[k].label))}.`
   }
+  const locked = lockedLink(level, arch.fixes, source.kind, target.kind)
+  if (locked) return locked
   const out = arch.edges.filter((e) => e.source === sourceId)
   if (out.some((e) => e.target === targetId)) return 'Essas duas peças já estão ligadas.'
   if (out.length < spec.maxOut) return null
@@ -689,6 +691,14 @@ export interface CodeOption {
   explanation: string
   /** What the requests cost with this change; nothing extra when empty. */
   work: Work[]
+  /** Links of the challenge's lock that this change opens. */
+  allows?: Link[]
+}
+
+/** Links from one kind of piece to others. */
+export interface Link {
+  from: Kind
+  to: Kind[]
 }
 
 export interface CodeChallenge {
@@ -701,9 +711,33 @@ export interface CodeChallenge {
   /** What the requests cost while the bug is there. */
   bug: Work[]
   options: CodeOption[]
+  /** Links the code forbids until an option opens them, and why. */
+  locks?: { links: Link[]; reason: string }
 }
 
 /** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
+const hasLink = (links: Link[] | undefined, from: Kind, to: Kind) => !!links?.some((l) => l.from === from && l.to.includes(to))
+
+/** Why the level's code forbids a link from one kind to another, or null when nothing does. */
+export function lockedLink(level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes'], from: Kind, to: Kind): string | null {
+  for (const ch of level?.code ?? []) {
+    if (!ch.locks || !hasLink(ch.locks.links, from, to)) continue
+    const picked = ch.options.find((o) => o.id === fixes?.[ch.id])
+    if (!hasLink(picked?.allows, from, to)) return ch.locks.reason
+  }
+  return null
+}
+
+/** The links of a design that its code does not forbid. */
+export function openEdges(arch: Architecture, level: Pick<Level, 'code'> | undefined): ArchEdge[] {
+  const kind = new Map(arch.nodes.map((n) => [n.id, n.kind]))
+  return arch.edges.filter((e) => {
+    const from = kind.get(e.source)
+    const to = kind.get(e.target)
+    return !from || !to || lockedLink(level, arch.fixes, from, to) === null
+  })
+}
+
 export function levelWork(level: Level, arch: Pick<Architecture, 'fixes'>): Work[] {
   return (level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)
 }

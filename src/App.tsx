@@ -63,7 +63,7 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, canConnect, connectRefusal, endpointsOf, levelRegions, regionOf, totalCost } from './sim/model'
+import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, canConnect, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
 const nodeTypes = { component: NodeCard, region: RegionArea }
@@ -848,8 +848,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }
 
   const isValidConnection: IsValidConnection = useCallback(
-    (c) => canConnect(arch, c.source, c.target),
-    [arch],
+    (c) => canConnect(arch, c.source, c.target, level),
+    [arch, level],
   )
 
   // A drop on a piece that refuses the link says why instead of silently doing nothing.
@@ -857,7 +857,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     if (state.isValid || !state.fromNode || !state.toNode) return
     const [source, target] =
       state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
-    setNotice(connectRefusal(arch, source, target))
+    setNotice(connectRefusal(arch, source, target, level))
   }
 
   const onConnect = useCallback(
@@ -1195,7 +1195,19 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               editable={editable}
               onPick={(optionId) => {
                 clearRun()
-                setFixes((f) => ({ ...f, [codeChallenge.id]: optionId }))
+                const next = { ...fixes, [codeChallenge.id]: optionId }
+                setFixes(next)
+                // Links the new code forbids go away, with the reason.
+                const drawn = { ...toArchitecture(nodes, edges), fixes: next }
+                const open = new Set(openEdges(drawn, level))
+                const kept = edges.filter((_, i) => open.has(drawn.edges[i]))
+                const gone = edges.length - kept.length
+                if (gone === 0) return
+                const kind = new Map(nodes.map((n) => [n.id, n.data.kind]))
+                const e = edges.find((_, i) => !open.has(drawn.edges[i]))!
+                const reason = lockedLink(level, next, kind.get(e.source)!, kind.get(e.target)!)
+                setEdges(kept)
+                setNotice(`${gone === 1 ? '1 ligação removida' : `${gone} ligações removidas`}: ${reason}`)
               }}
               onClose={() => setCodeId(null)}
             />

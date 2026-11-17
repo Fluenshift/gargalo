@@ -44,6 +44,7 @@ describe('career data', () => {
     expect(COMPANIES[1].levels.map((l) => l.id)).toEqual([
       'checkout-travando',
       'catalogo-gigante',
+      'replica-parada',
       'catalogo-sem-paginacao',
       'bot-de-precos',
       'pagamento-instavel',

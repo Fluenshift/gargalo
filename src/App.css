@@ -2147,6 +2147,17 @@ ul {
   border-top: 1px solid var(--ink);
 }
 
+.code-panel__lock,
+.fix__opens {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.fix__opens:empty {
+  display: none;
+}
+
 .code-panel__hint {
   margin-top: 6px;
   color: var(--ink-soft);

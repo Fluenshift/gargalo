@@ -41,7 +41,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { ANSWER_LOST, PROTOCOLS, levelWork, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import { ANSWER_LOST, PROTOCOLS, levelWork, openEdges, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -638,7 +638,9 @@ export function summarize(
   return { availability, ...latency, cost, failed, async, backlogAtEnd, staleReadRate, duplicateRate, passed }
 }
 
-export function runLevel(arch: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
+export function runLevel(drawn: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
+  // A link the code forbids carries nothing, even when it is on the drawing.
+  const arch = { ...drawn, edges: openEdges(drawn, level) }
   const pieces = levelPieces(level, catalogue)
   const rng = mulberry32(seed)
   const state = new Map<string, NodeState>()

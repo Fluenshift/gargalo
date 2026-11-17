@@ -1,4 +1,4 @@
-import { NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
+import { HIDDEN_CLIENT, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
 import type { ArchEdge, Architecture, Level } from './sim/model'
 
 /** The Startup's levels and boss. */
@@ -152,6 +152,8 @@ function withPayment(link: Omit<ArchEdge, 'source' | 'target'>): Architecture {
 /** A catalog so large that few products are looked at twice: the cache rarely hits. */
 const LONG_TAIL_CATALOG: Level['tweaks'] = { cache: { serves: { read: 0.3, bot: 0.3 } } }
 
+const EIGHT_SERVERS = Array.from({ length: 8 }, (_, i) => `server-${i + 1}`)
+
 export const ECOMMERCE_LEVELS: Level[] = [
   {
     id: 'checkout-travando',
@@ -182,6 +184,36 @@ export const ECOMMERCE_LEVELS: Level[] = [
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 350, maxCost: 720, maxStaleReads: 0.03 },
     tweaks: LONG_TAIL_CATALOG,
+  },
+  {
+    id: 'replica-parada',
+    title: 'Réplica que ninguém usa',
+    briefing:
+      'O time comprou uma réplica de leitura para aliviar o banco, mas ela está parada: o banco recebe 2.200 req/s, 80% leituras, e aguenta 1.000. O cache acerta metade das leituras do catálogo. Antes de ligar qualquer coisa ao servidor, leia o código de GET /produtos/:id. Orçamento de $750 por mês.',
+    durationS: 30,
+    mix: { static: 0.1, read: 0.8, write: 0.1 },
+    traffic: [{ from: 0, rps: 2200 }],
+    failures: [],
+    code: [HIDDEN_CLIENT],
+    goals: { minAvailability: 0.99, maxP99Ms: 450, maxCost: 750 },
+    tweaks: { cache: { serves: { read: 0.5, bot: 0.5 } } },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'lb', kind: 'lb' },
+        ...EIGHT_SERVERS.map((id) => ({ id, kind: 'server' as const })),
+        { id: 'db', kind: 'db' },
+        { id: 'replica', kind: 'replica' },
+      ],
+      edges: [
+        { source: 'client', target: 'lb' },
+        ...EIGHT_SERVERS.flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'db' },
+        ]),
+        { source: 'db', target: 'replica' },
+      ],
+    },
   },
   {
     id: 'catalogo-sem-paginacao',

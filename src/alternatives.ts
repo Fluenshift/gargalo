@@ -51,6 +51,9 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'pedidos-em-loop': [
     'O JOIN também passa, no mesmo lugar: uma consulta traz o pedido e os produtos, com o p99 perto de 417 ms nos dois casos. Guardar cada produto no cache piora: o laço continua com 20 idas ao cache por página, a disponibilidade cai para perto de 68% e o p99 passa de 880 ms. Aumentar o pool de conexões não muda nada: o banco recebe as mesmas 21 consultas por página, e a disponibilidade segue perto de 82%.',
   ],
+  'replica-parada': [
+    'Injeção de dependência, cache na frente, 2 réplicas e 8 servidores passam por $730 de $750, com o p99 perto de 370 ms. Só o cache, sem réplica, deixa o primário sobrecarregado: o que o cache não acerta cai todo nele. A opção do if, com 3 réplicas, também passa, mas custa $780 e estoura o orçamento de $750: sem o cache na frente, o preço sobe. O singleton não libera nenhuma ligação: o cliente continua escondido dentro do serviço.',
+  ],
   'catalogo-sem-paginacao': [
     'Comprimir com gzip piora: o banco lê as mesmas 5.000 linhas, o servidor monta o JSON inteiro e ainda gasta CPU para comprimir, e a disponibilidade fica perto de 77%. Guardar a lista inteira no cache alivia o banco, mas cada requisição ainda monta 5.000 produtos: o p99 segue acima de 2 segundos. Só a paginação reduz o que o banco lê e o que o servidor monta, e o p99 cai para perto de 135 ms.',
   ],

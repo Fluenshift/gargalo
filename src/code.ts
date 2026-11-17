@@ -160,3 +160,72 @@ async function extrato(contaId: string) {
     },
   ],
 }
+
+/** The service builds its own database client, so nothing else can be plugged in. */
+export const HIDDEN_CLIENT: CodeChallenge = {
+  id: 'cliente-escondido',
+  class: 'read',
+  title: 'Réplica que ninguém usa',
+  code: `// GET /produtos/:id
+class ProdutoService {
+  // O serviço cria a própria conexão, e ela aponta sempre para o primário.
+  private db = new PostgresClient(process.env.DB_PRIMARIO)
+
+  async buscar(id: string) {
+    return this.db.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+  bug: [],
+  locks: {
+    links: [{ from: 'server', to: ['replica', 'cache'] }],
+    reason: 'O código do servidor cria a conexão com o banco por dentro. Para ligar a outra peça, o serviço precisa receber a dependência.',
+  },
+  options: [
+    {
+      id: 'injecao',
+      label: 'Receber leitura e escrita no construtor',
+      code: `class ProdutoService {
+  constructor(
+    private leitura: Leitor,   // réplica, cache, o que quem monta escolher
+    private escrita: Escritor, // o primário
+  ) {}
+
+  async buscar(id: string) {
+    return this.leitura.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+      fixes: true,
+      explanation:
+        'Injeção de dependência: o serviço não sabe mais quem está do outro lado. Quem monta a aplicação decide, então dá para pôr um cache na frente da réplica sem mexer no serviço.',
+      work: [],
+      allows: [{ from: 'server', to: ['replica', 'cache'] }],
+    },
+    {
+      id: 'if-leitura',
+      label: 'Criar o cliente da réplica dentro do método',
+      code: `async buscar(id: string) {
+  const db = ehLeitura ? new ReplicaClient(process.env.DB_REPLICA) : this.db
+  return db.query('SELECT * FROM produtos WHERE id = $1', [id])
+}`,
+      fixes: false,
+      explanation:
+        'Resolve a réplica hoje, mas o serviço continua escolhendo sozinho com quem fala. Pôr o cache na frente vira outro if, e cada troca nova também. Aqui a réplica sozinha não dá conta das leituras.',
+      work: [],
+      allows: [{ from: 'server', to: ['replica'] }],
+    },
+    {
+      id: 'singleton',
+      label: 'Transformar o cliente num singleton global',
+      code: `export const db = new PostgresClient(process.env.DB_PRIMARIO)
+
+class ProdutoService {
+  async buscar(id: string) {
+    return db.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+      fixes: false,
+      explanation: 'A conexão fica compartilhada, mas continua escondida e apontando para o primário. Nada de fora consegue trocar o que o serviço usa.',
+      work: [],
+    },
+  ],
+}
