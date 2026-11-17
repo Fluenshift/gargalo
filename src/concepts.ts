@@ -542,6 +542,33 @@ export const GLOSSARY: GlossaryEntry[] = [
       'Uma consulta para a lista e mais uma para cada item dela, num laço. Com 20 itens são 21 idas ao banco por requisição. Trazer tudo de uma vez (WHERE id IN) ou com um JOIN troca as 20 por 1; cachear cada item mantém o laço.',
   },
   {
+    id: 'injecao-dependencia',
+    term: 'injeção de dependência',
+    forms: ['dependência'],
+    definition:
+      'O serviço recebe de fora o que usa (a conexão do banco, o cache) em vez de criar por dentro. Quem monta a aplicação decide quem está do outro lado, e dá para pôr uma réplica ou um cache sem mexer no serviço. Um singleton global ou um if dentro do método continuam escondendo a escolha.',
+  },
+  {
+    id: 'strategy',
+    term: 'Strategy',
+    forms: ['estratégia'],
+    definition:
+      'Padrão de projeto: o algoritmo vira uma interface e o código recebe a escolhida, em vez de ter um if para cada caso. Dá para trocar round robin por menos conexões sem mexer no balanceador.',
+  },
+  {
+    id: 'menos-conexoes',
+    term: 'menos conexões',
+    forms: ['least connections'],
+    definition:
+      'Jeito de o load balancer dividir: manda cada requisição ao servidor menos ocupado para o que ele aguenta. Uma máquina com metade da capacidade recebe metade da carga, ao contrário do round robin, que dá a mesma parte a todos.',
+  },
+  {
+    id: 'hash-consistente',
+    term: 'hash consistente',
+    definition:
+      'Jeito de dividir em que a mesma chave vai sempre ao mesmo servidor. Se um servidor cai, só as chaves dele mudam de lugar, e isso permite um cache local em cada servidor.',
+  },
+  {
     id: 'paginacao',
     term: 'paginação',
     forms: ['paginar'],

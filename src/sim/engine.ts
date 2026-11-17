@@ -41,7 +41,7 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { ANSWER_LOST, PROTOCOLS, levelWork, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import { ANSWER_LOST, PROTOCOLS, balanceOf, instanceCapacity, levelWork, openEdges, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
@@ -257,10 +257,17 @@ export function simulateTick(
   /**
    * Share of a node's forwarded class-`c` load each target gets: equal, except that a
    * geographic node sends each region's users to its closest targets (only `from`'s users
-   * when given) and partitions split keys.
+   * when given), partitions split keys, and a balancer on least connections fills each
+   * target in proportion to what it takes. Hashing splits keys evenly too: it differs from
+   * round robin only in which keys move when a target falls, and load does not see that.
    */
   const shares = (node: ArchNode, targets: string[], c: RequestClass, from?: Region): number[] => {
     const even = 1 / targets.length
+    if (balanceOf(node, level, arch.fixes, pieces) === 'least-conn') {
+      const room = targets.map((id) => effectiveCapacity(id))
+      const total = room.reduce((sum, r) => sum + r, 0)
+      if (total > 0 && Number.isFinite(total)) return room.map((r) => r / total)
+    }
     if (pieces[node.kind].geo) {
       const weights = targets.map(() => 0)
       for (const [region, share] of from ? ([[from, 1]] as [Region, number][]) : users) {
@@ -304,6 +311,7 @@ export function simulateTick(
     return (base * kept) / incoming.length
   }
 
+  const capacityOf = (node: ArchNode) => instanceCapacity(level, node, pieces)
   // What a target can take: its capacity, or for a piece that ends nothing
   // itself (a load balancer), what is behind it up to its own capacity.
   const capacityMemo = new Map<string, number>()
@@ -312,13 +320,15 @@ export function simulateTick(
     const cached = capacityMemo.get(id)
     if (cached !== undefined) return cached
     capacityMemo.set(id, 0) // a cycle adds nothing
-    const spec = pieces[byId.get(id)!.kind]
+    const node = byId.get(id)!
+    const spec = pieces[node.kind]
+    const capacity = capacityOf(node)
     const kids = children.get(id) ?? []
     const endsSomething = Object.values(spec.serves).some((p) => (p ?? 0) > 0)
     const result =
       endsSomething || kids.length === 0
-        ? spec.capacity
-        : Math.min(spec.capacity, kids.reduce((sum, kid) => sum + effectiveCapacity(kid), 0))
+        ? capacity
+        : Math.min(capacity, kids.reduce((sum, kid) => sum + effectiveCapacity(kid), 0))
     capacityMemo.set(id, result)
     return result
   }
@@ -353,7 +363,7 @@ export function simulateTick(
   }
 
   for (const node of topoOrder(arch)) {
-    const spec = pieces[node.kind]
+    const spec = { ...pieces[node.kind], capacity: capacityOf(node) }
     const arrived = arriving.get(node.id)!
     const ack = acked.get(node.id)!
     const gho = ghost.get(node.id)!
@@ -638,7 +648,9 @@ export function summarize(
   return { availability, ...latency, cost, failed, async, backlogAtEnd, staleReadRate, duplicateRate, passed }
 }
 
-export function runLevel(arch: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
+export function runLevel(drawn: Architecture, level: Level, seed = 1, catalogue: Record<string, Spec> = SPECS) {
+  // A link the code forbids carries nothing, even when it is on the drawing.
+  const arch = { ...drawn, edges: openEdges(drawn, level) }
   const pieces = levelPieces(level, catalogue)
   const rng = mulberry32(seed)
   const state = new Map<string, NodeState>()

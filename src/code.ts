@@ -160,3 +160,147 @@ async function extrato(contaId: string) {
     },
   ],
 }
+
+/** The service builds its own database client, so nothing else can be plugged in. */
+export const HIDDEN_CLIENT: CodeChallenge = {
+  id: 'cliente-escondido',
+  class: 'read',
+  title: 'Réplica que ninguém usa',
+  code: `// GET /produtos/:id
+class ProdutoService {
+  // O serviço cria a própria conexão, e ela aponta sempre para o primário.
+  private db = new PostgresClient(process.env.DB_PRIMARIO)
+
+  async buscar(id: string) {
+    return this.db.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+  bug: [],
+  locks: {
+    links: [{ from: 'server', to: ['replica', 'cache'] }],
+    reason: 'O código do servidor cria a conexão com o banco por dentro. Para ligar a outra peça, o serviço precisa receber a dependência.',
+  },
+  options: [
+    {
+      id: 'injecao',
+      label: 'Receber leitura e escrita no construtor',
+      code: `class ProdutoService {
+  constructor(
+    private leitura: Leitor,   // réplica, cache, o que quem monta escolher
+    private escrita: Escritor, // o primário
+  ) {}
+
+  async buscar(id: string) {
+    return this.leitura.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+      fixes: true,
+      explanation:
+        'Injeção de dependência: o serviço não sabe mais quem está do outro lado. Quem monta a aplicação decide, então dá para pôr um cache na frente da réplica sem mexer no serviço.',
+      work: [],
+      allows: [{ from: 'server', to: ['replica', 'cache'] }],
+    },
+    {
+      id: 'if-leitura',
+      label: 'Criar o cliente da réplica dentro do método',
+      code: `async buscar(id: string) {
+  const db = ehLeitura ? new ReplicaClient(process.env.DB_REPLICA) : this.db
+  return db.query('SELECT * FROM produtos WHERE id = $1', [id])
+}`,
+      fixes: false,
+      explanation:
+        'Resolve a réplica hoje, mas o serviço continua escolhendo sozinho com quem fala. Pôr o cache na frente vira outro if, e cada troca nova também. Aqui a réplica sozinha não dá conta das leituras.',
+      work: [],
+      allows: [{ from: 'server', to: ['replica'] }],
+    },
+    {
+      id: 'singleton',
+      label: 'Transformar o cliente num singleton global',
+      code: `export const db = new PostgresClient(process.env.DB_PRIMARIO)
+
+class ProdutoService {
+  async buscar(id: string) {
+    return db.query('SELECT * FROM produtos WHERE id = $1', [id])
+  }
+}`,
+      fixes: false,
+      explanation: 'A conexão fica compartilhada, mas continua escondida e apontando para o primário. Nada de fora consegue trocar o que o serviço usa.',
+      work: [],
+    },
+  ],
+}
+
+/** The in-house load balancer hands the same share to every server, old or new. */
+export const FIXED_ROUND_ROBIN: CodeChallenge = {
+  id: 'round-robin-fixo',
+  class: 'read',
+  title: 'O servidor velho',
+  code: `// O load balancer é código da casa.
+class Balanceador {
+  private proximo = 0
+
+  escolher(servidores: Servidor[]) {
+    // Um de cada vez, na ordem: a máquina velha recebe tanto quanto as novas.
+    this.proximo = (this.proximo + 1) % servidores.length
+    return servidores[this.proximo]
+  }
+}`,
+  bug: [],
+  options: [
+    {
+      id: 'strategy',
+      label: 'Extrair uma interface Estrategia e injetar a escolhida',
+      code: `interface Estrategia {
+  escolher(servidores: Servidor[]): Servidor
+}
+
+class MenosConexoes implements Estrategia {
+  escolher(servidores: Servidor[]) {
+    return minBy(servidores, (s) => s.conexoes / s.capacidade)
+  }
+}
+
+class Balanceador {
+  constructor(private estrategia: Estrategia) {}
+  escolher(servidores: Servidor[]) {
+    return this.estrategia.escolher(servidores)
+  }
+}`,
+      fixes: true,
+      explanation:
+        'Strategy: o algoritmo vira uma peça trocável e o balanceador não muda mais. Agora o Load Balancer mostra o seletor: escolha menos conexões, que manda para cada servidor na medida do que ele aguenta.',
+      work: [],
+      settings: ['balance'],
+    },
+    {
+      id: 'if-velho',
+      label: 'Pôr um if para o servidor velho no escolher',
+      code: `escolher(servidores: Servidor[]) {
+  this.proximo = (this.proximo + 1) % servidores.length
+  const s = servidores[this.proximo]
+  // O velho só atende uma vez a cada duas.
+  if (s.velho) {
+    this.pulouVelho = !this.pulouVelho
+    if (this.pulouVelho) return this.escolher(servidores)
+  }
+  return s
+}`,
+      fixes: true,
+      explanation:
+        'O velho passa a receber metade e a fase passa. Mas é um caso especial escondido no balanceador: a próxima necessidade (hash consistente para um cache local por servidor) vira outro if no mesmo método.',
+      caveat: 'Funciona, mas não escala.',
+      work: [],
+      balance: 'least-conn',
+    },
+    {
+      id: 'aleatorio',
+      label: 'Trocar o % n por um sorteio',
+      code: `escolher(servidores: Servidor[]) {
+  return servidores[Math.floor(Math.random() * servidores.length)]
+}`,
+      fixes: false,
+      explanation: 'Sorteando, cada servidor ainda recebe a mesma parte em média. A máquina velha continua afogando.',
+      work: [],
+    },
+  ],
+}

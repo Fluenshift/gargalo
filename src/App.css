@@ -2404,6 +2404,17 @@ ul {
   border-top: 1px solid var(--ink);
 }
 
+.code-panel__lock,
+.fix__opens {
+  margin-top: var(--space-6);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.fix__opens:empty {
+  display: none;
+}
+
 .code-panel__hint {
   margin-top: var(--space-6);
   color: var(--ink-soft);
@@ -2916,3 +2927,33 @@ ul {
   }
 }
 
+/* Balancer setting: three choices share the panel's width. */
+.segmented--wrap {
+  display: flex;
+}
+
+.segmented--wrap button {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-8) var(--space-6);
+  font-size: var(--text-xs);
+}
+
+.inspector__note {
+  margin-top: var(--space-8);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.node__tag {
+  margin-top: var(--space-4);
+  color: var(--ink-soft);
+  font-size: var(--text-xs);
+}
+
+/* A fix that passes with a catch: not a failure, not a clean pass. */
+.code-panel__caveat {
+  margin-top: var(--space-6);
+  color: var(--warm);
+  font-weight: 500;
+}

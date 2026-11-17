@@ -1,14 +1,14 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, protocolRefusal } from './sim/model'
-import type { Kind, Level, Protocol, Region } from './sim/model'
+import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, openEdges, protocolRefusal } from './sim/model'
+import type { Balance, Kind, Level, Protocol, Region } from './sim/model'
 
 export interface SavedNode {
   id: string
   type: 'component'
   position: { x: number; y: number }
-  data: { kind: Kind; region?: Region }
+  data: { kind: Kind; region?: Region; balance?: Balance }
   deletable?: boolean
 }
 
@@ -24,6 +24,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const isRegion = (v: unknown): v is Region => typeof v === 'string' && Object.hasOwn(REGIONS, v)
 
 const isProtocol = (v: unknown): v is Protocol => typeof v === 'string' && Object.hasOwn(PROTOCOLS, v)
+
+const isBalance = (v: unknown): v is Balance => v === 'round-robin' || v === 'least-conn' || v === 'hash'
 
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && Object.hasOwn(SPECS, v)
 
@@ -63,7 +65,12 @@ export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; e
       type: 'component',
       position: { x: x as number, y: y as number },
       // Global pieces (users, DNS) sit in no region; a bad region is dropped.
-      data: { kind, ...(isRegion(n.data.region) && !SPECS[kind].global ? { region: n.data.region } : {}) },
+      data: {
+        kind,
+        ...(isRegion(n.data.region) && !SPECS[kind].global ? { region: n.data.region } : {}),
+        // Only pieces that divide traffic have a balance, and round robin is the default, not stored.
+        ...(isBalance(n.data.balance) && n.data.balance !== 'round-robin' && SPECS[kind].balances ? { balance: n.data.balance } : {}),
+      },
       ...(kind === 'client' || SPECS[kind].external ? { deletable: false } : {}),
     })
   }
@@ -94,5 +101,7 @@ export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; e
     })
   }
   const fixes = parseFixes(value.fixes, level)
-  return { nodes, edges, ...(fixes ? { fixes } : {}) }
+  // Links the picked code forbids cannot come back from storage.
+  const open = new Set(openEdges({ nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })), edges, ...(fixes ? { fixes } : {}) }, level))
+  return { nodes, edges: edges.filter((e) => open.has(e)), ...(fixes ? { fixes } : {}) }
 }

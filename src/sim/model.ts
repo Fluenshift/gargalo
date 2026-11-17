@@ -49,6 +49,8 @@ export interface RouteTarget {
 
 export interface Spec {
   label: string
+  /** Divides requests among servers: the balance setting applies to it. */
+  balances?: boolean
   /** Requests per second one instance handles before it starts dropping. */
   capacity: number
   /** Service time with an idle instance, in ms. */
@@ -274,6 +276,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   gateway: {
     label: 'API Gateway',
+    balances: true,
     api: true,
     capacity: 10_000,
     baseLatencyMs: 5,
@@ -287,6 +290,7 @@ export const SPECS: Record<Kind, Spec> = {
   },
   lb: {
     label: 'Load Balancer',
+    balances: true,
     api: true,
     capacity: 20_000,
     baseLatencyMs: 1,
@@ -423,11 +427,16 @@ export const SPECS: Record<Kind, Spec> = {
   },
 }
 
+/** How a balancing piece picks the next target. */
+export type Balance = 'round-robin' | 'least-conn' | 'hash'
+
 export interface ArchNode {
   id: string
   kind: Kind
   /** Where it runs; the home region when absent. */
   region?: Region
+  /** How a balancing piece divides its targets, when the level's code lets the player choose; round robin otherwise. */
+  balance?: Balance
 }
 
 export interface ArchEdge {
@@ -544,6 +553,11 @@ export interface Level {
    * rarely hits). The briefing must say it: the parts list shows the usual specs.
    */
   tweaks?: Partial<Record<Kind, Partial<Pick<Spec, 'serves' | 'capacity' | 'flaky'>>>>
+  /**
+   * Pieces of the starting drawing that differ from their kind, by id: an old server that
+   * takes half. By id, not by order, so deleting it takes the difference away with it.
+   */
+  nodeTweaks?: { id: string; capacity: number }[]
   failures: Failure[]
   /** A whole region going dark: every piece running there is down. */
   regionOutages?: { region: Region; from: number; to: number }[]
@@ -566,18 +580,18 @@ export interface Level {
   start?: Architecture
 }
 
-export function canConnect(arch: Architecture, sourceId: string, targetId: string): boolean {
+export function canConnect(arch: Architecture, sourceId: string, targetId: string, level?: Pick<Level, 'code'>): boolean {
   const source = arch.nodes.find((n) => n.id === sourceId)
   const target = arch.nodes.find((n) => n.id === targetId)
   if (!source || !target || source.id === target.id) return false
-  return connectRefusal(arch, sourceId, targetId) === null
+  return connectRefusal(arch, sourceId, targetId, level) === null
 }
 
 const listPT = (items: string[]) =>
   items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ou ${items[items.length - 1]}`
 
 /** Why the player cannot draw this connection, in words for them; null when it is allowed. */
-export function connectRefusal(arch: Architecture, sourceId: string, targetId: string): string | null {
+export function connectRefusal(arch: Architecture, sourceId: string, targetId: string, level?: Pick<Level, 'code'>): string | null {
   const source = arch.nodes.find((n) => n.id === sourceId)
   const target = arch.nodes.find((n) => n.id === targetId)
   if (!source || !target || source.id === target.id) return null
@@ -586,6 +600,8 @@ export function connectRefusal(arch: Architecture, sourceId: string, targetId: s
     if (spec.targets.length === 0) return `${spec.label} não se liga a nenhuma peça: é o fim do caminho.`
     return `Não dá para ligar ${spec.label} a ${SPECS[target.kind].label}. Daqui só se chega a ${listPT(spec.targets.map((k) => SPECS[k].label))}.`
   }
+  const locked = lockedLink(level, arch.fixes, source.kind, target.kind)
+  if (locked) return locked
   const out = arch.edges.filter((e) => e.source === sourceId)
   if (out.some((e) => e.target === targetId)) return 'Essas duas peças já estão ligadas.'
   if (out.length < spec.maxOut) return null
@@ -689,6 +705,20 @@ export interface CodeOption {
   explanation: string
   /** What the requests cost with this change; nothing extra when empty. */
   work: Work[]
+  /** Links of the challenge's lock that this change opens. */
+  allows?: Link[]
+  /** Settings this change gives the player on the pieces. */
+  settings?: 'balance'[]
+  /** How balancing pieces divide once this code is in, without a setting. */
+  balance?: Balance
+  /** Why a change that passes is still a poor one. */
+  caveat?: string
+}
+
+/** Links from one kind of piece to others. */
+export interface Link {
+  from: Kind
+  to: Kind[]
 }
 
 export interface CodeChallenge {
@@ -701,9 +731,54 @@ export interface CodeChallenge {
   /** What the requests cost while the bug is there. */
   bug: Work[]
   options: CodeOption[]
+  /** Links the code forbids until an option opens them, and why. */
+  locks?: { links: Link[]; reason: string }
 }
 
 /** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
+const hasLink = (links: Link[] | undefined, from: Kind, to: Kind) => !!links?.some((l) => l.from === from && l.to.includes(to))
+
+/** Why the level's code forbids a link from one kind to another, or null when nothing does. */
+export function lockedLink(level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes'], from: Kind, to: Kind): string | null {
+  for (const ch of level?.code ?? []) {
+    if (!ch.locks || !hasLink(ch.locks.links, from, to)) continue
+    const picked = ch.options.find((o) => o.id === fixes?.[ch.id])
+    if (!hasLink(picked?.allows, from, to)) return ch.locks.reason
+  }
+  return null
+}
+
+/** The options the design picked, one per challenge of the level. */
+const pickedOptions = (level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes']): CodeOption[] =>
+  (level?.code ?? []).flatMap((ch) => ch.options.filter((o) => o.id === fixes?.[ch.id]))
+
+/** Whether the level's code, as fixed, lets the player set how balancing pieces divide. */
+export const canSetBalance = (level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes']): boolean =>
+  pickedOptions(level, fixes).some((o) => o.settings?.includes('balance'))
+
+/** How a balancing piece divides in this design: the code's own way, the player's setting when the code allows one, round robin otherwise. */
+export function balanceOf(node: ArchNode, level: Pick<Level, 'code'> | undefined, fixes: Architecture['fixes'], pieces: Record<string, Spec> = SPECS): Balance {
+  if (!pieces[node.kind].balances) return 'round-robin'
+  const forced = pickedOptions(level, fixes).find((o) => o.balance)?.balance
+  if (forced) return forced
+  return canSetBalance(level, fixes) ? (node.balance ?? 'round-robin') : 'round-robin'
+}
+
+/** What one instance handles: its kind's capacity, unless the level says this one differs. */
+export function instanceCapacity(level: Pick<Level, 'nodeTweaks'>, node: ArchNode, pieces: Record<string, Spec> = SPECS): number {
+  return level.nodeTweaks?.find((tw) => tw.id === node.id)?.capacity ?? pieces[node.kind].capacity
+}
+
+/** The links of a design that its code does not forbid. */
+export function openEdges(arch: Architecture, level: Pick<Level, 'code'> | undefined): ArchEdge[] {
+  const kind = new Map(arch.nodes.map((n) => [n.id, n.kind]))
+  return arch.edges.filter((e) => {
+    const from = kind.get(e.source)
+    const to = kind.get(e.target)
+    return !from || !to || lockedLink(level, arch.fixes, from, to) === null
+  })
+}
+
 export function levelWork(level: Level, arch: Pick<Architecture, 'fixes'>): Work[] {
   return (level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)
 }
