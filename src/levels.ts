@@ -1,4 +1,4 @@
-import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
+import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
 import type { ArchEdge, Architecture, Level } from './sim/model'
 
 /** The Startup's levels and boss. */
@@ -345,6 +345,19 @@ export const FINTECH_LEVELS: Level[] = [
     endpoints: { static: 'GET /extratos/:mes.pdf', read: 'GET /contas/:id/extrato', write: 'POST /lancamentos' },
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 600, maxCost: 1050 },
+  },
+  {
+    id: 'sql-espalhado',
+    title: 'SQL espalhado',
+    briefing:
+      'A fintech cresceu e os lançamentos passaram de 1.400 por segundo: o banco aguenta 1.000. A saída é particionar as contas, mas o SQL delas está copiado pelo serviço inteiro. Antes de ligar qualquer partição, leia o código de POST /lancamentos. Orçamento de $750 por mês.',
+    durationS: 30,
+    mix: { static: 0.1, read: 0.3, write: 0.6 },
+    traffic: [{ from: 0, rps: 2400 }],
+    endpoints: { static: 'GET /extratos/:mes.pdf', read: 'GET /contas/:id/saldo', write: 'POST /lancamentos' },
+    failures: [],
+    code: [SCATTERED_SQL],
+    goals: { minAvailability: 0.99, maxP99Ms: 600, maxCost: 750 },
   },
   {
     id: 'extrato-lento',

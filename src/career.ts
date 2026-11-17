@@ -62,7 +62,7 @@ export const COMPANIES: Company[] = [
     id: 'fintech',
     name: 'Fintech global',
     budget: 'Uma fintech com clientes em três continentes. Dinheiro não pode sumir nem sair duas vezes, e a conta de nuvem já é grande.',
-    levels: [level('transferencia-duplicada'), level('livro-razao'), level('extrato-lento'), level('clientes-na-europa')],
+    levels: [level('transferencia-duplicada'), level('livro-razao'), level('sql-espalhado'), level('extrato-lento'), level('clientes-na-europa')],
     boss: level('fechamento-do-mes'),
     unlocks: ['shard', 'dns'],
     // A team that grew from a startup like yours.

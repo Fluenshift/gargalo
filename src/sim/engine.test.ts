@@ -975,3 +975,68 @@ describe('balancing strategy', () => {
     expect(option.caveat).toBeTruthy()
   })
 })
+
+describe('code that locks the partitions', () => {
+  const level = LEVELS.find((l) => l.id === 'sql-espalhado')!
+  const ch = level.code![0]
+
+  /** The legacy stack with `extra` servers more; reads and writes go to `shards` partitions, or to the primary through a queue. */
+  function design(fix: string | undefined, extra: number, shards: number, queue = 0): Architecture {
+    const keepDb = shards === 0
+    const nodes: Architecture['nodes'] = STARTUP_LEGACY.nodes.filter((n) => keepDb || n.id !== 'db').map((n) => ({ ...n }))
+    const edges: ArchEdge[] = STARTUP_LEGACY.edges.filter((e) => keepDb || e.target !== 'db').map((e) => ({ ...e }))
+    for (let i = 0; i < extra; i++) {
+      nodes.push({ id: `sx${i}`, kind: 'server' })
+      edges.push({ source: 'lb', target: `sx${i}` }, { source: `sx${i}`, target: 'cache' })
+    }
+    for (let i = 0; i < shards; i++) {
+      nodes.push({ id: `sh${i}`, kind: 'shard' })
+      edges.push({ source: 'cache', target: `sh${i}` })
+    }
+    if (queue) {
+      const servers = nodes.filter((n) => n.kind === 'server').map((n) => n.id)
+      nodes.push({ id: 'q', kind: 'queue' })
+      edges.push(...servers.map((s) => ({ source: s, target: 'q' })))
+      for (let i = 0; i < queue; i++) {
+        nodes.push({ id: `w${i}`, kind: 'worker' })
+        edges.push({ source: 'q', target: `w${i}` }, { source: `w${i}`, target: 'db' })
+      }
+    }
+    return { nodes, edges, ...(fix ? { fixes: { [ch.id]: fix } } : {}) }
+  }
+
+  it('refuses every link into a partition until the access goes through one place', () => {
+    const a: Architecture = {
+      nodes: [
+        { id: 's', kind: 'server' },
+        { id: 'c', kind: 'cache' },
+        { id: 'w', kind: 'worker' },
+        { id: 'p', kind: 'shard' },
+      ],
+      edges: [],
+    }
+    for (const from of ['s', 'c', 'w']) {
+      expect(connectRefusal(a, from, 'p', level), from).toBe(ch.locks!.reason)
+      expect(connectRefusal({ ...a, fixes: { [ch.id]: 'adapter' } }, from, 'p', level), from).toBe(ch.locks!.reason)
+      expect(connectRefusal({ ...a, fixes: { [ch.id]: 'orm' } }, from, 'p', level), from).toBe(ch.locks!.reason)
+      expect(connectRefusal({ ...a, fixes: { [ch.id]: 'repository' } }, from, 'p', level), from).toBeNull()
+    }
+  })
+
+  const cases: [string, () => Architecture, boolean][] = [
+    ['the Repository with three servers more and two partitions', () => design('repository', 3, 2), true],
+    ['the drawing as the level opens', () => STARTUP_LEGACY, false],
+    ['the Repository with too few servers', () => design('repository', 1, 2), false],
+    // A locked link on the drawing carries nothing: the partitions get no traffic.
+    ['the Adapter with the partitions drawn anyway', () => design('adapter', 3, 2), false],
+    ['the ORM with the partitions drawn anyway', () => design('orm', 3, 2), false],
+    // A queue in front of the primary holds the writes, but only past the budget.
+    ['a queue with six workers on the primary', () => design(undefined, 3, 0, 6), false],
+    ['a queue with five workers on the primary', () => design(undefined, 3, 0, 5), false],
+  ]
+  for (const [name, build, passes] of cases) {
+    it(`sql-espalhado: ${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
+})
