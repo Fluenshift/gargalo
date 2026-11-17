@@ -65,6 +65,9 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'livro-razao': ['db', 'chave-quente', 'particao'],
   'clientes-na-europa': ['regiao', 'consistencia-forte', 'consistencia-eventual', 'latencia-entre-regioes'],
   'fechamento-do-mes': ['cap', 'failover', 'ativo-passivo'],
+  'pedidos-em-loop': ['n-mais-um', 'db'],
+  'catalogo-sem-paginacao': ['paginacao', 'server'],
+  'extrato-lento': ['indice', 'db'],
 }
 
 describe('level concepts', () => {

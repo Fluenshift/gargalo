@@ -2,7 +2,7 @@
 // another tab or a hand edit may have left something the board cannot draw.
 
 import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, protocolRefusal } from './sim/model'
-import type { Kind, Protocol, Region } from './sim/model'
+import type { Kind, Level, Protocol, Region } from './sim/model'
 
 export interface SavedNode {
   id: string
@@ -27,8 +27,23 @@ const isProtocol = (v: unknown): v is Protocol => typeof v === 'string' && Objec
 
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && Object.hasOwn(SPECS, v)
 
+/**
+ * Keeps the picks that name a string option. With the level at hand, only known
+ * challenge ids and their own option ids survive; without it, `levelWork` ignores unknown ones.
+ */
+function parseFixes(value: unknown, level?: Level): Record<string, string> | undefined {
+  if (!isObject(value)) return undefined
+  const fixes: Record<string, string> = {}
+  for (const [challenge, option] of Object.entries(value)) {
+    if (typeof option !== 'string') continue
+    if (level && !level.code?.some((c) => c.id === challenge && c.options.some((o) => o.id === option))) continue
+    fixes[challenge] = option
+  }
+  return Object.keys(fixes).length ? fixes : undefined
+}
+
 /** The saved design, or null when it is not one the board can draw. */
-export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge[] } | null {
+export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; edges: SavedEdge[]; fixes?: Record<string, string> } | null {
   let value: unknown
   try {
     value = JSON.parse(raw)
@@ -78,5 +93,6 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
       ...(Object.keys(policy).length ? { data: policy } : {}),
     })
   }
-  return { nodes, edges }
+  const fixes = parseFixes(value.fixes, level)
+  return { nodes, edges, ...(fixes ? { fixes } : {}) }
 }

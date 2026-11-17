@@ -20,6 +20,8 @@ export function Inspector({
   escapeCloses = true,
   children,
   region,
+  fixes,
+  onOpenCode,
 }: {
   kind: Kind
   /** The level on screen: a server lists its routes. */
@@ -30,6 +32,10 @@ export function Inspector({
   /** False while something above the panel (a menu) owns Escape. */
   escapeCloses?: boolean
   children?: ReactNode
+  /** Picks made for the level's code challenges (challenge id to option id). */
+  fixes?: Record<string, string>
+  /** Opens the code of a challenge; absent where the level has none. */
+  onOpenCode?: (challengeId: string) => void
   /** Regions to choose from for the selected piece; absent on single-region levels and for global pieces. */
   region?: { value: Region; choices: Region[]; editable: boolean; onChange: (r: Region) => void }
 }) {
@@ -137,7 +143,10 @@ export function Inspector({
                 <th scope="col">Resposta</th>
               </tr>
             </thead>
-            {endpointsOf(level).map((e) => (
+            {endpointsOf(level).map((e) => {
+              const challenge = onOpenCode ? level.code?.find((c) => c.class === e.class) : undefined
+              const fixed = challenge?.options.find((o) => o.id === fixes?.[challenge.id])?.fixes === true
+              return (
               <tbody key={e.class}>
                 <tr>
                   <th scope="rowgroup" colSpan={4} className="routes__route">
@@ -150,8 +159,19 @@ export function Inspector({
                   <td>{e.queries}</td>
                   <td>{e.responseKb} kB</td>
                 </tr>
+                {challenge && (
+                  <tr>
+                    <td colSpan={4} className="routes__code">
+                      <span className="routes__flag">{fixed ? 'código corrigido' : 'código com problema'}</span>
+                      <button type="button" className="ghost ghost--small" onClick={() => onOpenCode?.(challenge.id)}>
+                        Ver código
+                      </button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
-            ))}
+              )
+            })}
           </table>
         </section>
       )}
