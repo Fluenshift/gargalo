@@ -31,6 +31,7 @@ import {
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
 import type { Editor } from './editorContext'
+import { CodePanel } from './CodePanel'
 import { Inspector } from './Inspector'
 import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
@@ -62,7 +63,7 @@ import type { FailureReason, RunSummary, TickResult } from './sim/engine'
 import { bottleneck, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { HOME_REGION, REGIONS, SPECS, canConnect, connectRefusal, levelRegions, regionOf, totalCost } from './sim/model'
+import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, canConnect, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
 const nodeTypes = { component: NodeCard, region: RegionArea }
@@ -167,6 +168,8 @@ const designKey = (level: Level) => `gargalo:design:${level.id}`
 interface Design {
   nodes: ComponentNode[]
   edges: Edge[]
+  /** Option picked for each code challenge of the level. */
+  fixes?: Record<string, string>
 }
 
 /** The level's starting architecture laid out in columns, pieces of the same kind stacked. */
@@ -199,7 +202,7 @@ function loadDesign(play: Play): Design {
   if (play.free) return (play.free.design as Design | null) ?? freshDesign(play.start)
   const raw = readStorage(designKey(play.level))
   // Storage unavailable or holding something the board cannot draw: start from scratch.
-  return (raw && parseDesign(raw)) || freshDesign(play.start)
+  return (raw && parseDesign(raw, play.level)) || freshDesign(play.start)
 }
 
 function readStorage(key: string): string | null {
@@ -231,6 +234,7 @@ function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
 /** "3 retries com backoff · breaker · chave de idempotência", or undefined for a plain link. */
 function policyLabel(p: LinkPolicy): string | undefined {
   const parts: string[] = []
+  if (p.protocol && p.protocol !== 'rest') parts.push(PROTOCOLS[p.protocol].label)
   if (p.retries) parts.push(`${p.retries} ${p.retries === 1 ? 'retry' : 'retries'}${p.backoff ? ' com backoff' : ''}`)
   if (p.breaker) parts.push('breaker')
   if (p.idempotent) parts.push('chave de idempotência')
@@ -588,6 +592,9 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const [initial] = useState(() => loadDesign(play))
   const [nodes, setNodes, onNodesChange] = useNodesState<ComponentNode>(initial.nodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(initial.edges)
+  const [fixes, setFixes] = useState<Record<string, string>>(() => initial.fixes ?? {})
+  /** Id of the code challenge whose code is open on the side panel. */
+  const [codeId, setCodeId] = useState<string | null>(null)
   const [run, setRun] = useState<{ ticks: TickResult[]; summary: RunSummary } | null>(null)
   /** How many simulated seconds are on screen; scrubbable once the run ends. */
   const [shown, setShown] = useState(0)
@@ -596,14 +603,17 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const finished = run !== null && !running
   const tick = run && shown > 0 ? run.ticks[shown - 1] : undefined
-  const arch = useMemo(() => toArchitecture(nodes, edges), [nodes, edges])
+  const arch = useMemo(
+    () => ({ ...toArchitecture(nodes, edges), ...(Object.keys(fixes).length ? { fixes } : {}) }),
+    [nodes, edges, fixes],
+  )
   const cost = totalCost(arch)
 
   const onDesign = useRef(play.free?.onDesign)
   useEffect(() => {
     if (onDesign.current) onDesign.current({ nodes, edges })
-    else save(designKey(level), { nodes, edges })
-  }, [level, nodes, edges])
+    else save(designKey(level), { nodes, edges, fixes })
+  }, [level, nodes, edges, fixes])
 
   useEffect(() => {
     const added = nodes.find((n) => n.id === pendingFit.current)
@@ -838,8 +848,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }
 
   const isValidConnection: IsValidConnection = useCallback(
-    (c) => canConnect(arch, c.source, c.target),
-    [arch],
+    (c) => canConnect(arch, c.source, c.target, level),
+    [arch, level],
   )
 
   // A drop on a piece that refuses the link says why instead of silently doing nothing.
@@ -847,7 +857,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     if (state.isValid || !state.fromNode || !state.toNode) return
     const [source, target] =
       state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
-    setNotice(connectRefusal(arch, source, target))
+    setNotice(connectRefusal(arch, source, target, level))
   }
 
   const onConnect = useCallback(
@@ -878,6 +888,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const selected = nodes.filter((n) => n.selected)
   const selectedEdges = edges.filter((e) => e.selected)
   const selectedLink = selected.length === 0 && selectedEdges.length === 1 ? selectedEdges[0] : undefined
+  const codeChallenge = level.code?.find((c) => c.id === codeId)
   const inspected = listInfo?.kind ?? (selected.length === 1 ? selected[0].data.kind : null)
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
@@ -895,7 +906,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }, [setNodes])
 
   const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: picked }) => {
-    if (picked.length > 0) setListInfo(null)
+    if (picked.length > 0) {
+      setListInfo(null)
+      setCodeId(null)
+    }
   }, [])
 
   const reset = () => {
@@ -904,6 +918,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     setEdges(fresh.edges)
     setUndoStack([])
     setToast(null)
+    setFixes({})
+    setCodeId(null)
     clearRun()
   }
 
@@ -1171,10 +1187,37 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             )}
           </div>
 
-          {!inspected && selectedLink && (
+          {codeChallenge && (
+            <CodePanel
+              challenge={codeChallenge}
+              route={endpointsOf(level).find((e) => e.class === codeChallenge.class)?.route ?? ''}
+              picked={fixes[codeChallenge.id]}
+              editable={editable}
+              onPick={(optionId) => {
+                clearRun()
+                const next = { ...fixes, [codeChallenge.id]: optionId }
+                setFixes(next)
+                // Links the new code forbids go away, with the reason.
+                const drawn = { ...toArchitecture(nodes, edges), fixes: next }
+                const open = new Set(openEdges(drawn, level))
+                const kept = edges.filter((_, i) => open.has(drawn.edges[i]))
+                const gone = edges.length - kept.length
+                if (gone === 0) return
+                const kind = new Map(nodes.map((n) => [n.id, n.data.kind]))
+                const e = edges.find((_, i) => !open.has(drawn.edges[i]))!
+                const reason = lockedLink(level, next, kind.get(e.source)!, kind.get(e.target)!)
+                setEdges(kept)
+                setNotice(`${gone === 1 ? '1 ligação removida' : `${gone} ligações removidas`}: ${reason}`)
+              }}
+              onClose={() => setCodeId(null)}
+            />
+          )}
+          {!codeChallenge && !inspected && selectedLink && (
             <LinkPanel
               from={SPECS[nodes.find((n) => n.id === selectedLink.source)!.data.kind].label}
               to={SPECS[nodes.find((n) => n.id === selectedLink.target)!.data.kind].label}
+              fromKind={nodes.find((n) => n.id === selectedLink.source)!.data.kind}
+              toKind={nodes.find((n) => n.id === selectedLink.target)!.data.kind}
               policy={policyOf(selectedLink)}
               state={tick ? (tick.breakers[`${selectedLink.source}->${selectedLink.target}`] ?? 'closed') : undefined}
               editable={editable}
@@ -1185,9 +1228,12 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               onClose={() => setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))}
             />
           )}
-          {inspected && (
+          {!codeChallenge && inspected && (
             <Inspector
               kind={inspected}
+              level={level}
+              fixes={fixes}
+              onOpenCode={level.code ? setCodeId : undefined}
               onClose={closeInfo}
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}

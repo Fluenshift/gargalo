@@ -1,3 +1,4 @@
+import { HIDDEN_CLIENT, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
 import type { ArchEdge, Architecture, Level } from './sim/model'
 
 /** The Startup's levels and boss. */
@@ -45,6 +46,40 @@ export const STARTUP_LEVELS: Level[] = [
     traffic: [{ from: 0, rps: 3000 }],
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 420 },
+  },
+  {
+    id: 'pedidos-em-loop',
+    title: 'Pedidos em loop',
+    briefing:
+      'A tela do pedido ficou lenta e o banco vive no limite, com só 1.200 req/s. Antes de comprar máquina, abra um servidor e leia o código de GET /pedidos/:id. O banco é um só: não dá para dividir.',
+    durationS: 30,
+    mix: { static: 0.2, read: 0.7, write: 0.1 },
+    traffic: [{ from: 0, rps: 1200 }],
+    failures: [],
+    code: [N_PLUS_ONE],
+    endpoints: { read: 'GET /pedidos/:id' },
+    goals: { minAvailability: 0.99, maxP99Ms: 480, maxCost: 400 },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'cdn', kind: 'cdn' },
+        { id: 'lb', kind: 'lb' },
+        { id: 'server-1', kind: 'server' },
+        { id: 'server-2', kind: 'server' },
+        { id: 'server-3', kind: 'server' },
+        { id: 'cache', kind: 'cache' },
+        { id: 'db', kind: 'db' },
+      ],
+      edges: [
+        { source: 'client', target: 'cdn' },
+        { source: 'cdn', target: 'lb' },
+        ...['server-1', 'server-2', 'server-3'].flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'cache' },
+        ]),
+        { source: 'cache', target: 'db' },
+      ],
+    },
   },
   {
     id: 'caiu-de-madrugada',
@@ -117,6 +152,8 @@ function withPayment(link: Omit<ArchEdge, 'source' | 'target'>): Architecture {
 /** A catalog so large that few products are looked at twice: the cache rarely hits. */
 const LONG_TAIL_CATALOG: Level['tweaks'] = { cache: { serves: { read: 0.3, bot: 0.3 } } }
 
+const EIGHT_SERVERS = Array.from({ length: 8 }, (_, i) => `server-${i + 1}`)
+
 export const ECOMMERCE_LEVELS: Level[] = [
   {
     id: 'checkout-travando',
@@ -147,6 +184,49 @@ export const ECOMMERCE_LEVELS: Level[] = [
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 350, maxCost: 720, maxStaleReads: 0.03 },
     tweaks: LONG_TAIL_CATALOG,
+  },
+  {
+    id: 'replica-parada',
+    title: 'Réplica que ninguém usa',
+    briefing:
+      'O time comprou uma réplica de leitura para aliviar o banco, mas ela está parada: o banco recebe 2.200 req/s, 80% leituras, e aguenta 1.000. O cache acerta metade das leituras do catálogo. Antes de ligar qualquer coisa ao servidor, leia o código de GET /produtos/:id. Orçamento de $750 por mês.',
+    durationS: 30,
+    mix: { static: 0.1, read: 0.8, write: 0.1 },
+    traffic: [{ from: 0, rps: 2200 }],
+    failures: [],
+    code: [HIDDEN_CLIENT],
+    goals: { minAvailability: 0.99, maxP99Ms: 450, maxCost: 750 },
+    tweaks: { cache: { serves: { read: 0.5, bot: 0.5 } } },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'lb', kind: 'lb' },
+        ...EIGHT_SERVERS.map((id) => ({ id, kind: 'server' as const })),
+        { id: 'db', kind: 'db' },
+        { id: 'replica', kind: 'replica' },
+      ],
+      edges: [
+        { source: 'client', target: 'lb' },
+        ...EIGHT_SERVERS.flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'db' },
+        ]),
+        { source: 'db', target: 'replica' },
+      ],
+    },
+  },
+  {
+    id: 'catalogo-sem-paginacao',
+    title: 'Catálogo sem paginação',
+    briefing:
+      'A página de categoria demora segundos e os servidores fervem com só 1.000 req/s. Nada mudou no tráfego: mudou o código de GET /produtos. Abra um servidor e leia. A loja paga até $500 por mês.',
+    durationS: 30,
+    mix: { static: 0.3, read: 0.6, write: 0.1 },
+    traffic: [{ from: 0, rps: 1000 }],
+    failures: [],
+    code: [NO_PAGINATION],
+    endpoints: { read: 'GET /produtos' },
+    goals: { minAvailability: 0.99, maxP99Ms: 250, maxCost: 500 },
   },
   {
     id: 'bot-de-precos',
@@ -219,6 +299,7 @@ export const FINTECH_LEVELS: Level[] = [
     failures: [],
     goals: { minAvailability: 0.98, maxP99Ms: 1000, maxCost: 450, maxDuplicates: 0 },
     tweaks: { payment: { flaky: 0.15 } },
+    endpoints: { static: 'GET /comprovantes/:id', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
     start: withPayment({ retries: 2 }),
   },
   {
@@ -230,8 +311,23 @@ export const FINTECH_LEVELS: Level[] = [
     mix: { static: 0.1, read: 0.3, write: 0.6 },
     traffic: [{ from: 0, rps: 2600 }],
     hotKey: 0.35,
+    endpoints: { static: 'GET /extratos/:mes.pdf', read: 'GET /contas/:id/extrato', write: 'POST /lancamentos' },
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 600, maxCost: 1050 },
+  },
+  {
+    id: 'extrato-lento',
+    title: 'Extrato lento',
+    briefing:
+      'Todo cliente abre o extrato depois de uma transferência, e ele muda a cada lançamento: o cache acerta só 30%. O banco não dá conta de 900 req/s. Partições e réplicas custam caro; leia antes o código de GET /contas/:id/extrato. Orçamento de $550 por mês.',
+    durationS: 30,
+    mix: { static: 0.2, read: 0.6, write: 0.2 },
+    traffic: [{ from: 0, rps: 900 }],
+    failures: [],
+    code: [NO_INDEX],
+    endpoints: { read: 'GET /contas/:id/extrato', write: 'POST /transferencias' },
+    tweaks: { cache: { serves: { read: 0.3, bot: 0.3 } } },
+    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 550 },
   },
   {
     id: 'clientes-na-europa',
@@ -242,6 +338,7 @@ export const FINTECH_LEVELS: Level[] = [
     mix: { static: 0.4, read: 0.595, write: 0.005 },
     traffic: [{ from: 0, rps: 1200 }],
     users: { sa: 0.4, eu: 0.6 },
+    endpoints: { static: 'GET /app/:arquivo', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
     failures: [],
     goals: { minAvailability: 0.99, maxP99Ms: 150, maxCost: 800, maxStaleReads: 0.02 },
   },
@@ -260,6 +357,7 @@ export const FECHAMENTO_DO_MES: Level = {
   ],
   users: { sa: 0.5, us: 0.5 },
   regionOutages: [{ region: 'sa', from: 20, to: 35 }],
+  endpoints: { static: 'GET /faturas/:id.pdf', read: 'GET /contas/:id/saldo', write: 'POST /transferencias' },
   failures: [],
   goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 1200 },
 }

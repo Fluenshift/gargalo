@@ -1,8 +1,8 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, REGIONS, SPECS } from './sim/model'
-import type { Kind, Region } from './sim/model'
+import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, openEdges, protocolRefusal } from './sim/model'
+import type { Kind, Level, Protocol, Region } from './sim/model'
 
 export interface SavedNode {
   id: string
@@ -16,17 +16,34 @@ export interface SavedEdge {
   id: string
   source: string
   target: string
-  data?: { retries?: number; backoff?: boolean; breaker?: boolean; idempotent?: boolean }
+  data?: { retries?: number; backoff?: boolean; breaker?: boolean; idempotent?: boolean; protocol?: Protocol }
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null
 
 const isRegion = (v: unknown): v is Region => typeof v === 'string' && Object.hasOwn(REGIONS, v)
 
+const isProtocol = (v: unknown): v is Protocol => typeof v === 'string' && Object.hasOwn(PROTOCOLS, v)
+
 const isKind = (v: unknown): v is Kind => typeof v === 'string' && Object.hasOwn(SPECS, v)
 
+/**
+ * Keeps the picks that name a string option. With the level at hand, only known
+ * challenge ids and their own option ids survive; without it, `levelWork` ignores unknown ones.
+ */
+function parseFixes(value: unknown, level?: Level): Record<string, string> | undefined {
+  if (!isObject(value)) return undefined
+  const fixes: Record<string, string> = {}
+  for (const [challenge, option] of Object.entries(value)) {
+    if (typeof option !== 'string') continue
+    if (level && !level.code?.some((c) => c.id === challenge && c.options.some((o) => o.id === option))) continue
+    fixes[challenge] = option
+  }
+  return Object.keys(fixes).length ? fixes : undefined
+}
+
 /** The saved design, or null when it is not one the board can draw. */
-export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge[] } | null {
+export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; edges: SavedEdge[]; fixes?: Record<string, string> } | null {
   let value: unknown
   try {
     value = JSON.parse(raw)
@@ -63,6 +80,12 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
     if (data.backoff === true) policy.backoff = true
     if (data.breaker === true) policy.breaker = true
     if (data.idempotent === true) policy.idempotent = true
+    // REST is the default and is not stored; a protocol the link cannot use falls back to it.
+    if (isProtocol(data.protocol) && data.protocol !== 'rest') {
+      const source = nodes.find((n) => n.id === e.source)!.data.kind
+      const target = nodes.find((n) => n.id === e.target)!.data.kind
+      if (!protocolRefusal(source, target, data.protocol)) policy.protocol = data.protocol
+    }
     edges.push({
       id: typeof e.id === 'string' ? e.id : `${e.source}->${e.target}`,
       source: e.source,
@@ -70,5 +93,8 @@ export function parseDesign(raw: string): { nodes: SavedNode[]; edges: SavedEdge
       ...(Object.keys(policy).length ? { data: policy } : {}),
     })
   }
-  return { nodes, edges }
+  const fixes = parseFixes(value.fixes, level)
+  // Links the picked code forbids cannot come back from storage.
+  const open = new Set(openEdges({ nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })), edges, ...(fixes ? { fixes } : {}) }, level))
+  return { nodes, edges: edges.filter((e) => open.has(e)), ...(fixes ? { fixes } : {}) }
 }

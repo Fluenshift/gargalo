@@ -1941,6 +1941,240 @@ ul {
   white-space: nowrap;
 }
 
+/* Protocol picker and the server's routes. */
+
+.link-panel__why {
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.link-panel__learn {
+  margin-top: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.routes {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.routes thead th:nth-child(1) {
+  width: 21%;
+}
+
+.routes thead th:nth-child(2) {
+  width: 21%;
+}
+
+.routes thead th:nth-child(3) {
+  width: 30%;
+}
+
+.routes thead th {
+  padding: 0 0 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--ink-soft);
+}
+
+.routes tbody {
+  border-top: 1px solid var(--line);
+}
+
+.routes__route {
+  padding: 8px 0 2px;
+  font-weight: 500;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.routes td {
+  padding: 0 8px 8px 0;
+  vertical-align: top;
+}
+
+/* Code challenges: the endpoint's code and the fixes to pick from. */
+
+.routes__code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 0 10px;
+}
+
+.routes__flag {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.ghost--small {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+.code-panel__head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.code-panel__head h2 {
+  font-size: 28px;
+  line-height: 1.1;
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.code-panel__head h2:focus {
+  outline: none;
+}
+
+.code-panel__route {
+  font-size: 12px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.code {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.code:focus-visible {
+  outline: 2px solid var(--focus);
+}
+
+.fixes {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: grid;
+  gap: 8px;
+}
+
+.fixes legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.fix {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  cursor: pointer;
+}
+
+.fix:hover {
+  background: var(--sunk);
+}
+
+.fix.is-picked {
+  border-color: var(--ink);
+}
+
+.fix input {
+  margin: 3px 0 0;
+  accent-color: var(--ink);
+}
+
+.fix input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.fix__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fix__label {
+  font-weight: 500;
+}
+
+.code--option {
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+.fixes:disabled {
+  opacity: 0.6;
+}
+
+.code-panel__verdict {
+  position: sticky;
+  bottom: 0;
+  margin: auto -20px 0;
+  padding: 0 20px;
+  background: var(--paper);
+}
+
+.code-panel__verdict:not(:empty) {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--ink);
+}
+
+.code-panel__lock,
+.fix__opens {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.fix__opens:empty {
+  display: none;
+}
+
+.code-panel__hint {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .code-panel__verdict {
+    margin: auto -16px 0;
+  }
+
+  .code-panel__verdict:not(:empty) {
+    padding: 12px 16px 16px;
+  }
+}
+
+
 /* Free mode: the list of systems and the traffic editor. */
 
 .result--free {

@@ -26,23 +26,26 @@ const career: Company[] = [
 const storage = (entries: Record<string, string>) => (key: string) => entries[key] ?? null
 
 describe('career data', () => {
-  it('the Startup has five levels and the TV report as its boss', () => {
+  it('the Startup has six levels and the TV report as its boss', () => {
     expect(COMPANIES[0].name).toBe('Startup')
     expect(COMPANIES[0].levels.map((l) => l.id)).toEqual([
       'colocar-no-ar',
       'primeiro-deploy',
       'banco-nao-aguenta',
       'imagens-pesadas',
+      'pedidos-em-loop',
       'caiu-de-madrugada',
     ])
     expect(COMPANIES[0].boss.id).toBe('materia-na-tv')
   })
 
-  it('the E-commerce has four levels and Black Friday as its boss', () => {
+  it('the E-commerce has five levels and Black Friday as its boss', () => {
     expect(COMPANIES[1].name).toBe('E-commerce')
     expect(COMPANIES[1].levels.map((l) => l.id)).toEqual([
       'checkout-travando',
       'catalogo-gigante',
+      'replica-parada',
+      'catalogo-sem-paginacao',
       'bot-de-precos',
       'pagamento-instavel',
     ])
