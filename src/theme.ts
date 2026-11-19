@@ -8,7 +8,7 @@ export type ThemeChoice = 'light' | 'dark' | 'system'
 export const THEME_KEY = 'gargalo:theme'
 
 /** Browser-chrome colour per theme: the paper token of each. Keep in step with App.css and public/theme.js. */
-export const PAPER = { light: '#f6f3f1', dark: '#102d57' } as const
+export const PAPER = { light: '#e7e5e4', dark: '#0f0f0e' } as const
 
 export function parseTheme(raw: string | null): ThemeChoice {
   return raw === 'light' || raw === 'dark' ? raw : 'system'

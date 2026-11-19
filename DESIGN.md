@@ -1,8 +1,8 @@
 # gargalo — Design
 
-> Revista técnica editorial sobre pergaminho quente. À noite, cópia heliográfica.
+> Etiqueta de galeria sobre papel massa. À noite, a sala preta.
 
-O jogo inteiro roda sobre um fundo pergaminho (`#f6f3f1`), nunca branco puro. Títulos são serifados em peso 400 e falam pelo contraste do traço, não pelo negrito. Todo o resto — texto, botões, rótulos, números, peças no canvas — é monoespaçado, e isso dá a cara de manual técnico. Bordas são linhas finas de 1px em cinza-claro (`#cecac8`), controles são pílulas, cartões são retângulos de canto macio e nada tem sombra.
+O jogo inteiro roda sobre papel osso (`#e7e5e4`), nunca branco puro. Neutros quentes e tinta preta fazem todo o trabalho: sem gradiente, sem sombra e quase sem cor. Títulos são serifados em peso 400 e falam pelo contraste do traço, não pelo negrito. Todo o resto — texto, botões, rótulos, números, peças no canvas — é monoespaçado, e isso dá a cara de manual técnico. Bordas são linhas finas de 1px em massa (`#c4c3b6`), controles são pílulas, cartões são retângulos de canto macio e nada tem sombra.
 
 Os tokens vivem no topo de `src/App.css`: `:root` guarda tipo, espaço, forma e camadas; `:root, [data-theme='light']` guarda a paleta clara; `[data-theme='dark']` (e o mesmo bloco dentro de `@media (prefers-color-scheme: dark)`) guarda a escura. Nenhuma cor, tamanho de fonte, espaço, raio, sombra ou camada fica solta no CSS ou nos `.tsx`; ficam de fora só `0`, linhas de 1px, porcentagens e a geometria própria de um componente (largura do sparkline, setas do mapa, breakpoints). Este arquivo explica **quando** usar cada um. A página interna `/design` (ou `?design`) mostra todos os tokens e componentes nos dois temas.
 
@@ -10,26 +10,26 @@ Os tokens vivem no topo de `src/App.css`: `:root` guarda tipo, espaço, forma e 
 
 | Token | Claro | Escuro | Uso |
 |---|---|---|---|
-| `--paper` | `#f6f3f1` | `#102d57` | Fundo do app, painéis, peças, cartões. É a superfície de quase tudo. |
-| `--sunk` | `#ece8e5` | `#173a6b` | Hover e linha pressionada. |
-| `--wash` | `#cfdaf5` | `#1f4a82` | O único cartão elevado da tela: o briefing da fase. Não use em outro lugar. |
-| `--ink` | `#242424` | `#eef4fb` | Texto principal, superfícies invertidas (peça Usuários, fase atual, toasts, menu). |
-| `--ink-soft` | `#4e4d4d` | `#b9cde6` | Texto secundário, ligações entre peças. |
-| `--line` | `#cecac8` | `#4a72a8` | Toda borda e divisória. Sempre 1px. |
-| `--grid` | `#cecac8` | `#3a6299` | Pontos do canvas. |
-| `--track` | `#cecac8` | `#0a1f3d` | Parte vazia da barra de carga. |
-| `--accent` | `#2b59d1` | `#9cc8ff` | A **única** ação primária por tela (Rodar simulação), seleção no canvas e passo atual. |
-| `--accent-hover` | `#2149b3` | `#c2ddff` | Hover da ação primária. |
-| `--focus` | `#2b59d1` | `#9cc8ff` | Anel de foco do teclado. |
-| `--on-accent` | `#f6f3f1` | `#102d57` | Texto sobre a ação primária. |
-| `--on-ink` | `#f6f3f1` | `#102d57` | Texto, bordas e foco sobre superfície invertida. |
-| `--on-ink-soft` | `#cecac8` | `#34557f` | Texto secundário sobre superfície invertida. |
+| `--paper` | `#e7e5e4` | `#0f0f0e` | Fundo do app, painéis, peças, cartões. É a superfície de quase tudo. |
+| `--sunk` | `#dfdcd5` | `#1c1b1a` | Hover e linha pressionada. |
+| `--wash` | `#c4c3b6` | `#2a2927` | O único cartão elevado da tela: o briefing da fase. Não use em outro lugar. |
+| `--ink` | `#0f0f0e` | `#ebebeb` | Texto principal, superfícies invertidas (peça Usuários, fase atual, toasts, menu). |
+| `--ink-soft` | `#4d4c49` | `#aeaca5` | Texto secundário, ligações entre peças. |
+| `--line` | `#c4c3b6` | `#3d3c39` | Toda borda e divisória. Sempre 1px. |
+| `--grid` | `#c4c3b6` | `#34332f` | Pontos do canvas. |
+| `--track` | `#c4c3b6` | `#2a2927` | Parte vazia da barra de carga. |
+| `--accent` | `#0f0f0e` | `#e7e5e4` | A **única** ação primária por tela (Rodar simulação), seleção no canvas e passo atual. |
+| `--accent-hover` | `#3a3936` | `#ffffff` | Hover da ação primária. |
+| `--focus` | `#0f0f0e` | `#e7e5e4` | Anel de foco do teclado. |
+| `--on-accent` | `#e7e5e4` | `#0f0f0e` | Texto sobre a ação primária. |
+| `--on-ink` | `#e7e5e4` | `#0f0f0e` | Texto, bordas e foco sobre superfície invertida. |
+| `--on-ink-soft` | `#c4c3b6` | `#595855` | Texto secundário sobre superfície invertida. |
 
 Camadas translúcidas (também por tema): `--backdrop` atrás do modal, `--veil` na lixeira ociosa, `--hatch` nas listras de uma região fora do ar e `--glow-1..3` na mancha desfocada do mapa da carreira.
 
 ### Cor de carga: a exceção
 
-Fora o azul da ação primária, cor tem um só significado no jogo: **estado de carga**. Os preenchimentos pintam as peças; as tintas carregam texto e barras.
+Cor tem um só significado no jogo: **estado de carga**. Os preenchimentos pintam as peças; as tintas carregam texto e barras.
 
 | Estado | Preenchimento claro | Tinta clara | Preenchimento escuro | Tinta escura |
 |---|---|---|---|---|
@@ -37,15 +37,15 @@ Fora o azul da ação primária, cor tem um só significado no jogo: **estado de
 | perto do limite | `--warm-wash` `#ecda98` | `--warm` `#8a5a00` | `#5c4a17` | `#f3cc72` |
 | sobrecarregada ou fora do ar | `--hot-wash` `#ff9473` | `--hot` `#b4380c` | `#7a2c22` | `#ffa285` |
 
-No claro, os pastéis não passam no contraste AA sobre o pergaminho, por isso texto e barra usam as tintas escuras. No escuro é o inverso: os preenchimentos ficam escuros para a tinta clara continuar legível dentro da peça, e as tintas ficam claras para ler sobre o azul.
+No claro, os pastéis não passam no contraste AA sobre o papel osso, por isso texto e barra usam as tintas escuras. No escuro é o inverso: os preenchimentos ficam escuros para a tinta clara continuar legível dentro da peça, e as tintas ficam claras para ler sobre o preto.
 
 Não use essas cores para enfeite, categoria ou marca. Se uma cor aparece numa peça, ela diz quanto a peça está carregada.
 
-A mancha desfocada atrás do título do mapa da carreira (coral → azul-céu → menta) é a única decoração colorida. Ela não carrega informação; no escuro fica mais fraca.
+A mancha desfocada atrás do título do mapa da carreira é neutra (massa → velino → grafite). Ela não carrega informação; no escuro fica mais fraca.
 
-## Modo escuro: cópia heliográfica
+## Modo escuro: a sala preta
 
-O escuro não é um "modo noturno" genérico: é a mesma folha técnica impressa como blueprint. Papel azul profundo, tinta quase branca, linhas azul-claras. A regra de cor continua igual (azul só na ação primária, cor só para carga); o azul da ação vira um azul-céu claro com texto azul-profundo.
+O escuro é a sala preta da galeria: papel quase preto, tinta giz, linhas cinza-quente. A regra de cor continua igual (cor só para carga); a ação primária vira uma pílula osso com texto preto.
 
 - Segue `prefers-color-scheme` por padrão.
 - O seletor Claro / Escuro / Sistema (no pé do painel da fase e no topo do mapa e do modo livre) grava `gargalo:theme` no `localStorage` e põe `data-theme` no `<html>`. "Sistema" apaga a chave.
@@ -101,7 +101,7 @@ Nunca deixe um título em negrito. Nunca troque o mono por uma sans no corpo: a 
 | `--radius-round` | 50% | Botões redondos de ícone |
 | `--shadow` | `none` | Nada tem sombra |
 
-Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (pergaminho → periwinkle).
+Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (osso → massa).
 
 Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--panel-width` 360px, `--inspector-width` 340px, `--piece-width` 184px, `--page-width` 1200px.
 
@@ -134,7 +134,7 @@ Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 
   - `.btn--small`: 6px × 14px, `--text-xs`.
 - **Abas** (`.segmented`): grupo de botões com `aria-pressed`; o pressionado é invertido. `.segmented--small` no seletor de tema.
 - **Painel** (`.inspector`): folha lateral à direita do desenho, com cabeçalho serifado e régua de ganhos e custos (`.ledger`). No celular vira folha inferior.
-- **Peça no canvas** (`.node`): pergaminho, borda `--line`, `--radius-piece`, título em mono caixa-alta. A peça Usuários é invertida. Carga pinta o fundo com o preenchimento do estado (`.heat--warm`, `.heat--hot`, `.heat--down` com listras).
+- **Peça no canvas** (`.node`): papel, borda `--line`, `--radius-piece`, título em mono caixa-alta. A peça Usuários é invertida. Carga pinta o fundo com o preenchimento do estado (`.heat--warm`, `.heat--hot`, `.heat--down` com listras).
 - **Ligações:** traço `--ink-soft`, mais grosso quanto mais tráfego passa; selecionada em `--accent`; disjuntor aberto pontilhado em `--hot`, meio-aberto tracejado em `--warm`.
 - **Briefing da fase** (`.brief`): cartão `--wash`, `--radius-card`.
 - **Selo** (`.sheet`): folha de metas com borda `--line` e `--radius-card`, cabeçalhos em caixa-alta, valor medido na tinta do estado.
@@ -148,7 +148,7 @@ Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 
 
 - Branco puro como fundo.
 - Títulos em 500 ou mais.
-- O azul em qualquer coisa além da ação primária, da seleção e do foco.
+- Qualquer cor saturada fora das cores de carga: a ênfase é a tinta preta.
 - Pastéis como cor de interface fora do estado de carga.
 - Bordas mais grossas que 1px ou mais escuras que `--line` (exceto o botão fantasma).
 - Sombras.

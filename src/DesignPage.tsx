@@ -7,7 +7,7 @@ import { ThemeToggle } from './ThemeToggle'
 
 /**
  * Internal reference at /design (or ?design): every token and component, side by
- * side in the light sheet and the dark blueprint. Not linked from the game.
+ * side in the light putty sheet and the dark black room. Not linked from the game.
  */
 
 const COLORS: { name: string; use: string }[] = [
@@ -66,7 +66,7 @@ const ALL = [...COLORS.map((c) => c.name), ...TEXT, ...TITLES, ...SPACES, ...RAD
 function Sheet({ theme }: { theme: 'light' | 'dark' }) {
   const [ref, v] = useTokens(ALL)
   const [segment, setSegment] = useState('2')
-  const label = theme === 'light' ? 'Claro: folha técnica' : 'Escuro: cópia heliográfica'
+  const label = theme === 'light' ? 'Claro: papel massa' : 'Escuro: sala preta'
   return (
     <div ref={ref} className="theme-scope ds-sheet" data-theme={theme}>
       <h2 className="ds-sheet__title">{label}</h2>
