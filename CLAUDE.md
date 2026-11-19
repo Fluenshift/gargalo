@@ -15,7 +15,7 @@ A change is done when `npx oxlint --deny-warnings && npm test && npm run build` 
 ## Product voice
 
 - UI copy is Brazilian Portuguese, sentence case, plain verbs. Code, identifiers and comments are English.
-- The look is an editorial tech journal on parchment: serif headings at weight 400, mono for everything else, 1px hairlines, pill controls, no shadows; line icons in `src/KindIcon.tsx` (24×24, stroke 1.5). Colour carries one meaning, load state; the only other colour is the blue of the single primary action. Read `DESIGN.md` before any visual change; tokens live on `:root` in `src/App.css`.
+- The look is a gallery wall label on warm putty paper (black room at night): serif headings at weight 400, mono for everything else, 1px hairlines, pill controls, no shadows; line icons in `src/KindIcon.tsx` (24×24, stroke 1.5). Colour carries one meaning, load state; the single primary action is a black ink pill, never a hue. Read `DESIGN.md` before any visual change; tokens live on `:root` in `src/App.css`.
 - The game teaches: a new mechanic arrives with its concept and tradeoffs in `src/concepts.ts`, and what the player learns should change something in the simulation.
 
 ## Git

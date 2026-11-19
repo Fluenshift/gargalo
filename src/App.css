@@ -1,11 +1,11 @@
 /*
-  Visual idea: an editorial tech journal on warm parchment (see DESIGN.md).
+  Visual idea: a gallery wall label on warm putty paper (see DESIGN.md).
   Serif headings at weight 400 announce; mono instructs everywhere else.
-  Hairline ash borders, pill controls, no shadows. Lake Blue marks the one
-  primary action. Colour otherwise means load state only: ok, warm, hot.
+  Hairline putty borders, pill controls, no shadows. A black ink pill marks the
+  one primary action. Colour means load state only: ok, warm, hot.
 
   Every colour, type size, space, radius, shadow and layer lives in this block
-  as a token. The dark theme (a blueprint: white ink on deep blue paper) only
+  as a token. The dark theme (a black room: chalk ink on near-black paper) only
   redefines the palette, further down. src/contrast.test.ts checks AA on both.
 */
 
@@ -115,20 +115,20 @@
 [data-theme='light'] {
   color-scheme: light;
 
-  --paper: #f6f3f1; /* Parchment: canvas and every panel */
-  --sunk: #ece8e5; /* hover and pressed rows */
-  --wash: #cfdaf5; /* Periwinkle Mist: the one elevated card, the level brief */
-  --ink: #242424; /* Off-Black: text, dark surfaces */
-  --ink-soft: #4e4d4d; /* Graphite: secondary text */
-  --line: #cecac8; /* Ash: every border and divider */
-  --grid: #cecac8; /* dots on the canvas */
-  --track: #cecac8; /* the empty part of a load bar */
-  --accent: #2b59d1; /* Lake Blue: the single primary action per screen */
-  --accent-hover: #2149b3;
-  --focus: #2b59d1;
-  --on-accent: #f6f3f1; /* text on the primary action */
-  --on-ink: #f6f3f1; /* text on inverted (ink) surfaces */
-  --on-ink-soft: #cecac8; /* secondary text on inverted surfaces */
+  --paper: #e7e5e4; /* Bone: canvas and every panel */
+  --sunk: #dfdcd5; /* Vellum: hover and pressed rows */
+  --wash: #c4c3b6; /* Putty: the one elevated card, the level brief */
+  --ink: #0f0f0e; /* Ink: text, dark surfaces, the primary action */
+  --ink-soft: #4d4c49; /* Graphite: secondary text */
+  --line: #c4c3b6; /* Putty: every border and divider */
+  --grid: #c4c3b6; /* dots on the canvas */
+  --track: #c4c3b6; /* the empty part of a load bar */
+  --accent: #0f0f0e; /* Ink pill: the single primary action per screen */
+  --accent-hover: #3a3936;
+  --focus: #0f0f0e;
+  --on-accent: #e7e5e4; /* text on the primary action */
+  --on-ink: #e7e5e4; /* text on inverted (ink) surfaces */
+  --on-ink-soft: #c4c3b6; /* secondary text on inverted surfaces */
 
   /* Load state. Pastel washes fill pieces; the darker inks carry text and bars (AA on parchment). */
   --ok: #1f6e47;
@@ -139,19 +139,19 @@
   --hot-wash: #ff9473;
 
   /* Translucent layers */
-  --backdrop: rgb(36 36 36 / 0.4); /* behind the modal */
-  --veil: rgb(246 243 241 / 0.6); /* the idle trash, see-through */
+  --backdrop: rgb(15 15 14 / 0.45); /* behind the modal */
+  --veil: rgb(231 229 228 / 0.6); /* the idle trash, see-through */
   --hatch: rgb(255 148 115 / 0.35); /* stripes over a region that is down */
   /* The career map's blurred wash: decoration only. */
-  --glow-1: rgb(255 148 115 / 0.55);
-  --glow-2: rgb(160 181 235 / 0.55);
-  --glow-3: rgb(167 252 205 / 0.5);
+  --glow-1: rgb(196 195 182 / 0.8);
+  --glow-2: rgb(223 220 213 / 0.8);
+  --glow-3: rgb(89 88 85 / 0.25);
 }
 
 /*
-  Dark: a blueprint ("cópia heliográfica"). Deep blue paper, near-white ink and
-  pale blue lines. Washes turn dark so light ink still reads on a loaded piece;
-  the state inks turn light so they read on the blue. Follows the system unless
+  Dark: the gallery's black room. Near-black paper, chalk ink and warm grey
+  lines. Washes turn dark so light ink still reads on a loaded piece; the state
+  inks turn light so they read on the black. Follows the system unless
   the player picked a theme (data-theme on <html>, set by public/theme.js).
   [data-theme] on any other element scopes a theme to that part (/design).
   The two blocks below must stay identical; the contrast test checks it.
@@ -159,63 +159,63 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --paper: #102d57;
-    --sunk: #173a6b;
-    --wash: #1f4a82;
-    --ink: #eef4fb;
-    --ink-soft: #b9cde6;
-    --line: #4a72a8;
-    --grid: #3a6299;
-    --track: #0a1f3d;
-    --accent: #9cc8ff;
-    --accent-hover: #c2ddff;
-    --focus: #9cc8ff;
-    --on-accent: #102d57;
-    --on-ink: #102d57;
-    --on-ink-soft: #34557f;
+    --paper: #0f0f0e;
+    --sunk: #1c1b1a;
+    --wash: #2a2927;
+    --ink: #ebebeb;
+    --ink-soft: #aeaca5;
+    --line: #3d3c39;
+    --grid: #34332f;
+    --track: #2a2927;
+    --accent: #e7e5e4;
+    --accent-hover: #ffffff;
+    --focus: #e7e5e4;
+    --on-accent: #0f0f0e;
+    --on-ink: #0f0f0e;
+    --on-ink-soft: #595855;
     --ok: #86e6b0;
     --ok-wash: #1c5a4a;
     --warm: #f3cc72;
     --warm-wash: #5c4a17;
     --hot: #ffa285;
     --hot-wash: #7a2c22;
-    --backdrop: rgb(4 14 30 / 0.6);
-    --veil: rgb(16 45 87 / 0.6);
+    --backdrop: rgb(0 0 0 / 0.6);
+    --veil: rgb(15 15 14 / 0.6);
     --hatch: rgb(255 162 133 / 0.3);
-    --glow-1: rgb(255 162 133 / 0.22);
-    --glow-2: rgb(156 200 255 / 0.3);
-    --glow-3: rgb(134 230 176 / 0.2);
+    --glow-1: rgb(196 195 182 / 0.14);
+    --glow-2: rgb(235 235 235 / 0.08);
+    --glow-3: rgb(89 88 85 / 0.25);
   }
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --paper: #102d57;
-  --sunk: #173a6b;
-  --wash: #1f4a82;
-  --ink: #eef4fb;
-  --ink-soft: #b9cde6;
-  --line: #4a72a8;
-  --grid: #3a6299;
-  --track: #0a1f3d;
-  --accent: #9cc8ff;
-  --accent-hover: #c2ddff;
-  --focus: #9cc8ff;
-  --on-accent: #102d57;
-  --on-ink: #102d57;
-  --on-ink-soft: #34557f;
+  --paper: #0f0f0e;
+  --sunk: #1c1b1a;
+  --wash: #2a2927;
+  --ink: #ebebeb;
+  --ink-soft: #aeaca5;
+  --line: #3d3c39;
+  --grid: #34332f;
+  --track: #2a2927;
+  --accent: #e7e5e4;
+  --accent-hover: #ffffff;
+  --focus: #e7e5e4;
+  --on-accent: #0f0f0e;
+  --on-ink: #0f0f0e;
+  --on-ink-soft: #595855;
   --ok: #86e6b0;
   --ok-wash: #1c5a4a;
   --warm: #f3cc72;
   --warm-wash: #5c4a17;
   --hot: #ffa285;
   --hot-wash: #7a2c22;
-  --backdrop: rgb(4 14 30 / 0.6);
-  --veil: rgb(16 45 87 / 0.6);
+  --backdrop: rgb(0 0 0 / 0.6);
+  --veil: rgb(15 15 14 / 0.6);
   --hatch: rgb(255 162 133 / 0.3);
-  --glow-1: rgb(255 162 133 / 0.22);
-  --glow-2: rgb(156 200 255 / 0.3);
-  --glow-3: rgb(134 230 176 / 0.2);
+  --glow-1: rgb(196 195 182 / 0.14);
+  --glow-2: rgb(235 235 235 / 0.08);
+  --glow-3: rgb(89 88 85 / 0.25);
 }
 
 * {
@@ -2051,7 +2051,9 @@ ul {
 
 .levels__links {
   display: flex;
-  gap: var(--space-14);
+  flex-wrap: wrap;
+  column-gap: var(--space-14);
+  row-gap: var(--space-4);
 }
 
 .stars-line {
