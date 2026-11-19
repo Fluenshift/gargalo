@@ -33,6 +33,7 @@ import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
 import type { Editor } from './editorContext'
 import { CodePanel } from './CodePanel'
+import { serverCode } from './serverCode'
 import { Inspector } from './Inspector'
 import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
@@ -893,6 +894,16 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   /** The picked code divides on its own, so the player has no say in it. */
   const forcedBalance = !!level.code?.some((c) => c.options.some((o) => o.balance && o.id === fixes[c.id]))
   const inspected = listInfo?.kind ?? (selected.length === 1 ? selected[0].data.kind : null)
+  // What the selected server runs, written from where its open links go.
+  const inspectedCode =
+    !listInfo && selected.length === 1 && selected[0].data.kind === 'server'
+      ? serverCode(
+          openEdges(arch, level)
+            .filter((e) => e.source === selected[0].id)
+            .map((edge) => ({ kind: arch.nodes.find((n) => n.id === edge.target)!.kind, edge })),
+          Object.fromEntries(endpointsOf(level).map((e) => [e.class, e.route])),
+        )
+      : undefined
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
     setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)))
@@ -1241,6 +1252,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             <Inspector
               kind={inspected}
               level={level}
+              code={inspectedCode}
               fixes={fixes}
               onOpenCode={level.code ? setCodeId : undefined}
               onClose={closeInfo}

@@ -30,6 +30,7 @@ export function Inspector({
   onOpenCode,
   balance,
   capacity,
+  code,
 }: {
   kind: Kind
   /** The level on screen: a server lists its routes. */
@@ -48,6 +49,8 @@ export function Inspector({
   balance?: { value: Balance; forced: boolean; editable: boolean; onChange: (b: Balance) => void }
   /** What this very piece handles, when the level makes it differ from its kind. */
   capacity?: number
+  /** The code this server runs, written from its links. */
+  code?: string
   /** Regions to choose from for the selected piece; absent on single-region levels and for global pieces. */
   region?: { value: Region; choices: Region[]; editable: boolean; onChange: (r: Region) => void }
 }) {
@@ -214,6 +217,16 @@ export function Inspector({
               )
             })}
           </table>
+        </section>
+      )}
+
+      {code && (
+        <section>
+          <h3>Código deste servidor</h3>
+          <pre className="code code--wrap" tabIndex={0} aria-label="Código do servidor, escrito a partir das ligações, somente leitura">
+            {code}
+          </pre>
+          <p className="inspector__note">Muda quando você liga, tira ou ajusta uma ligação deste servidor.</p>
         </section>
       )}
 

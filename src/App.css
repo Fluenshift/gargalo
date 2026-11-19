@@ -2320,6 +2320,12 @@ ul {
   max-width: 100%;
 }
 
+/* Long generated lines wrap in the narrow side panel instead of scrolling sideways. */
+.code--wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .code:focus-visible {
   outline: var(--focus-width) solid var(--focus);
 }
