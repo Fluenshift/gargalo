@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
+import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
@@ -31,6 +31,7 @@ import {
 } from './editing'
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
+import { dialogOpen, isTyping } from './keys'
 import type { Editor } from './editorContext'
 import { CodePanel } from './CodePanel'
 import { serverCode } from './serverCode'
@@ -40,11 +41,11 @@ import { KindIcon } from './KindIcon'
 import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
-import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
+import { DAILY_KEY, dailyLevel, dailyXp, dayNumber, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
 import { FreeSystems } from './FreeSystems'
 import { TrafficEditor } from './TrafficEditor'
-import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, updateDesign, updateTraffic, validateTraffic } from './freeMode'
+import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
 import type { FreeSystem, SavedDesign } from './freeMode'
 import { Profile } from './Profile'
 import { Stars } from './Stars'
@@ -62,7 +63,7 @@ import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
 import { isDown, runLevel } from './sim/engine'
 import type { FailureReason, RunSummary, TickResult } from './sim/engine'
-import { bottleneck, timeline } from './sim/debrief'
+import { bottleneck, nodeName, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
 import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, balanceOf, canConnect, canSetBalance, instanceCapacity, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
@@ -110,12 +111,10 @@ interface MenuState {
   x: number
   y: number
   target: { node: ComponentNode } | { edge: Edge }
-  /** Where focus goes back to when the menu closes. */
-  opener: HTMLElement | null
+  /** Where focus goes back to when the menu closes: the piece or link it was opened on. */
+  opener: HTMLElement | SVGElement | null
 }
 
-const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 /** What the board needs to play a level: a career stage or the daily challenge. */
 interface Play {
@@ -164,7 +163,7 @@ function dailyPlay(daily: Daily): Play {
 function freePlay(system: FreeSystem, level: Level, blocked?: string, onDesign: (design: unknown) => void = () => {}): Play {
   return {
     level,
-    start: { nodes: [{ id: 'client', kind: 'client' }], edges: [] },
+    start: startOf(system),
     pieces: [...PALETTE, 'payment'],
     unlock: () => ({ unlocked: true }),
     sheet: 'Modo livre',
@@ -222,13 +221,22 @@ function readStorage(key: string): string | null {
   }
 }
 
-function save(key: string, value: unknown) {
+/** Fired on the window when the browser refuses to save (storage full or off). */
+const SAVE_FAILED = 'gargalo:save-failed'
+
+function save(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    // Not being able to save is fine; everything still works this session.
+    // Everything still works this session; the player is told it will not last.
+    window.dispatchEvent(new Event(SAVE_FAILED))
+    return false
   }
 }
+
+/** Each day's challenge keeps its drawing under this prefix plus the date; only today's can be played. */
+const DAILY_DESIGN_PREFIX = 'gargalo:design:diario-'
 
 /** Retries, backoff, breaker and idempotency key set on a link (kept in the edge's data). */
 const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
@@ -250,7 +258,7 @@ function policyLabel(p: LinkPolicy): string | undefined {
   return parts.length ? parts.join(' · ') : undefined
 }
 
-const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1)}%`
+const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1).replace('.', ',')}%`
 const THRIFTY_PCT = Math.round(THRIFTY_SHARE * 100)
 const FAST_PCT = Math.round(FAST_SHARE * 100)
 const ms = (n: number) => `${Math.round(n)} ms`
@@ -263,6 +271,7 @@ const REASONS: [FailureReason, string][] = [
   ['noRoute', 'sem rota'],
   ['limited', 'limite (429)'],
   ['breaker', 'circuit breaker aberto'],
+  ['flaky', 'falha transitória'],
 ]
 
 /** "120 por sobrecarga, 30 sem rota", or undefined when nothing was lost. */
@@ -297,6 +306,10 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
   if (summary.failed.breaker / total > 0.001)
     out.push(
       `${pct(summary.failed.breaker / total)} das requisições falharam na hora num circuit breaker aberto. É o preço de deixar o destino se recuperar; o que não pode é ele cair de novo assim que fecha.`,
+    )
+  if (summary.failed.flaky / total > 0.001)
+    out.push(
+      `${pct(summary.failed.flaky / total)} das requisições falharam à toa: uma peça de outra empresa erra de vez em quando, sem relação com a carga. Uma tentativa extra resolve a maioria; numa escrita, ligue também a chave de idempotência.`,
     )
   if (summary.failed.limited / total > 0.001)
     out.push(
@@ -358,11 +371,56 @@ export default function App() {
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [])
+  // Another tab saved progress, results or systems: this one picks them up, so it never writes
+  // its older copy over them.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === FREE_KEY || e.key === null) {
+        const list = loadSystems(readStorage(FREE_KEY))
+        store.list = list
+        setSystems(list)
+      }
+      if (e.key === PASSED_KEY || e.key === RESULTS_KEY || e.key === null) {
+        const saved = loadProgress(readStorage).passed
+        setProgress((prev) => ({ ...prev, passed: saved }))
+        const next = loadResults(readStorage(RESULTS_KEY), saved)
+        resultsRef.current = next
+        setResults(next)
+      }
+      if (e.key === DAILY_KEY || e.key === null) {
+        const record = loadDaily(readStorage(DAILY_KEY))
+        dailyRef.current = record
+        setDailyRecord(record)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [store])
+
+  const [unsaved, setUnsaved] = useState(false)
+  useEffect(() => {
+    const onFail = () => setUnsaved(true)
+    window.addEventListener(SAVE_FAILED, onFail)
+    return () => window.removeEventListener(SAVE_FAILED, onFail)
+  }, [])
+
+  // Drawings of past daily challenges can never be played again.
+  useEffect(() => {
+    try {
+      for (const key of Object.keys(localStorage))
+        if (key.startsWith(DAILY_DESIGN_PREFIX) && key !== `${DAILY_DESIGN_PREFIX}${today}`) localStorage.removeItem(key)
+    } catch {
+      // Storage unavailable: nothing to tidy.
+    }
+  }, [today])
+
   const { passed, current } = progress
   const stage = findStage(current)!
   const { company } = stage
 
-  useEffect(() => save(CURRENT_KEY, current), [current])
+  useEffect(() => {
+    save(CURRENT_KEY, current)
+  }, [current])
 
   /** Saves a finished run (passed list and best result) and returns the XP it added. */
   const markPassed = useCallback((id: string, result: LevelResult) => {
@@ -393,7 +451,10 @@ export default function App() {
     return dailyXp(next, date) - dailyXp(before, date)
   }, [])
 
+  /** The level the player just opened: its button in the new board's list takes the focus. */
+  const focusLevel = useRef<string | null>(null)
   const play = (levelId: string) => {
+    focusLevel.current = levelId
     setProgress((prev) => ({ ...prev, current: levelId }))
     setDaily(null)
     setFree(null)
@@ -408,6 +469,7 @@ export default function App() {
   const saveDesign = (id: string, design: unknown) => store.commit(updateDesign(store.list, id, design), false)
   const openFreeList = () => {
     setSystems(store.list)
+    setDaily(null)
     setFree({ id: null })
     setView('board')
   }
@@ -418,7 +480,7 @@ export default function App() {
   const createFree = (templateId?: string) => {
     const t = TEMPLATES.find((x) => x.id === templateId)
     const { list, system } = createSystem(store.list, {
-      ...(t ? { name: t.name, traffic: t.traffic, question: t.question, design: t.start ? freshDesign(t.start) : null } : {}),
+      ...(t ? { name: t.name, traffic: t.traffic, question: t.question, template: t.id, design: t.start ? freshDesign(t.start) : null } : {}),
     })
     store.commit(list)
     setFree({ id: system.id })
@@ -432,9 +494,21 @@ export default function App() {
   const system = free?.id ? systems.find((s) => s.id === free.id) : undefined
   const freeLevel = useMemo(() => (system ? levelOf(system) : null), [system])
   const days = streak(dailyRecord, today)
-  const todayNumber = dailyLevel(today).number
+  const todayNumber = dayNumber(today)
 
-  const profile = profileOpen && <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
+  const profile = (
+    <>
+      {profileOpen && <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />}
+      {unsaved && (
+        <div className="toast toast--notice save-warning" role="status">
+          <span>O navegador não deixou salvar: o que você fizer nesta aba some quando ela fechar.</span>
+          <button type="button" onClick={() => setUnsaved(false)}>
+            Ok
+          </button>
+        </div>
+      )}
+    </>
+  )
 
   if (view === 'map')
     return (
@@ -506,7 +580,7 @@ export default function App() {
                     <button type="button" className="levels__map" onClick={openFreeList}>
                       Meus sistemas
                     </button>
-                    <button type="button" className="levels__map" onClick={() => setFree(null)}>
+                    <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
                       Voltar à carreira
                     </button>
                   </span>
@@ -562,6 +636,12 @@ export default function App() {
               return (
                 <button
                   key={l.id}
+                  ref={(el) => {
+                    if (el && focusLevel.current === l.id) {
+                      focusLevel.current = null
+                      el.focus()
+                    }
+                  }}
                   className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
                   aria-current={current ? 'step' : undefined}
                   disabled={status === 'locked'}
@@ -591,6 +671,7 @@ export default function App() {
 }
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
 function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
@@ -671,11 +752,23 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   /** Why the last connection the player tried was refused. */
   const [notice, setNotice] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(() => readStorage(PANEL_KEY) !== JSON.stringify('closed'))
-  const togglePanel = () =>
+  const togglePanel = () => {
+    focusToggle.current = true
     setPanelOpen((open) => {
       save(PANEL_KEY, open ? 'closed' : 'open')
       return !open
     })
+  }
+  // The button pressed disappears with the panel or comes back inside it: focus follows.
+  const focusToggle = useRef(false)
+  const collapseRef = useRef<HTMLButtonElement>(null)
+  const expandRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!focusToggle.current) return
+    focusToggle.current = false
+    ;(panelOpen ? collapseRef : expandRef).current?.focus()
+  }, [panelOpen])
+  const canvasRef = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dragging, setDragging] = useState(false)
   const [overTrash, setOverTrash] = useState(false)
@@ -749,7 +842,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
-      if (isTyping(e.target)) return
+      if (isTyping(e.target) || dialogOpen()) return
       e.preventDefault()
       undo()
     }
@@ -815,12 +908,14 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       x = r.left + r.width / 2
       y = r.top + r.height / 2
     }
-    setMenu({ x, y, target, opener: opener instanceof HTMLElement ? opener : null })
+    setMenu({ x, y, target, opener: opener instanceof HTMLElement || opener instanceof SVGElement ? opener : null })
   }
 
   const closeMenu = useCallback(() => {
     setMenu((m) => {
+      // A removed piece took its focus with it: the canvas gets it back.
       if (m?.opener?.isConnected) m.opener.focus()
+      else canvasRef.current?.focus()
       return null
     })
   }, [])
@@ -882,6 +977,21 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   )
 
   // A drop on a piece that refuses the link says why instead of silently doing nothing.
+  /** Where a link started when it is made by clicking one handle and then another. */
+  const clickStart = useRef<{ nodeId: string; handleType: 'source' | 'target' } | null>(null)
+  const onClickConnectStart: OnConnectStart = (_event, { nodeId, handleType }) => {
+    clickStart.current = nodeId && handleType ? { nodeId, handleType } : null
+  }
+  const onClickConnectEnd: OnConnectEnd = (event) => {
+    const start = clickStart.current
+    clickStart.current = null
+    const end = event.target instanceof Element ? event.target.closest<HTMLElement>('.react-flow__node')?.dataset.id : undefined
+    if (!start || !end || end === start.nodeId) return
+    const [source, target] = start.handleType === 'target' ? [end, start.nodeId] : [start.nodeId, end]
+    const why = connectRefusal(arch, source, target, level)
+    if (why) setNotice(why)
+  }
+
   const onConnectEnd: OnConnectEnd = (_event, state) => {
     if (state.isValid || !state.fromNode || !state.toNode) return
     const [source, target] =
@@ -944,6 +1054,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       : undefined
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
+    setCodeId(null)
     setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)))
     setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))
     setListInfo({ kind, opener })
@@ -979,6 +1090,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const start = () => {
     if (play.free?.blocked) return
     setMenu(null)
+    setGain(0)
     setRun(runLevel(arch, level, Date.now() & 0xffff))
     setShown(0)
     setPlaying(true)
@@ -1076,6 +1188,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             gargalo
           </h1>
           <button
+            ref={collapseRef}
             type="button"
             className="panel__toggle"
             onClick={togglePanel}
@@ -1132,7 +1245,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             })}
           </ul>
           <p className="help">
-            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar.
+            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar,
+            ou selecione a peça e use Ligar a, no painel dela.
             Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
             direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
@@ -1144,7 +1258,9 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       <main className="stage">
         <div className="workspace">
           <div
+            ref={canvasRef}
             className="canvas"
+            tabIndex={-1}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={cancelLongPress}
@@ -1163,6 +1279,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
                 }}
                 onConnect={onConnect}
                 onConnectEnd={onConnectEnd}
+                onClickConnectStart={onClickConnectStart}
+                onClickConnectEnd={onClickConnectEnd}
                 autoPanOnNodeDrag={false}
                 selectNodesOnDrag={false}
                 isValidConnection={isValidConnection}
@@ -1192,6 +1310,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
                 <Controls showInteractive={false} position="top-left" />
                 {!panelOpen && (
                   <button
+                    ref={expandRef}
                     type="button"
                     className="panel__open"
                     onClick={togglePanel}
@@ -1298,6 +1417,21 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}
               capacity={!listInfo && selected.length === 1 ? instanceCapacity(level, { id: selected[0].id, kind: selected[0].data.kind }) : undefined}
+              links={
+                !listInfo && selected.length === 1
+                  ? {
+                      targets: nodes
+                        .filter((n) => canConnect(arch, selected[0].id, n.id, level))
+                        .map((n) => ({ id: n.id, label: capitalize(nodeName(arch, n.id)) })),
+                      editable,
+                      onLink: (target) => {
+                        const fits = edgesRef.current.length < MAX_EDGES
+                        onConnect({ source: selected[0].id, target, sourceHandle: null, targetHandle: null })
+                        if (fits) setNotice(`Ligado a ${nodeName(arch, target)}.`)
+                      },
+                    }
+                  : undefined
+              }
               balance={
                 !listInfo && selected.length === 1 && SPECS[selected[0].data.kind].balances && (canSetBalance(level, fixes) || forcedBalance)
                   ? {
@@ -1414,6 +1548,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               />
             </label>
           )}
+
+          {/* Always on the page, so screen readers announce the verdict when it arrives. */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {finished ? verdictOf(free, run.summary.passed.all && !free) : ''}
+          </p>
 
           {finished && (
             <Result
@@ -1568,6 +1707,12 @@ const BOTTLENECK_TEXT: Record<Bottleneck['reason'], (lost: number) => string> = 
   latency: () => 'Nada se perdeu, mas foi onde as requisições mais esperaram.',
 }
 
+/** What the run's result says first: the verdict, also read out by screen readers. */
+function verdictOf(free: boolean, won: boolean): string {
+  if (free) return 'Rodada concluída. O selo da folha mostra o que foi medido.'
+  return won ? 'Fase concluída. Todas as metas foram cumpridas.' : 'Ainda não. Veja no selo da folha qual meta falhou.'
+}
+
 function Result({
   summary,
   ticks,
@@ -1593,21 +1738,16 @@ function Result({
   onSeek: (t: number) => void
   onConcept: (kind: Kind, opener: HTMLElement) => void
 }) {
-  const events = timeline(arch, ticks)
-  const neck = bottleneck(arch, ticks)
+  const events = useMemo(() => timeline(arch, ticks), [arch, ticks])
+  const neck = useMemo(() => bottleneck(arch, ticks), [arch, ticks])
+  const tips = useMemo(() => hints(summary, ticks, arch, level), [summary, ticks, arch, level])
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
   const won = summary.passed.all && !free
   const stars = won ? resultOf(summary, level).stars : 0
   const gaps = starGaps(summary, level)
   return (
-    <section className={`result ${free ? 'result--free' : won ? 'result--pass' : 'result--fail'}`} aria-live="polite">
-      <h2>
-        {free
-          ? 'Rodada concluída. O selo da folha mostra o que foi medido.'
-          : won
-            ? 'Fase concluída. Todas as metas foram cumpridas.'
-            : 'Ainda não. Veja no selo da folha qual meta falhou.'}
-      </h2>
+    <section className={`result ${free ? 'result--free' : won ? 'result--pass' : 'result--fail'}`}>
+      <h2>{verdictOf(free, won)}</h2>
       {won && (
         <div className="stars-line">
           <Stars count={stars} />
@@ -1644,7 +1784,7 @@ function Result({
       {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
-      {hints(summary, ticks, arch, level).map((h) => (
+      {tips.map((h) => (
         <p key={h} className="hint">
           {h}
         </p>
