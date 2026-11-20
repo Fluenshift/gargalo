@@ -39,7 +39,10 @@ export function ContextMenu({
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      // The menu sits above the panels: they leave this Escape alone.
+      e.preventDefault()
+      onClose()
     }
     document.addEventListener('pointerdown', onDown, true)
     document.addEventListener('keydown', onKey)

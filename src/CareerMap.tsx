@@ -1,5 +1,6 @@
 import { ThemeToggle } from './ThemeToggle'
 import { useEffect, useRef } from 'react'
+import { escapeFor } from './keys'
 import { BrandMark } from './BrandMark'
 import { COMPANIES, bossBeaten, companyOpen, levelStatus } from './career'
 import type { Passed, Status } from './career'
@@ -40,7 +41,9 @@ export function CareerMap({
   useEffect(() => heading.current?.focus(), [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (!escapeFor(e, null)) return
+      e.preventDefault()
+      onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

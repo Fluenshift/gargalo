@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { escapeFor } from './keys'
 import { SPECS } from './sim/model'
 import type { CodeChallenge, Link } from './sim/model'
 
@@ -28,20 +29,23 @@ export function CodePanel({
 }) {
   const titleId = useId()
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const rootRef = useRef<HTMLElement>(null)
   const option = challenge.options.find((o) => o.id === picked)
 
   useEffect(() => titleRef.current?.focus(), [challenge.id])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (!escapeFor(e, rootRef.current)) return
+      e.preventDefault()
+      onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
   return (
-    <aside className="inspector code-panel" aria-labelledby={titleId}>
+    <aside ref={rootRef} className="inspector code-panel" aria-labelledby={titleId}>
       <header className="code-panel__head">
         <div>
           <p className="code-panel__route">{route}</p>

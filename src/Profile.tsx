@@ -23,7 +23,12 @@ export function Profile({ results, daily, today, onClose }: { results: Results; 
   const share = rank.next ? (total - from) / (total - from + rank.next.missing) : 1
 
   return (
-    <dialog ref={ref} className="profile" aria-labelledby="profile-title" onClose={onClose} onKeyDown={(e) => e.key === 'Escape' && ref.current?.close()} onClick={(e) => e.target === e.currentTarget && ref.current?.close()}>
+    <dialog ref={ref} className="profile" aria-labelledby="profile-title" onClose={onClose} onKeyDown={(e) => {
+        if (e.key !== 'Escape') return
+        // Taken here, so the map or the panel behind the dialog stays open.
+        e.preventDefault()
+        ref.current?.close()
+      }} onClick={(e) => e.target === e.currentTarget && ref.current?.close()}>
       <header className="profile__head">
         <h2 id="profile-title">Perfil</h2>
         <button type="button" className="btn btn--ghost" onClick={() => ref.current?.close()}>
