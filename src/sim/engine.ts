@@ -42,7 +42,7 @@
 // lives in its Spec, so the engine has no per-kind branches.
 
 import { ANSWER_LOST, PROTOCOLS, balanceOf, instanceCapacity, levelWork, openEdges, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
-import type { Architecture, ArchNode, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
+import type { ArchEdge, Architecture, ArchNode, Balance, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
 export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited' | 'breaker'
@@ -177,8 +177,8 @@ function topoOrder(arch: Architecture): ArchNode[] {
   const byId = new Map(arch.nodes.map((n) => [n.id, n]))
   const queue = arch.nodes.filter((n) => indegree.get(n.id) === 0)
   const order: ArchNode[] = []
-  while (queue.length) {
-    const node = queue.shift()!
+  for (let head = 0; head < queue.length; head++) {
+    const node = queue[head]
     order.push(node)
     for (const e of arch.edges) {
       if (e.source !== node.id) continue
@@ -204,6 +204,91 @@ function sampleClass(level: Level, rng: Rng): UserClass {
   return 'read'
 }
 
+type PerClass = Record<RequestClass, number>
+const perClass = (f: (c: RequestClass) => number): PerClass => ({ static: f('static'), read: f('read'), write: f('write'), bot: f('bot') })
+
+/**
+ * The drawing as the engine reads it: the graph and every per-piece number that
+ * stays the same from one second to the next. A run builds it once.
+ */
+interface Graph {
+  arch: Architecture
+  level: Level
+  pieces: Record<string, Spec>
+  byId: Map<string, ArchNode>
+  children: Map<string, string[]>
+  parents: Map<string, string[]>
+  /** Topological order: nodes caught in a cycle are left out. */
+  order: ArchNode[]
+  /** Children first. */
+  reversed: ArchNode[]
+  policies: Map<string, ArchEdge>
+  /** Creation order: the partition that holds the hot key is the first one created. */
+  created: Map<string, number>
+  client: ArchNode | undefined
+  users: [Region, number][]
+  capacity: Map<string, number>
+  balance: Map<string, Balance>
+  /** Share of each class a node ends (an HTTP cache only what the protocols into it let it keep). */
+  serves: Map<string, PerClass>
+  /** Load one request of each class puts on a node, in plain requests, from the level's code. */
+  weight: Map<string, PerClass>
+  /** Time the level's code adds to each request at a node, per class. */
+  extraMs: Map<string, PerClass>
+  /** Each scripted failure, resolved to the node it takes out. */
+  failures: { id: string | undefined; from: number; to: number }[]
+}
+
+function graphOf(arch: Architecture, level: Level, pieces: Record<string, Spec>): Graph {
+  const byId = new Map(arch.nodes.map((n) => [n.id, n]))
+  const children = new Map<string, string[]>(arch.nodes.map((n) => [n.id, []]))
+  const parents = new Map<string, string[]>(arch.nodes.map((n) => [n.id, []]))
+  for (const e of arch.edges) {
+    children.get(e.source)?.push(e.target)
+    parents.get(e.target)?.push(e.source)
+  }
+  const order = topoOrder(arch)
+  // What one request costs on each piece, from the code as the player left it.
+  const work = levelWork(level, arch)
+  const workOf = (node: ArchNode, c: RequestClass) => work.filter((w) => w.kinds.includes(node.kind) && w.classes.includes(c))
+  const servesOf = (node: ArchNode, c: RequestClass): number => {
+    const spec = pieces[node.kind]
+    const base = spec.serves[c] ?? 0
+    if (!spec.httpCache || base === 0) return base
+    const incoming = arch.edges.filter((e) => e.target === node.id)
+    if (incoming.length === 0) return base
+    const kept = incoming.filter((e) => !PROTOCOLS[e.protocol ?? 'rest'].uncached.includes(c)).length
+    return (base * kept) / incoming.length
+  }
+  return {
+    arch,
+    level,
+    pieces,
+    byId,
+    children,
+    parents,
+    order,
+    reversed: [...order].reverse(),
+    policies: new Map(arch.edges.map((e) => [`${e.source}->${e.target}`, e])),
+    created: new Map(arch.nodes.map((n, i) => [n.id, i])),
+    client: arch.nodes.find((n) => pieces[n.kind].entry),
+    users: userRegions(level),
+    capacity: new Map(arch.nodes.map((n) => [n.id, instanceCapacity(level, n, pieces)])),
+    balance: new Map(arch.nodes.map((n) => [n.id, balanceOf(n, level, arch.fixes, pieces)])),
+    serves: new Map(arch.nodes.map((n) => [n.id, perClass((c) => servesOf(n, c))])),
+    weight: new Map(arch.nodes.map((n) => [n.id, perClass((c) => workOf(n, c).reduce((f, w) => f * w.factor, 1))])),
+    extraMs: new Map(arch.nodes.map((n) => [n.id, perClass((c) => workOf(n, c).reduce((ms, w) => ms + (w.extraMs ?? 0), 0))])),
+    failures: level.failures.map((f) => ({ id: arch.nodes.filter((n) => n.kind === f.kind)[f.index]?.id, from: f.from, to: f.to })),
+  }
+}
+
+/** `isDown` on a graph built once. */
+function downAt(g: Graph, node: ArchNode, t: number): boolean {
+  const region = regionOf(node)
+  if (!g.pieces[node.kind].global && g.level.regionOutages?.some((o) => o.region === region && t >= o.from && t < o.to)) return true
+  return g.failures.some((f) => f.id === node.id && t >= f.from && t < f.to)
+}
+
 /**
  * Simulates second `t`. `state` holds what each node carries to the next
  * second; it is read and updated in place, so pass the same map to every tick
@@ -217,20 +302,18 @@ export function simulateTick(
   state: Map<string, NodeState> = new Map(),
   pieces: Record<string, Spec> = SPECS,
 ): TickResult {
+  return tick(graphOf(arch, level, pieces), t, rng, state)
+}
+
+function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): TickResult {
+  const { arch, level, pieces, byId, children, parents, policies, created, client, users } = g
   const rps = rpsAt(level, t)
   const botRps = botRpsAt(level, t)
   // More samples in busier seconds, so the run-wide p99 is weighted by traffic.
   const samples = Math.min(1000, Math.max(100, Math.round(rps / 4)))
-  const children = new Map<string, string[]>(arch.nodes.map((n) => [n.id, []]))
-  const parents = new Map<string, string[]>(arch.nodes.map((n) => [n.id, []]))
-  for (const e of arch.edges) {
-    children.get(e.source)?.push(e.target)
-    parents.get(e.target)?.push(e.source)
-  }
 
   const crashed = (id: string) => t < (state.get(`crash:${id}`)?.until ?? -1)
-  const down = new Map(arch.nodes.map((n) => [n.id, isDown(arch, level, n, t, pieces) || crashed(n.id)]))
-  const policies = new Map(arch.edges.map((e) => [`${e.source}->${e.target}`, e]))
+  const down = new Map(arch.nodes.map((n) => [n.id, downAt(g, n, t) || crashed(n.id)]))
   /** Share of calls the link lets through this second: 0 while its breaker is open, a probe while half-open. */
   const breakers: TickResult['breakers'] = {}
   const letThrough = (key: string): number => {
@@ -245,15 +328,19 @@ export function simulateTick(
   }
   /** How often one call to `id` succeeded last second, per class (1 before anything is known). */
   const lastSuccess = (id: string, c: RequestClass) => state.get(`succ:${id}`)?.[c] ?? 1
-  const byId = new Map(arch.nodes.map((n) => [n.id, n]))
+  // Routing only depends on which pieces are down, so it is worked out once per second.
+  const routeMemo = new Map<string, string[]>()
   const routable = (node: ArchNode, c: RequestClass): string[] => {
-    const targets = (children.get(node.id) ?? []).map((id) => ({ id, kind: byId.get(id)!.kind, down: down.get(id)! }))
-    const route = pieces[node.kind].route
-    return (route ? route(targets, c) : targets).map((target) => target.id)
+    const key = `${node.id}|${c}`
+    let ids = routeMemo.get(key)
+    if (!ids) {
+      const targets = (children.get(node.id) ?? []).map((id) => ({ id, kind: byId.get(id)!.kind, down: down.get(id)! }))
+      const route = pieces[node.kind].route
+      ids = (route ? route(targets, c) : targets).map((target) => target.id)
+      routeMemo.set(key, ids)
+    }
+    return ids
   }
-  // The partition that holds the hot key is the first one created, the same whoever sends to it.
-  const created = new Map(arch.nodes.map((n, i) => [n.id, i]))
-  const users = userRegions(level)
   /**
    * Share of a node's forwarded class-`c` load each target gets: equal, except that a
    * geographic node sends each region's users to its closest targets (only `from`'s users
@@ -261,9 +348,19 @@ export function simulateTick(
    * target in proportion to what it takes. Hashing splits keys evenly too: it differs from
    * round robin only in which keys move when a target falls, and load does not see that.
    */
+  const shareMemo = new Map<string, number[]>()
   const shares = (node: ArchNode, targets: string[], c: RequestClass, from?: Region): number[] => {
+    const key = `${node.id}|${c}|${from ?? ''}`
+    let split = shareMemo.get(key)
+    if (!split) {
+      split = splitAmong(node, targets, c, from)
+      shareMemo.set(key, split)
+    }
+    return split
+  }
+  const splitAmong = (node: ArchNode, targets: string[], c: RequestClass, from?: Region): number[] => {
     const even = 1 / targets.length
-    if (balanceOf(node, level, arch.fixes, pieces) === 'least-conn') {
+    if (g.balance.get(node.id) === 'least-conn') {
       const room = targets.map((id) => effectiveCapacity(id))
       const total = room.reduce((sum, r) => sum + r, 0)
       if (total > 0 && Number.isFinite(total)) return room.map((r) => r / total)
@@ -272,9 +369,10 @@ export function simulateTick(
       const weights = targets.map(() => 0)
       for (const [region, share] of from ? ([[from, 1]] as [Region, number][]) : users) {
         const rtt = targets.map((id) => REGION_RTT_MS[region][regionOf(byId.get(id)!)])
-        const closest = rtt.filter((r) => r === Math.min(...rtt)).length
+        const nearest = Math.min(...rtt)
+        const closest = rtt.filter((r) => r === nearest).length
         rtt.forEach((r, i) => {
-          if (r === Math.min(...rtt)) weights[i] += share / closest
+          if (r === nearest) weights[i] += share / closest
         })
       }
       return weights
@@ -290,28 +388,11 @@ export function simulateTick(
   }
 
   const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
+  const weight = (node: ArchNode, c: RequestClass) => g.weight.get(node.id)![c]
+  const extraMs = (node: ArchNode, c: RequestClass) => g.extraMs.get(node.id)![c]
+  const servesOf = (node: ArchNode, c: RequestClass) => g.serves.get(node.id)![c]
+  const capacityOf = (node: ArchNode) => g.capacity.get(node.id)!
 
-  // What one request costs on each piece, from the code as the player left it.
-  const work = levelWork(level, arch)
-  const workOf = (node: ArchNode, c: RequestClass) => work.filter((w) => w.kinds.includes(node.kind) && w.classes.includes(c))
-  const weight = (node: ArchNode, c: RequestClass) => workOf(node, c).reduce((f, w) => f * w.factor, 1)
-  const extraMs = (node: ArchNode, c: RequestClass) => workOf(node, c).reduce((ms, w) => ms + (w.extraMs ?? 0), 0)
-
-  /**
-   * Share of class `c` a node ends. An HTTP cache only keeps what the protocol of the
-   * links into it lets it keep, in proportion to those links.
-   */
-  const servesOf = (node: ArchNode, c: RequestClass): number => {
-    const spec = pieces[node.kind]
-    const base = spec.serves[c] ?? 0
-    if (!spec.httpCache || base === 0) return base
-    const incoming = arch.edges.filter((e) => e.target === node.id)
-    if (incoming.length === 0) return base
-    const kept = incoming.filter((e) => !PROTOCOLS[e.protocol ?? 'rest'].uncached.includes(c)).length
-    return (base * kept) / incoming.length
-  }
-
-  const capacityOf = (node: ArchNode) => instanceCapacity(level, node, pieces)
   // What a target can take: its capacity, or for a piece that ends nothing
   // itself (a load balancer), what is behind it up to its own capacity.
   const capacityMemo = new Map<string, number>()
@@ -339,7 +420,6 @@ export function simulateTick(
   const ghost = new Map<string, ClassLoad>(arch.nodes.map((n) => [n.id, zero()]))
   /** User calls per class that went through each link with a policy, to judge its breaker. */
   const policyCalls = new Map<string, ClassLoad>()
-  const client = arch.nodes.find((n) => pieces[n.kind].entry)
   if (client) {
     for (const c of USER_CLASSES) arriving.get(client.id)![c] = rps * level.mix[c]
     arriving.get(client.id)!.bot = botRps
@@ -362,8 +442,9 @@ export function simulateTick(
     async.lost += amount * asyncShare
   }
 
-  for (const node of topoOrder(arch)) {
-    const spec = { ...pieces[node.kind], capacity: capacityOf(node) }
+  for (const node of g.order) {
+    const spec = pieces[node.kind]
+    const capacity = capacityOf(node)
     const arrived = arriving.get(node.id)!
     const ack = acked.get(node.id)!
     const gho = ghost.get(node.id)!
@@ -393,7 +474,7 @@ export function simulateTick(
     }
     const load = CLASSES.reduce((sum, c) => sum + a[c] * weight(node, c), 0)
     // What capacity lets through, then what survives the random blips of a flaky piece.
-    const capPass = isNodeDown ? 0 : load <= spec.capacity ? 1 : spec.capacity / load
+    const capPass = isNodeDown ? 0 : load <= capacity ? 1 : capacity / load
     const blips = spec.flaky ?? 0
     const pass = capPass * (1 - blips)
     const totalArrived = CLASSES.reduce((sum, c) => sum + arrived[c], 0)
@@ -403,7 +484,7 @@ export function simulateTick(
     // Share of what arrived that gets through: refused at the door, then cut at capacity.
     const through = pass * (1 - share(totalDropped) - share(totalRefused))
     passRate.set(node.id, through)
-    const utilization = spec.capacity === Infinity ? 0 : load / spec.capacity
+    const utilization = capacity === Infinity ? 0 : load / capacity
     nodes[node.id] = {
       load,
       utilization,
@@ -497,7 +578,7 @@ export function simulateTick(
     }
 
     // Too much load takes a fragile piece out for a while.
-    if (!isNodeDown && spec.crashesAbove !== undefined && load > spec.crashesAbove * spec.capacity) {
+    if (!isNodeDown && spec.crashesAbove !== undefined && load > spec.crashesAbove * capacity) {
       state.set(`crash:${node.id}`, { until: t + 1 + CRASH_DOWN_S })
     }
   }
@@ -505,7 +586,7 @@ export function simulateTick(
   // How often one call to each piece succeeded this second, per class: what retrying links
   // and breakers upstream judge it by next second. Children first.
   const success = new Map<string, Record<string, number>>()
-  for (const node of [...topoOrder(arch)].reverse()) {
+  for (const node of g.reversed) {
     const spec = pieces[node.kind]
     const through = down.get(node.id) ? 0 : (passRate.get(node.id) ?? 0)
     const result: Record<string, number> = {}
@@ -556,39 +637,85 @@ export function simulateTick(
     else if (state.get(`edge:${key}`)?.open) state.set(`edge:${key}`, { open: 0, until: 0 })
   }
 
-  // Sampling pass for latency.
+  // Sampling pass for latency. Where a sample can go from a piece is fixed for the second,
+  // so each hop (targets, their shares, the round trip and protocol on the link) is worked
+  // out once and reused by every sample.
+  interface Hop {
+    node: ArchNode | undefined
+    breaker: 'open' | 'half-open' | undefined
+    /** Round trip between the two pieces plus what the link's protocol gains or loses. */
+    linkMs: number
+  }
+  const hopMemo = new Map<string, { weights: number[]; hops: Hop[] }>()
+  const hopsFrom = (node: ArchNode, c: UserClass, from: Region) => {
+    const key = `${node.id}|${c}|${from}`
+    let found = hopMemo.get(key)
+    if (!found) {
+      const targets = routable(node, c)
+      // Crossing regions costs a round trip. A global piece is wherever the user is.
+      const at = (n: ArchNode) => (pieces[n.kind].global ? from : regionOf(n))
+      found = {
+        weights: targets.length ? shares(node, targets, c, from) : [],
+        hops: targets.map((id): Hop => {
+          const link = `${node.id}->${id}`
+          const next = byId.get(id)
+          return {
+            node: next,
+            breaker: breakers[link],
+            linkMs: next ? REGION_RTT_MS[at(node)][at(next)] + (PROTOCOLS[policies.get(link)?.protocol ?? 'rest'].hopMs[c] ?? 0) : 0,
+          }
+        }),
+      }
+      hopMemo.set(key, found)
+    }
+    return found
+  }
+  const queueMs = new Map<string, number>()
+  const meanQueueMs = (node: ArchNode) => {
+    let ms = queueMs.get(node.id)
+    if (ms === undefined) queueMs.set(node.id, (ms = queueMeanMs(pieces[node.kind], nodes[node.id].utilization)))
+    return ms
+  }
   const latencies: number[] = []
   if (client && rps > 0) {
+    const regionIds = users.map(([r]) => r)
+    const regionShares = users.map(([, s]) => s)
     for (let i = 0; i < samples; i++) {
       const c = sampleClass(level, rng)
       // Drawn only when users come from several regions, so single-region runs keep their numbers.
-      const from = users.length > 1 ? pick(users.map(([r]) => r), users.map(([, s]) => s), rng()) : users[0][0]
+      const from = users.length > 1 ? pick(regionIds, regionShares, rng()) : users[0][0]
       let node: ArchNode | undefined = client
       let latency = 0
       while (node) {
         if (rng() >= (passRate.get(node.id) ?? 0)) break
         const spec = pieces[node.kind]
-        latency += spec.baseLatencyMs + extraMs(node, c) - queueMeanMs(spec, nodes[node.id].utilization) * Math.log(1 - rng())
+        latency += spec.baseLatencyMs + extraMs(node, c) - meanQueueMs(node) * Math.log(1 - rng())
         if (spec.acknowledges?.includes(c) || rng() < servesOf(node, c)) {
           latencies.push(Math.max(0, latency))
           break
         }
-        const targets = routable(node, c)
-        const next: string | undefined = targets.length ? pick(targets, shares(node, targets, c, from), rng()) : undefined
+        const { weights, hops } = hopsFrom(node, c, from)
+        if (hops.length === 0) break
+        const hop = hops[pickIndex(weights, rng())]
         // An open breaker fails the call on the spot.
-        const key = next && `${node.id}->${next}`
-        if (key && breakers[key] === 'open') break
-        if (key && breakers[key] === 'half-open' && rng() >= BREAKER_PROBE) break
-        const nextNode: ArchNode | undefined = next ? byId.get(next) : undefined
-        // Crossing regions costs a round trip. A global piece is wherever the user is.
-        const at = (n: ArchNode) => (pieces[n.kind].global ? from : regionOf(n))
-        if (nextNode) latency += REGION_RTT_MS[at(node)][at(nextNode)] + (PROTOCOLS[policies.get(key!)?.protocol ?? 'rest'].hopMs[c] ?? 0)
-        node = nextNode
+        if (hop.breaker === 'open') break
+        if (hop.breaker === 'half-open' && rng() >= BREAKER_PROBE) break
+        latency += hop.linkMs
+        node = hop.node
       }
     }
   }
 
   return { t, rps, botRps, served, servedByClass, stale, duplicates, failed, async, ...latencyPercentiles(latencies), nodes, edges, breakers, latencies }
+}
+
+/** Index of the weight that `r` (in [0, 1)) falls on when each owns its share of the line. */
+function pickIndex(weights: number[], r: number): number {
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
+    if (r < 0) return i
+  }
+  return weights.length - 1
 }
 
 /** The item that `r` (in [0, 1)) falls on when each item owns its weight of the line. */
@@ -608,7 +735,7 @@ function queueMeanMs(spec: Spec, utilization: number): number {
 
 /** p50, p95 and p99 of `values`, sorting once. */
 export function latencyPercentiles(values: number[]): Percentiles {
-  const sorted = [...values].sort((x, y) => x - y)
+  const sorted = Float64Array.from(values).sort()
   const at = (p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : 0)
   return { p50Ms: at(0.5), p95Ms: at(0.95), p99Ms: at(0.99) }
 }
@@ -652,9 +779,10 @@ export function runLevel(drawn: Architecture, level: Level, seed = 1, catalogue:
   // A link the code forbids carries nothing, even when it is on the drawing.
   const arch = { ...drawn, edges: openEdges(drawn, level) }
   const pieces = levelPieces(level, catalogue)
+  const graph = graphOf(arch, level, pieces)
   const rng = mulberry32(seed)
   const state = new Map<string, NodeState>()
   const ticks: TickResult[] = []
-  for (let t = 0; t < level.durationS; t++) ticks.push(simulateTick(arch, level, t, rng, state, pieces))
+  for (let t = 0; t < level.durationS; t++) ticks.push(tick(graph, t, rng, state))
   return { ticks, summary: summarize(arch, level, ticks, pieces) }
 }
