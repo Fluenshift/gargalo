@@ -44,13 +44,20 @@
 import { ANSWER_LOST, PROTOCOLS, balanceOf, instanceCapacity, levelWork, openEdges, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
 import type { ArchEdge, Architecture, ArchNode, Balance, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
-/** limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit breaker. */
-export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited' | 'breaker'
+/**
+ * limited: refused on purpose with a 429 (rate limit). breaker: failed fast by an open circuit
+ * breaker. flaky: lost to a random blip of a piece that fails now and then whatever the load.
+ */
+export type FailureReason = 'overload' | 'down' | 'noRoute' | 'limited' | 'breaker' | 'flaky'
+
+const REASONS: FailureReason[] = ['overload', 'down', 'noRoute', 'limited', 'breaker', 'flaky']
 
 export interface NodeStats {
   load: number
   utilization: number
   dropRate: number
+  /** Requests lost here this second (dropped, cut at capacity, down or a blip), retries included and bots left out. */
+  lost: number
   down: boolean
   /** Mean time a request spends at this node (service + queueing), in ms. 0 while down. */
   latencyMs: number
@@ -192,7 +199,32 @@ function topoOrder(arch: Architecture): ArchNode[] {
 }
 
 function emptyFailures(): Record<FailureReason, number> {
-  return { overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0 }
+  return { overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0, flaky: 0 }
+}
+
+/** What happens to one call into a piece: answered, answered with outdated data, failed by reason. */
+interface Outcome {
+  ok: number
+  /** Share of the calls answered with outdated data (part of `ok`). */
+  stale: number
+  failed: Record<FailureReason, number>
+}
+
+/** A piece the traffic never reaches (caught in a cycle): every call to it is lost. */
+const NOT_REACHED: Outcome = { ok: 0, stale: 0, failed: { ...emptyFailures(), overload: 1 } }
+
+/**
+ * Adds `amount` failures to `into`, split by reason like `by`. With `scale` the amounts of `by`
+ * are taken as they are (shares of one call) instead of being normalized to sum to one.
+ */
+function spread(into: Record<FailureReason, number>, amount: number, by: Record<FailureReason, number>, scale?: number) {
+  if (amount <= 0) return
+  const total = scale ?? REASONS.reduce((sum, r) => sum + by[r], 0)
+  if (total <= 0) {
+    into.overload += amount
+    return
+  }
+  for (const r of REASONS) into[r] += (amount * by[r]) / total
 }
 
 function sampleClass(level: Level, rng: Rng): UserClass {
@@ -429,7 +461,12 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
   const async: AsyncWork = { done: 0, lost: 0 }
   const nodes: Record<string, NodeStats> = {}
   const edges: Record<string, number> = {}
-  const passRate = new Map<string, number>()
+  /** Per class, the share of what arrived at each node that got through it. */
+  const passRate = new Map<string, PerClass>()
+  /** What each node did to the calls it got this second, for the outcome pass below. */
+  const flowAt = new Map<string, { capPass: number; blips: number; refused: PerClass; dropped: PerClass; staleRate: number }>()
+  /** Calls per class through each link with a breaker, whoever made them, to judge the breaker. */
+  const breakerCalls = new Map<string, ClassLoad>()
   let served = 0
   let stale = 0
   let duplicates = 0
@@ -455,7 +492,8 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     let extra: Pick<NodeStats, 'backlog' | 'waitMs' | 'lagMs' | 'staleRate'> = {}
     let staleRate = 0
     // A crashed piece takes nothing in; whatever it holds waits for it to come back.
-    if (spec.step && !isNodeDown) {
+    const steps = !!spec.step && !isNodeDown
+    if (spec.step && steps) {
       const downstreamCapacity = (children.get(node.id) ?? []).reduce((sum, id) => sum + effectiveCapacity(id), 0)
       const feeders = (parents.get(node.id) ?? []).map((id) => byId.get(id)!)
       const sources = feeders.map((n) => n.kind)
@@ -483,23 +521,36 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     const share = (amount: number) => (totalArrived > 0 ? amount / totalArrived : 0)
     // Share of what arrived that gets through: refused at the door, then cut at capacity.
     const through = pass * (1 - share(totalDropped) - share(totalRefused))
-    passRate.set(node.id, through)
+    // Each class on its own: a bot turned away at the door says nothing about how users fare.
+    const shareOf = (part: ClassLoad, c: RequestClass) => (arrived[c] > 0 ? part[c] / arrived[c] : 0)
+    const refusedShare = perClass((c) => shareOf(refused, c))
+    const droppedShare = perClass((c) => shareOf(dropped, c))
+    passRate.set(node.id, perClass((c) => pass * Math.max(0, 1 - droppedShare[c] - refusedShare[c])))
+    flowAt.set(node.id, { capPass, blips, refused: refusedShare, dropped: droppedShare, staleRate })
     const utilization = capacity === Infinity ? 0 : load / capacity
-    nodes[node.id] = {
+    const stats: NodeStats = {
       load,
       utilization,
       // A 429 is the piece doing its job, not losing load.
       dropRate: 1 - through - share(totalRefused),
+      lost: 0,
       down: isNodeDown,
       latencyMs: isNodeDown ? 0 : spec.baseLatencyMs + queueMeanMs(spec, utilization),
       ...extra,
-      ...(spec.step && !isNodeDown && totalRefused > 0 ? { refused: totalRefused } : {}),
+      ...(steps && totalRefused > 0 ? { refused: totalRefused } : {}),
     }
+    nodes[node.id] = stats
 
+    // Work a piece carried over from earlier seconds (a backlog) keeps the shares it came in with:
+    // with nothing new arriving, they come from the last second something did.
+    const carried = steps ? state.get(`mix:${node.id}`) : undefined
+    const mix: NodeState = {}
     for (const c of CLASSES) {
       // Shares of this class: users still waiting, work already acknowledged, and ghost load.
-      const asyncShare = arrived[c] > 0 ? ack[c] / arrived[c] : 0
-      const ghostShare = arrived[c] > 0 ? gho[c] / arrived[c] : 0
+      const asyncShare = arrived[c] > 0 ? ack[c] / arrived[c] : (carried?.[`${c}:async`] ?? 0)
+      const ghostShare = arrived[c] > 0 ? gho[c] / arrived[c] : (carried?.[`${c}:ghost`] ?? 0)
+      mix[`${c}:async`] = asyncShare
+      mix[`${c}:ghost`] = ghostShare
       const waiting = Math.max(0, 1 - asyncShare - ghostShare)
       // Bots count for load only: nothing they get or lose is anyone's answer.
       const counts = c !== 'bot'
@@ -515,20 +566,22 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
       const outAsync = acknowledges ? asyncShare + waiting : asyncShare
 
       lose(c, a[c] * (1 - capPass), outWaiting, outAsync, isNodeDown ? 'down' : 'overload')
-      lose(c, a[c] * capPass * blips, outWaiting, outAsync, 'down')
+      lose(c, a[c] * capPass * blips, outWaiting, outAsync, 'flaky')
+      if (counts) stats.lost += dropped[c] + a[c] * (1 - capPass) + a[c] * capPass * blips
       const survivors = a[c] * pass
       const endsHere = survivors * servesOf(node, c)
       if (counts) {
         served += endsHere * outWaiting
         servedByClass[c] += endsHere * outWaiting
-        stale += endsHere * outWaiting * staleRate
+        if (c === 'read') stale += endsHere * outWaiting * staleRate
         async.done += endsHere * outAsync
       }
+      // Copies of what ends here (a primary's writes to its replicas): background load nobody waits for.
       if (endsHere > 0 && spec.replicates?.includes(c)) {
         for (const target of children.get(node.id) ?? []) {
           if (down.get(target)) continue
           arriving.get(target)![c] += endsHere
-          acked.get(target)![c] += endsHere
+          ghost.get(target)![c] += endsHere
           const key = `${node.id}->${target}`
           edges[key] = (edges[key] ?? 0) + endsHere
         }
@@ -553,6 +606,12 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
           const work = share * outAsync
           if (counts) failed.breaker += users * (1 - open)
           if (counts) async.lost += work * (1 - open)
+          // A breaker sees every call that goes through it, retries and background work included.
+          if (counts && policy.breaker) {
+            const calls = breakerCalls.get(key) ?? zero()
+            calls[c] += share * open
+            breakerCalls.set(key, calls)
+          }
           // How many attempts pile on follows from how the target did last second; whether the
           // users get an answer is settled below, once the target's outcome this second is known.
           const { attempts } = retryOutcome(down.get(target) ? 0 : lastSuccess(target, c), policy.retries ?? 0, policy.backoff ?? false)
@@ -576,6 +635,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
         edges[key] = (edges[key] ?? 0) + sent
       }
     }
+    if (steps) state.set(`mix:${node.id}`, mix)
 
     // Too much load takes a fragile piece out for a while.
     if (!isNodeDown && spec.crashesAbove !== undefined && load > spec.crashesAbove * capacity) {
@@ -583,56 +643,88 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     }
   }
 
-  // How often one call to each piece succeeded this second, per class: what retrying links
-  // and breakers upstream judge it by next second. Children first.
-  const success = new Map<string, Record<string, number>>()
+  // What happens to one call into each piece this second, per class: how often it is answered,
+  // how often the answer is outdated, and why it fails when it does. Links that retry or break
+  // judge their target by it, and the users they settled get their fate from it. Children first.
+  const outcome = new Map<string, Record<UserClass, Outcome>>()
   for (const node of g.reversed) {
     const spec = pieces[node.kind]
-    const through = down.get(node.id) ? 0 : (passRate.get(node.id) ?? 0)
-    const result: Record<string, number> = {}
+    const flow = flowAt.get(node.id)!
+    const result = {} as Record<UserClass, Outcome>
     for (const c of USER_CLASSES) {
+      const lost = emptyFailures()
+      if (down.get(node.id)) {
+        lost.down = 1
+        result[c] = { ok: 0, stale: 0, failed: lost }
+        continue
+      }
+      const through = passRate.get(node.id)![c]
+      const accepted = Math.max(0, 1 - flow.refused[c] - flow.dropped[c])
+      lost.limited = flow.refused[c]
+      lost.overload = flow.dropped[c] + accepted * (1 - flow.capPass)
+      lost.flaky = accepted * flow.capPass * flow.blips
       if (spec.acknowledges?.includes(c)) {
-        result[c] = through
+        result[c] = { ok: through, stale: 0, failed: lost }
         continue
       }
       const ends = servesOf(node, c)
       const targets = routable(node, c)
+      const onward: Outcome = { ok: 0, stale: 0, failed: emptyFailures() }
+      if (targets.length === 0) onward.failed.noRoute = 1
       const split = targets.length ? shares(node, targets, c) : []
-      const onward = targets.reduce((sum, target, i) => {
+      for (const [i, target] of targets.entries()) {
         const key = `${node.id}->${target}`
         const policy = policies.get(key)
-        const s = success.get(target)?.[c] ?? 0
-        if (!policy || (!(policy.retries ?? 0) && !policy.breaker)) return sum + split[i] * s
-        const open = breakers[key] === 'open' ? 0 : 1
-        return sum + split[i] * open * retryOutcome(s, policy.retries ?? 0, policy.backoff ?? false).success
-      }, 0)
-      result[c] = through * (ends + (1 - ends) * onward)
+        const next = outcome.get(target)?.[c] ?? NOT_REACHED
+        if (!policy || (!(policy.retries ?? 0) && !policy.breaker)) {
+          onward.ok += split[i] * next.ok
+          onward.stale += split[i] * next.stale
+          spread(onward.failed, split[i], next.failed, 1)
+          continue
+        }
+        const open = breakers[key] === 'open' ? 0 : breakers[key] === 'half-open' ? BREAKER_PROBE : 1
+        const answered = retryOutcome(next.ok, policy.retries ?? 0, policy.backoff ?? false).success
+        onward.ok += split[i] * open * answered
+        onward.stale += split[i] * open * answered * (next.ok > 0 ? next.stale / next.ok : 0)
+        onward.failed.breaker += split[i] * (1 - open)
+        spread(onward.failed, split[i] * open * (1 - answered), next.failed)
+      }
+      const staleHere = c === 'read' ? flow.staleRate : 0
+      spread(lost, through * (1 - ends), onward.failed, 1)
+      result[c] = {
+        ok: through * (ends + (1 - ends) * onward.ok),
+        stale: through * (ends * staleHere + (1 - ends) * onward.stale),
+        failed: lost,
+      }
     }
-    success.set(node.id, result)
-    state.set(`succ:${node.id}`, result)
+    outcome.set(node.id, result)
+    state.set(`succ:${node.id}`, { static: result.static.ok, read: result.read.ok, write: result.write.ok })
   }
 
-  // Users who went through a link with a policy: answered unless every attempt failed.
+  // Users who went through a link with a policy: answered unless every attempt failed, and
+  // failed for the reason the last attempt did.
   for (const [key, calls] of policyCalls) {
     const policy = policies.get(key)!
     const target = key.slice(key.indexOf('->') + 2)
     for (const c of USER_CLASSES) {
       if (calls[c] <= 0) continue
-      const { success: answered } = retryOutcome(success.get(target)?.[c] ?? 0, policy.retries ?? 0, policy.backoff ?? false)
+      const next = outcome.get(target)?.[c] ?? NOT_REACHED
+      const { success: answered } = retryOutcome(next.ok, policy.retries ?? 0, policy.backoff ?? false)
       served += calls[c] * answered
       servedByClass[c] += calls[c] * answered
-      failed[down.get(target) ? 'down' : 'overload'] += calls[c] * (1 - answered)
+      if (c === 'read' && next.ok > 0) stale += calls[c] * answered * (next.stale / next.ok)
+      spread(failed, calls[c] * (1 - answered), next.failed)
     }
   }
 
   // Breakers judge the calls that went through them this second.
   for (const [key, policy] of policies) {
     if (!policy.breaker) continue
-    const calls = policyCalls.get(key)
+    const calls = breakerCalls.get(key)
     const total = calls ? USER_CLASSES.reduce((sum, c) => sum + calls[c], 0) : 0
     if (total <= 0) continue
     const target = key.slice(key.indexOf('->') + 2)
-    const ok = USER_CLASSES.reduce((sum, c) => sum + calls![c] * (success.get(target)?.[c] ?? 0), 0) / total
+    const ok = USER_CLASSES.reduce((sum, c) => sum + calls![c] * (outcome.get(target)?.[c].ok ?? 0), 0) / total
     if (ok < BREAKER_THRESHOLD) state.set(`edge:${key}`, { open: 1, until: t + 1 + BREAKER_OPEN_S })
     else if (state.get(`edge:${key}`)?.open) state.set(`edge:${key}`, { open: 0, until: 0 })
   }
@@ -687,7 +779,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
       let node: ArchNode | undefined = client
       let latency = 0
       while (node) {
-        if (rng() >= (passRate.get(node.id) ?? 0)) break
+        if (rng() >= (passRate.get(node.id)?.[c] ?? 0)) break
         const spec = pieces[node.kind]
         latency += spec.baseLatencyMs + extraMs(node, c) - meanQueueMs(node) * Math.log(1 - rng())
         if (spec.acknowledges?.includes(c) || rng() < servesOf(node, c)) {

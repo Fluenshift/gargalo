@@ -19,7 +19,7 @@ export interface Bottleneck {
    * limited: lost nothing, but turned users away with 429s. latency: nothing lost, but slowest.
    */
   reason: 'drops' | 'down' | 'limited' | 'latency'
-  /** Requests lost or refused there over the run (0 for latency). */
+  /** Requests lost or refused there over the run, retries included (0 for latency). */
   lost: number
 }
 
@@ -182,7 +182,7 @@ export function bottleneck(arch: Architecture, ticks: TickResult[]): Bottleneck 
     for (const [id, stats] of Object.entries(tick.nodes)) {
       const kind = arch.nodes.find((n) => n.id === id)!.kind
       const entry = lost.get(kind) ?? { drops: 0, down: 0 }
-      entry[stats.down ? 'down' : 'drops'] += stats.load * stats.dropRate
+      entry[stats.down ? 'down' : 'drops'] += stats.lost
       lost.set(kind, entry)
       if (!stats.down && stats.load > 0 && stats.latencyMs > (slowest?.latencyMs ?? 0)) {
         slowest = { kind, latencyMs: stats.latencyMs }

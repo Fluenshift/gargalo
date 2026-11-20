@@ -90,6 +90,14 @@ describe('bottleneck', () => {
     expect(result!.lost).toBeCloseTo(10 * (600 - 0.8 * 400))
   })
 
+  it('counts requests, not the extra work a bug puts on each of them', () => {
+    const level = LEVELS.find((l) => l.id === 'pedidos-em-loop')!
+    const { ticks } = runLevel(level.start!, level)
+    const neck = bottleneck(level.start!, ticks)!
+    expect(neck.kind).toBe('db')
+    expect(neck.lost).toBeLessThan(ticks.reduce((s, t) => s + t.rps, 0))
+  })
+
   it('falls back to the slowest piece when nothing was lost', () => {
     const a = lbServers(4, ['db'])
     const result = bottleneck(a, runLevel(a, { ...spike, traffic: [{ from: 0, rps: 300 }], failures: [] }).ticks)

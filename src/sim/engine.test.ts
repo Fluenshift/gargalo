@@ -39,6 +39,7 @@ describe('simulateTick', () => {
   it('drops the load above a node capacity', () => {
     const tick = simulateTick(arch([['client', 'server'], ['server', 'db']]), steady, 0, mulberry32(1))
     expect(tick.nodes.server.dropRate).toBeCloseTo(0.5)
+    expect(tick.nodes.server.lost).toBeCloseTo(400)
     expect(tick.failed.overload).toBeCloseTo(400 + 0) // server drops 400; db gets 400 < 1000
     expect(tick.served).toBeCloseTo(400)
   })
@@ -168,7 +169,7 @@ describe('message queue and workers', () => {
     expect(direct.summary.passed.availability).toBe(false)
 
     const { ticks, summary } = runLevel(queued(5, 5), spike)
-    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0 })
+    expect(summary.failed).toEqual({ overload: 0, down: 0, noRoute: 0, limited: 0, breaker: 0, flaky: 0 })
     expect(summary.availability).toBeCloseTo(1)
     // The database never sees the spike: the workers (5 × 200/s) cap what reaches it.
     for (const t of ticks) expect(t.nodes.db.load).toBeLessThanOrEqual(1000 + 1e-6)
@@ -259,10 +260,39 @@ describe('read replicas', () => {
     expect(tick.nodes['replica#0'].load).toBeCloseTo(600 + 300)
     expect(tick.edges['db->replica#1']).toBeCloseTo(300)
     expect(tick.edges['server#0->replica#0']).toBeCloseTo(150)
-    // Replication is background work: the users got exactly what they asked for.
+    // Replication is background load: the users got exactly what they asked for, and the copies
+    // are no write anyone was promised.
     expect(tick.served).toBeCloseTo(1500)
     expect(tick.servedByClass.read).toBeCloseTo(1200)
-    expect(tick.async.done).toBeCloseTo(2 * 300)
+    expect(tick.async).toEqual({ done: 0, lost: 0 })
+  })
+
+  it('copies a replica is too busy to apply are not writes anyone was promised', () => {
+    const level = byId('extrato-lento')
+    expect(runLevel(extend(STARTUP_LEGACY, replicas(1)), level).summary.async).toEqual({ done: 0, lost: 0 })
+  })
+
+  it('a replica catching up after the writes stop does not count the copies as answers', () => {
+    const level: Level = {
+      ...steady,
+      mix: { static: 0, read: 0.85, write: 0.15 },
+      traffic: [{ from: 0, rps: 1300 }, { from: 5, rps: 0 }],
+      nodeTweaks: [{ id: 'server', capacity: 100_000 }],
+    }
+    const { ticks, summary } = runLevel(arch([['client', 'server'], ['server', 'replica'], ['server', 'db'], ['db', 'replica']]), level)
+    // Too busy with reads to apply the writes, it catches up once the traffic stops.
+    expect(ticks[5].nodes.replica.load).toBeGreaterThan(0)
+    expect(ticks[5].served).toBe(0)
+    expect(summary.availability).toBeLessThanOrEqual(1)
+  })
+
+  it('counts outdated reads also for users a retrying link settled', () => {
+    const level = byId('catalogo-gigante')
+    const lagging = extend(STARTUP_LEGACY, [...servers(2), ...replicas(1)])
+    const retried = { ...lagging, edges: lagging.edges.map((e) => (e.source === 'client' ? { ...e, retries: 1 } : e)) }
+    const plain = runLevel(lagging, level).summary
+    expect(plain.staleReadRate).toBeGreaterThan(level.goals.maxStaleReads!)
+    expect(runLevel(retried, level).summary.staleReadRate).toBeCloseTo(plain.staleReadRate, 2)
   })
 
   it('takes the reads off the primary: same traffic, one database would drop', () => {
@@ -359,6 +389,18 @@ describe('rate limiter', () => {
 })
 
 describe('bot traffic', () => {
+  it('a 429 to the bot is no failure for the users behind a retrying link or a breaker', () => {
+    const level = byId('bot-de-precos')
+    const design = (policy: Partial<ArchEdge>) => extend(STARTUP_LEGACY, [['cdn', 'limiter', policy], ['limiter', 'lb']], [['cdn', 'lb']])
+    const plain = runLevel(design({}), level).summary
+    for (const policy of [{ retries: 1 }, { breaker: true }]) {
+      const guarded = runLevel(design(policy), level).summary
+      expect(guarded.availability).toBeCloseTo(plain.availability, 3)
+      expect(guarded.failed.breaker).toBe(0)
+      expect(guarded.duplicateRate).toBeLessThan(0.001)
+    }
+  })
+
   // 300 req/s from people and 1.500 from one scraper.
   const scraped: Level = { ...steady, traffic: [{ from: 0, rps: 300 }], bot: [{ from: 0, rps: 1500 }] }
 
@@ -454,6 +496,47 @@ describe('retries and circuit breakers', () => {
   it('links without a policy behave exactly as before', () => {
     const a = fanOut(5, 'db', [['client', 'lb']])
     expect(runLevel(withPolicy({ retries: 0, backoff: true, breaker: false }), rush).summary).toEqual(runLevel(a, rush).summary)
+  })
+
+  /** The payment level with a breaker on every call to the payment API and `upstream` on the link into the balancer. */
+  const guarded = (upstream: Partial<ArchEdge>): Architecture => {
+    const a = paymentPolicy(byId('pagamento-instavel').start!, { breaker: true })
+    return { ...a, edges: a.edges.map((e) => (e.source === 'cdn' && e.target === 'lb' ? { ...e, ...upstream } : e)) }
+  }
+  const openSeconds = (ticks: TickResult[]) => ticks.filter((t) => Object.values(t.breakers).includes('open')).length
+
+  it('a breaker behind a retrying link still sees the calls and opens', () => {
+    const level = byId('pagamento-instavel')
+    const alone = runLevel(guarded({}), level)
+    expect(openSeconds(alone.ticks)).toBeGreaterThan(0)
+    expect(openSeconds(runLevel(guarded({ retries: 1, backoff: true }), level).ticks)).toBe(openSeconds(alone.ticks))
+  })
+
+  it('a half-open breaker lets only its probe through, also for users a link upstream settled', () => {
+    const level = byId('pagamento-instavel')
+    const probing = runLevel(guarded({ retries: 1, backoff: true }), level).ticks.filter((t) => Object.values(t.breakers).includes('half-open'))
+    expect(probing.length).toBeGreaterThan(0)
+    for (const t of probing) expect(t.servedByClass.write).toBeLessThan(0.3 * t.rps * level.mix.write)
+  })
+})
+
+describe('failure reasons', () => {
+  it('a flaky partner loses calls to blips, with or without retries in front of it', () => {
+    const level = byId('transferencia-duplicada')
+    const direct = runLevel(paymentPolicy(level.start!, { retries: 0 }), level).summary
+    expect(direct.failed.flaky).toBeGreaterThan(0)
+    expect(direct.failed.down).toBe(0)
+    const retried = runLevel(level.start!, level).summary
+    expect(retried.failed.flaky).toBeGreaterThan(0)
+    expect(retried.failed.overload).toBeCloseTo(0)
+  })
+
+  it('users a retrying link settled fail for the reason their last attempt did', () => {
+    // Nothing behind the server: reads have nowhere to go, however often they are tried.
+    const a: Architecture = { ...arch([['client', 'server']]), edges: [{ source: 'client', target: 'server', retries: 1 }] }
+    const { summary } = runLevel(a, { ...steady, traffic: [{ from: 0, rps: 150 }] })
+    expect(summary.failed.noRoute).toBeGreaterThan(0)
+    expect(summary.failed.overload).toBe(0)
   })
 })
 
