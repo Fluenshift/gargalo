@@ -72,11 +72,20 @@ export function applyRemoval<N extends Item, E extends Link>(nodes: N[], edges: 
   return { nodes: without(nodes, r.nodes), edges: without(edges, r.edges) }
 }
 
-/** Undoes a removal. Edges come back only if both their ends exist. */
-export function undoRemoval<N extends Item, E extends Link>(nodes: N[], edges: E[], r: Removal<N, E>) {
-  const restoredNodes = restore(nodes, r.nodes)
+/**
+ * Undoes a removal. Nodes come back unless `keepNode` refuses them; edges come back only if both
+ * their ends exist and the same two pieces were not linked again in the meantime.
+ */
+export function undoRemoval<N extends Item, E extends Link>(nodes: N[], edges: E[], r: Removal<N, E>, keepNode: (node: N) => boolean = () => true) {
+  const restoredNodes = restore(nodes, r.nodes, keepNode)
   const ids = new Set(restoredNodes.map((n) => n.id))
-  const restoredEdges = restore(edges, r.edges, (e) => ids.has(e.source) && ids.has(e.target))
+  const pairs = new Set(edges.map((e) => `${e.source}->${e.target}`))
+  const restoredEdges = restore(edges, r.edges, (e) => {
+    const pair = `${e.source}->${e.target}`
+    if (!ids.has(e.source) || !ids.has(e.target) || pairs.has(pair)) return false
+    pairs.add(pair)
+    return true
+  })
   return { nodes: restoredNodes, edges: restoredEdges }
 }
 

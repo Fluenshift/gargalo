@@ -55,7 +55,7 @@ import { RegionArea } from './RegionArea'
 import type { RegionAreaNode } from './RegionArea'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
-import { parseDesign } from './savedDesign'
+import { MAX_EDGES, MAX_NODES, parseDesign } from './savedDesign'
 import { LinkPanel } from './LinkPanel'
 import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
@@ -98,6 +98,13 @@ const PANEL_KEY = 'gargalo:panel'
 const LONG_PRESS_MS = 550
 
 type BoardRemoval = Removal<ComponentNode, Edge>
+/** What undo puts back: a removal, or the whole drawing as it was before starting over. */
+type UndoEntry = BoardRemoval | { reset: Design }
+
+const undoMessage = (entry: UndoEntry) => ('reset' in entry ? 'Desenho recomeçado.' : removalMessage(entry))
+
+/** A fresh id for a piece the player adds. */
+const pieceId = (kind: Kind) => `${kind}-${Date.now().toString(36)}`
 
 interface MenuState {
   x: number
@@ -659,8 +666,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     nodesRef.current = nodes
     edgesRef.current = edges
   }, [nodes, edges])
-  const [undoStack, setUndoStack] = useState<BoardRemoval[]>([])
-  const [toast, setToast] = useState<BoardRemoval | null>(null)
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [toast, setToast] = useState<UndoEntry | null>(null)
   /** Why the last connection the player tried was refused. */
   const [notice, setNotice] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(() => readStorage(PANEL_KEY) !== JSON.stringify('closed'))
@@ -700,12 +707,31 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     if (!editable) return
     const last = undoStack.at(-1)
     if (!last) return
-    const back = undoRemoval(nodesRef.current, edgesRef.current, last)
-    setNodes(back.nodes)
-    setEdges(back.edges)
     setUndoStack((st) => st.slice(0, -1))
     setToast(null)
     clearRun()
+    if ('reset' in last) {
+      setNodes(last.reset.nodes)
+      setEdges(last.reset.edges)
+      setFixes(last.reset.fixes ?? {})
+      return
+    }
+    // A piece the drawing takes only once does not come back when another took its place.
+    const count = new Map<Kind, number>()
+    for (const n of nodesRef.current) count.set(n.data.kind, (count.get(n.data.kind) ?? 0) + 1)
+    const refused: Kind[] = []
+    const back = undoRemoval(nodesRef.current, edgesRef.current, last, (n) => {
+      const seen = (count.get(n.data.kind) ?? 0) + 1
+      if (seen > (SPECS[n.data.kind].maxCount ?? Infinity)) {
+        refused.push(n.data.kind)
+        return false
+      }
+      count.set(n.data.kind, seen)
+      return true
+    })
+    setNodes(back.nodes)
+    setEdges(back.edges)
+    if (refused.length) setNotice(`${SPECS[refused[0]].label} já está no desenho e só cabe um: o que foi removido não voltou.`)
   }, [editable, undoStack, setNodes, setEdges, clearRun])
 
   useEffect(() => {
@@ -800,8 +826,9 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }, [])
 
   const duplicate = (node: ComponentNode) => {
+    if (!canAdd(node.data.kind)) return
     clearRun()
-    const id = `${node.data.kind}-${Date.now().toString(36)}`
+    const id = pieceId(node.data.kind)
     setNodes((ns) => [
       ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
       {
@@ -817,7 +844,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const menuItems = (target: MenuState['target']): MenuItem[] =>
     'node' in target
       ? [
-          { label: 'Duplicar', onSelect: () => duplicate(target.node) },
+          ...(canAdd(target.node.data.kind) ? [{ label: 'Duplicar', onSelect: () => duplicate(target.node) }] : []),
           { label: 'Remover', onSelect: () => remove([target.node.id]) },
         ]
       : [{ label: 'Remover', onSelect: () => remove([], [target.edge.id]) }]
@@ -864,20 +891,31 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const onConnect = useCallback(
     (c: Connection) => {
+      if (edgesRef.current.length >= MAX_EDGES) {
+        setNotice(`Cabem até ${MAX_EDGES} ligações num desenho.`)
+        return
+      }
       setNotice(null)
       clearRun()
-      setEdges((es) => addEdge(c, es))
+      // The same id the links a level starts with have, so undo and saving see one link per pair.
+      setEdges((es) => addEdge({ ...c, id: `${c.source}->${c.target}` }, es))
     },
     [setEdges, clearRun],
   )
 
   const atMax = (kind: Kind) => nodes.filter((n) => n.data.kind === kind).length >= (SPECS[kind].maxCount ?? Infinity)
+  /** Whether one more piece of `kind` fits the drawing. */
+  const canAdd = (kind: Kind) => !atMax(kind) && nodes.length < MAX_NODES
 
   const addComponent = (kind: Kind) => {
     if (atMax(kind)) return
+    if (nodes.length >= MAX_NODES) {
+      setNotice(`Cabem até ${MAX_NODES} peças num desenho.`)
+      return
+    }
     clearRun()
     const sameKind = nodes.filter((n) => n.data.kind === kind).length
-    const id = `${kind}-${Date.now().toString(36)}`
+    const id = pieceId(kind)
     setNodes((ns) => [
       ...ns,
       { id, type: 'component', position: { x: COLUMN[kind], y: (FIRST_ROW[kind] ?? 20) + sameKind * 100 }, data: { kind } },
@@ -928,10 +966,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const reset = () => {
     const fresh = freshDesign(play.start)
+    const before: UndoEntry = { reset: { nodes: nodesRef.current, edges: edgesRef.current, fixes } }
     setNodes(fresh.nodes)
     setEdges(fresh.edges)
-    setUndoStack([])
-    setToast(null)
+    setUndoStack((st) => pushBounded(st, before))
+    setToast(before)
     setFixes({})
     setCodeId(null)
     clearRun()
@@ -1178,7 +1217,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             )}
 
             <div className="toast-slot" role="status" aria-live="polite">
-              {notice && !toast && (
+              {notice && (
                 <div className="toast toast--notice">
                   <span>{notice}</span>
                   <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso">
@@ -1188,7 +1227,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               )}
               {toast && (
                 <div className="toast">
-                  <span>{removalMessage(toast)}</span>
+                  <span>{undoMessage(toast)}</span>
                   <button type="button" onClick={undo} disabled={!editable}>
                     Desfazer
                   </button>

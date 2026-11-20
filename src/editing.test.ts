@@ -70,6 +70,22 @@ describe('undoRemoval', () => {
     expect(back.edges).toEqual([])
   })
 
+  it('does not bring back a link drawn again in the meantime', () => {
+    const r = planRemoval(nodes, edges, [], ['e4'])
+    const after = applyRemoval(nodes, edges, r)
+    const redrawn = [...after.edges, { id: 'xy-edge__s1-db', source: 's1', target: 'db' }]
+    const back = undoRemoval(after.nodes, redrawn, r)
+    expect(back.edges.filter((e) => e.source === 's1' && e.target === 'db')).toHaveLength(1)
+  })
+
+  it('leaves out the nodes `keepNode` refuses, and their edges', () => {
+    const r = planRemoval(nodes, edges, ['db'])
+    const after = applyRemoval(nodes, edges, r)
+    const back = undoRemoval(after.nodes, after.edges, r, (n) => n.id !== 'db')
+    expect(back.nodes.map((n) => n.id)).toEqual(['client', 'lb', 's1', 's2'])
+    expect(back.edges.map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
+  })
+
   it('does not duplicate an id that already exists', () => {
     const r = planRemoval(nodes, edges, ['s2'])
     const back = undoRemoval(nodes, edges, r)

@@ -2,7 +2,7 @@
 // traffic and drawing. Everything here is pure; a system becomes a Level and
 // runs through the same engine as any stage, with goals that never fail.
 
-import { parseDesign } from './savedDesign'
+import { MAX_EDGES, MAX_NODES, parseDesign } from './savedDesign'
 import type { SavedEdge, SavedNode } from './savedDesign'
 import { SPECS } from './sim/model'
 import type { Architecture, Kind, Level, TrafficPhase, UserClass } from './sim/model'
@@ -18,8 +18,6 @@ export const MAX_ROWS = 20
 /** How far the mix may be from 100%, as a fraction. */
 export const MIX_TOLERANCE = 0.001
 const MAX_FILE_CHARS = 1_000_000
-const MAX_NODES = 300
-const MAX_EDGES = 600
 
 export interface Spike {
   from: number
