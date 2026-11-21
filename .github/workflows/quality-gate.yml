@@ -26,6 +26,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Every installed package must carry a valid npm registry signature (catches tampered tarballs).
+      - run: npm audit signatures
       - run: npx oxlint --deny-warnings
 
   typecheck:
