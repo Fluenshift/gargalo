@@ -1,6 +1,6 @@
 import { ThemeToggle } from './ThemeToggle'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent, ReactNode } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -38,16 +38,13 @@ import { serverCode } from './serverCode'
 import { Inspector } from './Inspector'
 import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
-import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
 import { DAILY_KEY, dailyLevel, dailyXp, dayNumber, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
-import { FreeSystems } from './FreeSystems'
 import { TrafficEditor } from './TrafficEditor'
 import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
 import type { FreeSystem, SavedDesign } from './freeMode'
-import { Profile } from './Profile'
 import { Stars } from './Stars'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
 import type { LevelResult, Results } from './score'
@@ -61,15 +58,25 @@ import { LinkPanel } from './LinkPanel'
 import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
-import { isDown, runLevel } from './sim/engine'
-import type { FailureReason, RunSummary, TickResult } from './sim/engine'
+import { isDown } from './sim/engine'
+import type { FailureReason, NodeStats, RunSummary, TickResult } from './sim/engine'
+import { runInBackground } from './sim/runner'
 import { bottleneck, nodeName, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
 import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, balanceOf, canConnect, canSetBalance, instanceCapacity, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
+// Screens away from the board load when first opened.
+const CareerMap = lazy(() => import('./CareerMap').then((m) => ({ default: m.CareerMap })))
+const FreeSystems = lazy(() => import('./FreeSystems').then((m) => ({ default: m.FreeSystems })))
+const Profile = lazy(() => import('./Profile').then((m) => ({ default: m.Profile })))
+
 const nodeTypes = { component: NodeCard, region: RegionArea }
+const DELETE_KEYS = ['Backspace', 'Delete']
+const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
+/** How long the drawing must stay still before it is saved. */
+const SAVE_DELAY_MS = 300
 const edgeTypes = { removable: RemovableEdge }
 const PALETTE: Kind[] = ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
 const COLUMN: Record<Kind, number> = {
@@ -498,7 +505,11 @@ export default function App() {
 
   const profile = (
     <>
-      {profileOpen && <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />}
+      {profileOpen && (
+        <Suspense fallback={null}>
+          <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
+        </Suspense>
+      )}
       {unsaved && (
         <div className="toast toast--notice save-warning" role="status">
           <span>O navegador não deixou salvar: o que você fizer nesta aba some quando ela fechar.</span>
@@ -513,7 +524,9 @@ export default function App() {
   if (view === 'map')
     return (
       <>
-        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
+        <Suspense fallback={null}>
+          <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
+        </Suspense>
         {profile}
       </>
     )
@@ -548,7 +561,8 @@ export default function App() {
     return (
       <>
         {profile}
-        <FreeSystems
+        <Suspense fallback={null}>
+          <FreeSystems
           systems={systems}
           onOpen={openSystem}
           onCreate={createFree}
@@ -557,7 +571,8 @@ export default function App() {
           onDelete={(id) => store.commit(deleteSystem(store.list, id))}
           onImport={importFree}
           onClose={() => setFree(null)}
-        />
+          />
+        </Suspense>
       </>
     )
 
@@ -689,21 +704,46 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   /** How many simulated seconds are on screen; scrubbable once the run ends. */
   const [shown, setShown] = useState(0)
   const [playing, setPlaying] = useState(false)
+  /** A run is being computed: the drawing waits for its result. */
+  const [computing, setComputing] = useState(false)
+  /** Bumped whenever a run in progress stops mattering (the drawing changed, the board closed). */
+  const runId = useRef(0)
+  useEffect(() => () => void runId.current++, [])
   const running = playing && run !== null && shown < run.ticks.length
 
   const finished = run !== null && !running
   const tick = run && shown > 0 ? run.ticks[shown - 1] : undefined
-  const arch = useMemo(
-    () => ({ ...toArchitecture(nodes, edges), ...(Object.keys(fixes).length ? { fixes } : {}) }),
-    [nodes, edges, fixes],
-  )
+  // The design as the engine sees it. Moving or selecting pieces leaves it as it was, so it keeps its
+  // identity and nothing that reads it is redone on every frame of a drag.
+  const designJson = JSON.stringify({ ...toArchitecture(nodes, edges), ...(Object.keys(fixes).length ? { fixes } : {}) })
+  const arch = useMemo((): Architecture => JSON.parse(designJson), [designJson])
   const cost = totalCost(arch)
 
   const onDesign = useRef(play.free?.onDesign)
+  // The drawing is saved once it stops changing for a moment, and at once when the board closes.
+  const pendingSave = useRef<(() => void) | null>(null)
   useEffect(() => {
-    if (onDesign.current) onDesign.current({ nodes, edges })
-    else save(designKey(level), { nodes, edges, fixes })
+    pendingSave.current = () => {
+      if (onDesign.current) onDesign.current({ nodes, edges })
+      else save(designKey(level), { nodes, edges, fixes })
+    }
+    const id = setTimeout(() => {
+      pendingSave.current?.()
+      pendingSave.current = null
+    }, SAVE_DELAY_MS)
+    return () => clearTimeout(id)
   }, [level, nodes, edges, fixes])
+  useEffect(() => {
+    const flush = () => {
+      pendingSave.current?.()
+      pendingSave.current = null
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   useEffect(() => {
     const added = nodes.find((n) => n.id === pendingFit.current)
@@ -726,8 +766,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     setGain(onPassed(level.id, resultOf(run.summary, level)))
   }, [finished, run, onPassed, level, play.free])
 
-  const editable = !running
+  const editable = !running && !computing
   const clearRun = useCallback(() => {
+    runId.current++
+    setComputing(false)
     setRun(null)
     setShown(0)
     setPlaying(false)
@@ -899,7 +941,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     )
   }
 
-  const openMenu = (x: number, y: number, target: MenuState['target'], opener: Element | null) => {
+  const openMenu = useCallback((x: number, y: number, target: MenuState['target'], opener: Element | null) => {
     if (!editable) return
     if ('node' in target && target.node.deletable === false) return
     // Keyboard-opened menus (Shift+F10) report 0,0: open at the element instead.
@@ -909,7 +951,28 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       y = r.top + r.height / 2
     }
     setMenu({ x, y, target, opener: opener instanceof HTMLElement || opener instanceof SVGElement ? opener : null })
-  }
+  }, [editable])
+  const onNodeContextMenu = useCallback(
+    (e: ReactMouseEvent, node: ComponentNode) => {
+      e.preventDefault()
+      openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
+    },
+    [openMenu],
+  )
+  const onEdgeContextMenu = useCallback(
+    (e: ReactMouseEvent, edge: Edge) => {
+      e.preventDefault()
+      openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
+    },
+    [openMenu],
+  )
+  const onEdgesChangeWhenEditable: typeof onEdgesChange = useCallback(
+    (changes) => {
+      if (editable) onEdgesChange(changes)
+    },
+    [editable, onEdgesChange],
+  )
+  const closeMenuOnMove = useCallback(() => setMenu(null), [])
 
   const closeMenu = useCallback(() => {
     setMenu((m) => {
@@ -1035,6 +1098,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   // Concepts panel: the single selected piece, or a kind opened from the parts list.
   const [listInfo, setListInfo] = useState<{ kind: Kind; opener: HTMLElement } | null>(null)
+  const closeListInfo = useCallback(() => setListInfo(null), [])
   const selected = nodes.filter((n) => n.selected)
   const selectedEdges = edges.filter((e) => e.selected)
   const selectedLink = selected.length === 0 && selectedEdges.length === 1 ? selectedEdges[0] : undefined
@@ -1088,12 +1152,18 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }
 
   const start = () => {
-    if (play.free?.blocked) return
+    if (play.free?.blocked || computing) return
     setMenu(null)
     setGain(0)
-    setRun(runLevel(arch, level, Date.now() & 0xffff))
-    setShown(0)
-    setPlaying(true)
+    const id = ++runId.current
+    setComputing(true)
+    void runInBackground(arch, level, Date.now() & 0xffff).then((result) => {
+      if (runId.current !== id) return
+      setComputing(false)
+      setRun(result)
+      setShown(0)
+      setPlaying(true)
+    })
   }
 
   // Multi-region levels (or designs already spread out) show the regions on the canvas.
@@ -1106,11 +1176,18 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }, [nodes, level])
   const multiRegion = regionChoices.length > 0
 
+  // A piece keeps its display object until the piece, its numbers on screen or the level change,
+  // so a drag re-renders the piece being dragged and not the others.
+  const [cardCache] = useState(() => new WeakMap<ComponentNode, { stats?: NodeStats; level: Level; card: ComponentNode }>())
   const displayNodes = useMemo((): (ComponentNode | RegionAreaNode)[] => {
     const cards = nodes.map((n) => {
+      const stats = tick?.nodes[n.id]
+      const kept = cardCache.get(n)
+      if (kept && kept.stats === stats && kept.level === level) return kept.card
       const capacity = instanceCapacity(level, { id: n.id, kind: n.data.kind })
-      const data = { ...n.data, ...(capacity !== SPECS[n.data.kind].capacity ? { capacity } : {}), ...(tick ? { stats: tick.nodes[n.id] } : {}) }
-      return { ...n, data }
+      const card = { ...n, data: { ...n.data, ...(capacity !== SPECS[n.data.kind].capacity ? { capacity } : {}), ...(stats ? { stats } : {}) } }
+      cardCache.set(n, { stats, level, card })
+      return card
     })
     if (!multiRegion) return cards
     const PAD = 28
@@ -1140,12 +1217,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       ]
     })
     return [...areas, ...cards]
-  }, [nodes, tick, multiRegion, regionChoices, level])
+  }, [nodes, tick, multiRegion, regionChoices, level, cardCache])
+  // The links only need each piece's name, which a drag does not change.
+  const labels = useMemo(() => new Map(arch.nodes.map((n) => [n.id, SPECS[n.kind].label])), [arch])
   const displayEdges = useMemo(() => {
-    const labelOf = (id: string) => {
-      const n = nodes.find((x) => x.id === id)
-      return n ? SPECS[n.data.kind].label : id
-    }
+    const labelOf = (id: string) => labels.get(id) ?? id
     const base = edges.map((e) => ({
       ...e,
       type: 'removable',
@@ -1168,7 +1244,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
         style: { strokeWidth: 1.5 + 6 * (rps / peak), opacity: rps > 0 || breaker ? 1 : 0.35 },
       }
     })
-  }, [nodes, edges, tick])
+  }, [labels, edges, tick])
 
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
@@ -1274,9 +1350,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
-                onEdgesChange={(changes) => {
-                  if (editable) onEdgesChange(changes)
-                }}
+                onEdgesChange={onEdgesChangeWhenEditable}
                 onConnect={onConnect}
                 onConnectEnd={onConnectEnd}
                 onClickConnectStart={onClickConnectStart}
@@ -1286,24 +1360,18 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
                 isValidConnection={isValidConnection}
                 nodesConnectable={editable}
                 nodesDraggable={editable}
-                deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+                deleteKeyCode={editable ? DELETE_KEYS : null}
                 onBeforeDelete={onBeforeDelete}
                 onNodeDragStart={onNodeDragStart}
                 onNodeDrag={onNodeDrag}
                 onNodeDragStop={onNodeDragStop}
-                onNodeContextMenu={(e, node) => {
-                  e.preventDefault()
-                  openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
-                }}
-                onEdgeContextMenu={(e, edge) => {
-                  e.preventDefault()
-                  openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
-                }}
-                onMoveStart={() => setMenu(null)}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
+                onMoveStart={closeMenuOnMove}
                 onSelectionChange={onSelectionChange}
-                onPaneClick={() => setListInfo(null)}
+                onPaneClick={closeListInfo}
                 fitView
-                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                fitViewOptions={FIT_VIEW}
                 minZoom={0.2}
               >
                 <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
@@ -1477,10 +1545,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
         <footer className="console">
           <div className="console__actions">
-            <button className="btn btn--primary run" onClick={start} disabled={running || !!play.free?.blocked} aria-busy={running}>
-              {running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
+            <button className="btn btn--primary run" onClick={start} disabled={running || computing || !!play.free?.blocked} aria-busy={running || computing}>
+              {computing ? 'Simulando…' : running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
             </button>
-            <button className="btn btn--ghost" onClick={reset} disabled={running}>
+            <button className="btn btn--ghost" onClick={reset} disabled={running || computing}>
               {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
             </button>
             {play.free?.blocked && <p className="hint" role="status">Para rodar, corrija o tráfego: {play.free.blocked}</p>}
