@@ -10,6 +10,7 @@ import {
   importSystem,
   levelOf,
   loadSystems,
+  startOf,
   renameSystem,
   updateDesign,
   updateTraffic,
@@ -163,6 +164,16 @@ describe('export and import', () => {
     const { id: _a, ...rest } = back.system
     const { id: _b, ...orig } = made
     expect(rest).toEqual(orig)
+  })
+
+  it('keeps the template a system came from, which starting over goes back to', () => {
+    const t = TEMPLATES.find((x) => x.start)!
+    const made = createSystem([], { name: t.name, traffic: t.traffic, template: t.id }).system
+    expect(startOf(made)).toBe(t.start)
+    const back = importSystem(exportSystem(made))
+    expect(back.ok && back.system.template).toBe(t.id)
+    expect(startOf({})).toEqual({ nodes: [{ id: 'client', kind: 'client' }], edges: [] })
+    expect(createSystem([], { template: 'nao-existe' }).system).not.toHaveProperty('template')
   })
 
   it('names the file after the system', () => {

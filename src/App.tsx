@@ -1,6 +1,6 @@
 import { ThemeToggle } from './ThemeToggle'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent, ReactNode } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -12,7 +12,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
+import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { BrandMark } from './BrandMark'
@@ -31,22 +31,20 @@ import {
 } from './editing'
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
+import { dialogOpen, isTyping } from './keys'
 import type { Editor } from './editorContext'
 import { CodePanel } from './CodePanel'
 import { serverCode } from './serverCode'
 import { Inspector } from './Inspector'
 import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
-import { CareerMap } from './CareerMap'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
-import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
+import { DAILY_KEY, dailyLevel, dailyXp, dayNumber, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
-import { FreeSystems } from './FreeSystems'
 import { TrafficEditor } from './TrafficEditor'
-import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, updateDesign, updateTraffic, validateTraffic } from './freeMode'
+import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
 import type { FreeSystem, SavedDesign } from './freeMode'
-import { Profile } from './Profile'
 import { Stars } from './Stars'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
 import type { LevelResult, Results } from './score'
@@ -55,20 +53,30 @@ import { RegionArea } from './RegionArea'
 import type { RegionAreaNode } from './RegionArea'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
-import { parseDesign } from './savedDesign'
+import { MAX_EDGES, MAX_NODES, parseDesign } from './savedDesign'
 import { LinkPanel } from './LinkPanel'
 import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
 import { Sparkline } from './Sparkline'
-import { isDown, runLevel } from './sim/engine'
-import type { FailureReason, RunSummary, TickResult } from './sim/engine'
-import { bottleneck, timeline } from './sim/debrief'
+import { isDown } from './sim/engine'
+import type { FailureReason, NodeStats, RunSummary, TickResult } from './sim/engine'
+import { runInBackground } from './sim/runner'
+import { bottleneck, nodeName, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
 import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, balanceOf, canConnect, canSetBalance, instanceCapacity, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
+// Screens away from the board load when first opened.
+const CareerMap = lazy(() => import('./CareerMap').then((m) => ({ default: m.CareerMap })))
+const FreeSystems = lazy(() => import('./FreeSystems').then((m) => ({ default: m.FreeSystems })))
+const Profile = lazy(() => import('./Profile').then((m) => ({ default: m.Profile })))
+
 const nodeTypes = { component: NodeCard, region: RegionArea }
+const DELETE_KEYS = ['Backspace', 'Delete']
+const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
+/** How long the drawing must stay still before it is saved. */
+const SAVE_DELAY_MS = 300
 const edgeTypes = { removable: RemovableEdge }
 const PALETTE: Kind[] = ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
 const COLUMN: Record<Kind, number> = {
@@ -98,17 +106,22 @@ const PANEL_KEY = 'gargalo:panel'
 const LONG_PRESS_MS = 550
 
 type BoardRemoval = Removal<ComponentNode, Edge>
+/** What undo puts back: a removal, or the whole drawing as it was before starting over. */
+type UndoEntry = BoardRemoval | { reset: Design }
+
+const undoMessage = (entry: UndoEntry) => ('reset' in entry ? 'Desenho recomeçado.' : removalMessage(entry))
+
+/** A fresh id for a piece the player adds. */
+const pieceId = (kind: Kind) => `${kind}-${Date.now().toString(36)}`
 
 interface MenuState {
   x: number
   y: number
   target: { node: ComponentNode } | { edge: Edge }
-  /** Where focus goes back to when the menu closes. */
-  opener: HTMLElement | null
+  /** Where focus goes back to when the menu closes: the piece or link it was opened on. */
+  opener: HTMLElement | SVGElement | null
 }
 
-const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 /** What the board needs to play a level: a career stage or the daily challenge. */
 interface Play {
@@ -157,7 +170,7 @@ function dailyPlay(daily: Daily): Play {
 function freePlay(system: FreeSystem, level: Level, blocked?: string, onDesign: (design: unknown) => void = () => {}): Play {
   return {
     level,
-    start: { nodes: [{ id: 'client', kind: 'client' }], edges: [] },
+    start: startOf(system),
     pieces: [...PALETTE, 'payment'],
     unlock: () => ({ unlocked: true }),
     sheet: 'Modo livre',
@@ -215,13 +228,22 @@ function readStorage(key: string): string | null {
   }
 }
 
-function save(key: string, value: unknown) {
+/** Fired on the window when the browser refuses to save (storage full or off). */
+const SAVE_FAILED = 'gargalo:save-failed'
+
+function save(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    // Not being able to save is fine; everything still works this session.
+    // Everything still works this session; the player is told it will not last.
+    window.dispatchEvent(new Event(SAVE_FAILED))
+    return false
   }
 }
+
+/** Each day's challenge keeps its drawing under this prefix plus the date; only today's can be played. */
+const DAILY_DESIGN_PREFIX = 'gargalo:design:diario-'
 
 /** Retries, backoff, breaker and idempotency key set on a link (kept in the edge's data). */
 const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
@@ -243,7 +265,7 @@ function policyLabel(p: LinkPolicy): string | undefined {
   return parts.length ? parts.join(' · ') : undefined
 }
 
-const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1)}%`
+const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1).replace('.', ',')}%`
 const THRIFTY_PCT = Math.round(THRIFTY_SHARE * 100)
 const FAST_PCT = Math.round(FAST_SHARE * 100)
 const ms = (n: number) => `${Math.round(n)} ms`
@@ -256,6 +278,7 @@ const REASONS: [FailureReason, string][] = [
   ['noRoute', 'sem rota'],
   ['limited', 'limite (429)'],
   ['breaker', 'circuit breaker aberto'],
+  ['flaky', 'falha transitória'],
 ]
 
 /** "120 por sobrecarga, 30 sem rota", or undefined when nothing was lost. */
@@ -290,6 +313,10 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
   if (summary.failed.breaker / total > 0.001)
     out.push(
       `${pct(summary.failed.breaker / total)} das requisições falharam na hora num circuit breaker aberto. É o preço de deixar o destino se recuperar; o que não pode é ele cair de novo assim que fecha.`,
+    )
+  if (summary.failed.flaky / total > 0.001)
+    out.push(
+      `${pct(summary.failed.flaky / total)} das requisições falharam à toa: uma peça de outra empresa erra de vez em quando, sem relação com a carga. Uma tentativa extra resolve a maioria; numa escrita, ligue também a chave de idempotência.`,
     )
   if (summary.failed.limited / total > 0.001)
     out.push(
@@ -351,11 +378,56 @@ export default function App() {
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [])
+  // Another tab saved progress, results or systems: this one picks them up, so it never writes
+  // its older copy over them.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === FREE_KEY || e.key === null) {
+        const list = loadSystems(readStorage(FREE_KEY))
+        store.list = list
+        setSystems(list)
+      }
+      if (e.key === PASSED_KEY || e.key === RESULTS_KEY || e.key === null) {
+        const saved = loadProgress(readStorage).passed
+        setProgress((prev) => ({ ...prev, passed: saved }))
+        const next = loadResults(readStorage(RESULTS_KEY), saved)
+        resultsRef.current = next
+        setResults(next)
+      }
+      if (e.key === DAILY_KEY || e.key === null) {
+        const record = loadDaily(readStorage(DAILY_KEY))
+        dailyRef.current = record
+        setDailyRecord(record)
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [store])
+
+  const [unsaved, setUnsaved] = useState(false)
+  useEffect(() => {
+    const onFail = () => setUnsaved(true)
+    window.addEventListener(SAVE_FAILED, onFail)
+    return () => window.removeEventListener(SAVE_FAILED, onFail)
+  }, [])
+
+  // Drawings of past daily challenges can never be played again.
+  useEffect(() => {
+    try {
+      for (const key of Object.keys(localStorage))
+        if (key.startsWith(DAILY_DESIGN_PREFIX) && key !== `${DAILY_DESIGN_PREFIX}${today}`) localStorage.removeItem(key)
+    } catch {
+      // Storage unavailable: nothing to tidy.
+    }
+  }, [today])
+
   const { passed, current } = progress
   const stage = findStage(current)!
   const { company } = stage
 
-  useEffect(() => save(CURRENT_KEY, current), [current])
+  useEffect(() => {
+    save(CURRENT_KEY, current)
+  }, [current])
 
   /** Saves a finished run (passed list and best result) and returns the XP it added. */
   const markPassed = useCallback((id: string, result: LevelResult) => {
@@ -386,7 +458,10 @@ export default function App() {
     return dailyXp(next, date) - dailyXp(before, date)
   }, [])
 
+  /** The level the player just opened: its button in the new board's list takes the focus. */
+  const focusLevel = useRef<string | null>(null)
   const play = (levelId: string) => {
+    focusLevel.current = levelId
     setProgress((prev) => ({ ...prev, current: levelId }))
     setDaily(null)
     setFree(null)
@@ -401,6 +476,7 @@ export default function App() {
   const saveDesign = (id: string, design: unknown) => store.commit(updateDesign(store.list, id, design), false)
   const openFreeList = () => {
     setSystems(store.list)
+    setDaily(null)
     setFree({ id: null })
     setView('board')
   }
@@ -411,7 +487,7 @@ export default function App() {
   const createFree = (templateId?: string) => {
     const t = TEMPLATES.find((x) => x.id === templateId)
     const { list, system } = createSystem(store.list, {
-      ...(t ? { name: t.name, traffic: t.traffic, question: t.question, design: t.start ? freshDesign(t.start) : null } : {}),
+      ...(t ? { name: t.name, traffic: t.traffic, question: t.question, template: t.id, design: t.start ? freshDesign(t.start) : null } : {}),
     })
     store.commit(list)
     setFree({ id: system.id })
@@ -425,14 +501,32 @@ export default function App() {
   const system = free?.id ? systems.find((s) => s.id === free.id) : undefined
   const freeLevel = useMemo(() => (system ? levelOf(system) : null), [system])
   const days = streak(dailyRecord, today)
-  const todayNumber = dailyLevel(today).number
+  const todayNumber = dayNumber(today)
 
-  const profile = profileOpen && <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
+  const profile = (
+    <>
+      {profileOpen && (
+        <Suspense fallback={null}>
+          <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
+        </Suspense>
+      )}
+      {unsaved && (
+        <div className="toast toast--notice save-warning" role="status">
+          <span>O navegador não deixou salvar: o que você fizer nesta aba some quando ela fechar.</span>
+          <button type="button" onClick={() => setUnsaved(false)}>
+            Ok
+          </button>
+        </div>
+      )}
+    </>
+  )
 
   if (view === 'map')
     return (
       <>
-        <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
+        <Suspense fallback={null}>
+          <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
+        </Suspense>
         {profile}
       </>
     )
@@ -467,7 +561,8 @@ export default function App() {
     return (
       <>
         {profile}
-        <FreeSystems
+        <Suspense fallback={null}>
+          <FreeSystems
           systems={systems}
           onOpen={openSystem}
           onCreate={createFree}
@@ -476,7 +571,8 @@ export default function App() {
           onDelete={(id) => store.commit(deleteSystem(store.list, id))}
           onImport={importFree}
           onClose={() => setFree(null)}
-        />
+          />
+        </Suspense>
       </>
     )
 
@@ -499,7 +595,7 @@ export default function App() {
                     <button type="button" className="levels__map" onClick={openFreeList}>
                       Meus sistemas
                     </button>
-                    <button type="button" className="levels__map" onClick={() => setFree(null)}>
+                    <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
                       Voltar à carreira
                     </button>
                   </span>
@@ -555,6 +651,12 @@ export default function App() {
               return (
                 <button
                   key={l.id}
+                  ref={(el) => {
+                    if (el && focusLevel.current === l.id) {
+                      focusLevel.current = null
+                      el.focus()
+                    }
+                  }}
                   className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
                   aria-current={current ? 'step' : undefined}
                   disabled={status === 'locked'}
@@ -584,6 +686,7 @@ export default function App() {
 }
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
 function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
@@ -601,21 +704,46 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   /** How many simulated seconds are on screen; scrubbable once the run ends. */
   const [shown, setShown] = useState(0)
   const [playing, setPlaying] = useState(false)
+  /** A run is being computed: the drawing waits for its result. */
+  const [computing, setComputing] = useState(false)
+  /** Bumped whenever a run in progress stops mattering (the drawing changed, the board closed). */
+  const runId = useRef(0)
+  useEffect(() => () => void runId.current++, [])
   const running = playing && run !== null && shown < run.ticks.length
 
   const finished = run !== null && !running
   const tick = run && shown > 0 ? run.ticks[shown - 1] : undefined
-  const arch = useMemo(
-    () => ({ ...toArchitecture(nodes, edges), ...(Object.keys(fixes).length ? { fixes } : {}) }),
-    [nodes, edges, fixes],
-  )
+  // The design as the engine sees it. Moving or selecting pieces leaves it as it was, so it keeps its
+  // identity and nothing that reads it is redone on every frame of a drag.
+  const designJson = JSON.stringify({ ...toArchitecture(nodes, edges), ...(Object.keys(fixes).length ? { fixes } : {}) })
+  const arch = useMemo((): Architecture => JSON.parse(designJson), [designJson])
   const cost = totalCost(arch)
 
   const onDesign = useRef(play.free?.onDesign)
+  // The drawing is saved once it stops changing for a moment, and at once when the board closes.
+  const pendingSave = useRef<(() => void) | null>(null)
   useEffect(() => {
-    if (onDesign.current) onDesign.current({ nodes, edges })
-    else save(designKey(level), { nodes, edges, fixes })
+    pendingSave.current = () => {
+      if (onDesign.current) onDesign.current({ nodes, edges })
+      else save(designKey(level), { nodes, edges, fixes })
+    }
+    const id = setTimeout(() => {
+      pendingSave.current?.()
+      pendingSave.current = null
+    }, SAVE_DELAY_MS)
+    return () => clearTimeout(id)
   }, [level, nodes, edges, fixes])
+  useEffect(() => {
+    const flush = () => {
+      pendingSave.current?.()
+      pendingSave.current = null
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   useEffect(() => {
     const added = nodes.find((n) => n.id === pendingFit.current)
@@ -638,8 +766,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     setGain(onPassed(level.id, resultOf(run.summary, level)))
   }, [finished, run, onPassed, level, play.free])
 
-  const editable = !running
+  const editable = !running && !computing
   const clearRun = useCallback(() => {
+    runId.current++
+    setComputing(false)
     setRun(null)
     setShown(0)
     setPlaying(false)
@@ -659,16 +789,28 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     nodesRef.current = nodes
     edgesRef.current = edges
   }, [nodes, edges])
-  const [undoStack, setUndoStack] = useState<BoardRemoval[]>([])
-  const [toast, setToast] = useState<BoardRemoval | null>(null)
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([])
+  const [toast, setToast] = useState<UndoEntry | null>(null)
   /** Why the last connection the player tried was refused. */
   const [notice, setNotice] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(() => readStorage(PANEL_KEY) !== JSON.stringify('closed'))
-  const togglePanel = () =>
+  const togglePanel = () => {
+    focusToggle.current = true
     setPanelOpen((open) => {
       save(PANEL_KEY, open ? 'closed' : 'open')
       return !open
     })
+  }
+  // The button pressed disappears with the panel or comes back inside it: focus follows.
+  const focusToggle = useRef(false)
+  const collapseRef = useRef<HTMLButtonElement>(null)
+  const expandRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!focusToggle.current) return
+    focusToggle.current = false
+    ;(panelOpen ? collapseRef : expandRef).current?.focus()
+  }, [panelOpen])
+  const canvasRef = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dragging, setDragging] = useState(false)
   const [overTrash, setOverTrash] = useState(false)
@@ -700,12 +842,31 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     if (!editable) return
     const last = undoStack.at(-1)
     if (!last) return
-    const back = undoRemoval(nodesRef.current, edgesRef.current, last)
-    setNodes(back.nodes)
-    setEdges(back.edges)
     setUndoStack((st) => st.slice(0, -1))
     setToast(null)
     clearRun()
+    if ('reset' in last) {
+      setNodes(last.reset.nodes)
+      setEdges(last.reset.edges)
+      setFixes(last.reset.fixes ?? {})
+      return
+    }
+    // A piece the drawing takes only once does not come back when another took its place.
+    const count = new Map<Kind, number>()
+    for (const n of nodesRef.current) count.set(n.data.kind, (count.get(n.data.kind) ?? 0) + 1)
+    const refused: Kind[] = []
+    const back = undoRemoval(nodesRef.current, edgesRef.current, last, (n) => {
+      const seen = (count.get(n.data.kind) ?? 0) + 1
+      if (seen > (SPECS[n.data.kind].maxCount ?? Infinity)) {
+        refused.push(n.data.kind)
+        return false
+      }
+      count.set(n.data.kind, seen)
+      return true
+    })
+    setNodes(back.nodes)
+    setEdges(back.edges)
+    if (refused.length) setNotice(`${SPECS[refused[0]].label} já está no desenho e só cabe um: o que foi removido não voltou.`)
   }, [editable, undoStack, setNodes, setEdges, clearRun])
 
   useEffect(() => {
@@ -723,7 +884,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
-      if (isTyping(e.target)) return
+      if (isTyping(e.target) || dialogOpen()) return
       e.preventDefault()
       undo()
     }
@@ -780,7 +941,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
     )
   }
 
-  const openMenu = (x: number, y: number, target: MenuState['target'], opener: Element | null) => {
+  const openMenu = useCallback((x: number, y: number, target: MenuState['target'], opener: Element | null) => {
     if (!editable) return
     if ('node' in target && target.node.deletable === false) return
     // Keyboard-opened menus (Shift+F10) report 0,0: open at the element instead.
@@ -789,19 +950,43 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       x = r.left + r.width / 2
       y = r.top + r.height / 2
     }
-    setMenu({ x, y, target, opener: opener instanceof HTMLElement ? opener : null })
-  }
+    setMenu({ x, y, target, opener: opener instanceof HTMLElement || opener instanceof SVGElement ? opener : null })
+  }, [editable])
+  const onNodeContextMenu = useCallback(
+    (e: ReactMouseEvent, node: ComponentNode) => {
+      e.preventDefault()
+      openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
+    },
+    [openMenu],
+  )
+  const onEdgeContextMenu = useCallback(
+    (e: ReactMouseEvent, edge: Edge) => {
+      e.preventDefault()
+      openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
+    },
+    [openMenu],
+  )
+  const onEdgesChangeWhenEditable: typeof onEdgesChange = useCallback(
+    (changes) => {
+      if (editable) onEdgesChange(changes)
+    },
+    [editable, onEdgesChange],
+  )
+  const closeMenuOnMove = useCallback(() => setMenu(null), [])
 
   const closeMenu = useCallback(() => {
     setMenu((m) => {
+      // A removed piece took its focus with it: the canvas gets it back.
       if (m?.opener?.isConnected) m.opener.focus()
+      else canvasRef.current?.focus()
       return null
     })
   }, [])
 
   const duplicate = (node: ComponentNode) => {
+    if (!canAdd(node.data.kind)) return
     clearRun()
-    const id = `${node.data.kind}-${Date.now().toString(36)}`
+    const id = pieceId(node.data.kind)
     setNodes((ns) => [
       ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
       {
@@ -817,7 +1002,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const menuItems = (target: MenuState['target']): MenuItem[] =>
     'node' in target
       ? [
-          { label: 'Duplicar', onSelect: () => duplicate(target.node) },
+          ...(canAdd(target.node.data.kind) ? [{ label: 'Duplicar', onSelect: () => duplicate(target.node) }] : []),
           { label: 'Remover', onSelect: () => remove([target.node.id]) },
         ]
       : [{ label: 'Remover', onSelect: () => remove([], [target.edge.id]) }]
@@ -855,6 +1040,21 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   )
 
   // A drop on a piece that refuses the link says why instead of silently doing nothing.
+  /** Where a link started when it is made by clicking one handle and then another. */
+  const clickStart = useRef<{ nodeId: string; handleType: 'source' | 'target' } | null>(null)
+  const onClickConnectStart: OnConnectStart = (_event, { nodeId, handleType }) => {
+    clickStart.current = nodeId && handleType ? { nodeId, handleType } : null
+  }
+  const onClickConnectEnd: OnConnectEnd = (event) => {
+    const start = clickStart.current
+    clickStart.current = null
+    const end = event.target instanceof Element ? event.target.closest<HTMLElement>('.react-flow__node')?.dataset.id : undefined
+    if (!start || !end || end === start.nodeId) return
+    const [source, target] = start.handleType === 'target' ? [end, start.nodeId] : [start.nodeId, end]
+    const why = connectRefusal(arch, source, target, level)
+    if (why) setNotice(why)
+  }
+
   const onConnectEnd: OnConnectEnd = (_event, state) => {
     if (state.isValid || !state.fromNode || !state.toNode) return
     const [source, target] =
@@ -864,20 +1064,31 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const onConnect = useCallback(
     (c: Connection) => {
+      if (edgesRef.current.length >= MAX_EDGES) {
+        setNotice(`Cabem até ${MAX_EDGES} ligações num desenho.`)
+        return
+      }
       setNotice(null)
       clearRun()
-      setEdges((es) => addEdge(c, es))
+      // The same id the links a level starts with have, so undo and saving see one link per pair.
+      setEdges((es) => addEdge({ ...c, id: `${c.source}->${c.target}` }, es))
     },
     [setEdges, clearRun],
   )
 
   const atMax = (kind: Kind) => nodes.filter((n) => n.data.kind === kind).length >= (SPECS[kind].maxCount ?? Infinity)
+  /** Whether one more piece of `kind` fits the drawing. */
+  const canAdd = (kind: Kind) => !atMax(kind) && nodes.length < MAX_NODES
 
   const addComponent = (kind: Kind) => {
     if (atMax(kind)) return
+    if (nodes.length >= MAX_NODES) {
+      setNotice(`Cabem até ${MAX_NODES} peças num desenho.`)
+      return
+    }
     clearRun()
     const sameKind = nodes.filter((n) => n.data.kind === kind).length
-    const id = `${kind}-${Date.now().toString(36)}`
+    const id = pieceId(kind)
     setNodes((ns) => [
       ...ns,
       { id, type: 'component', position: { x: COLUMN[kind], y: (FIRST_ROW[kind] ?? 20) + sameKind * 100 }, data: { kind } },
@@ -887,6 +1098,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   // Concepts panel: the single selected piece, or a kind opened from the parts list.
   const [listInfo, setListInfo] = useState<{ kind: Kind; opener: HTMLElement } | null>(null)
+  const closeListInfo = useCallback(() => setListInfo(null), [])
   const selected = nodes.filter((n) => n.selected)
   const selectedEdges = edges.filter((e) => e.selected)
   const selectedLink = selected.length === 0 && selectedEdges.length === 1 ? selectedEdges[0] : undefined
@@ -906,6 +1118,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       : undefined
 
   const openInfo = (kind: Kind, opener: HTMLElement) => {
+    setCodeId(null)
     setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)))
     setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))
     setListInfo({ kind, opener })
@@ -928,21 +1141,29 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
   const reset = () => {
     const fresh = freshDesign(play.start)
+    const before: UndoEntry = { reset: { nodes: nodesRef.current, edges: edgesRef.current, fixes } }
     setNodes(fresh.nodes)
     setEdges(fresh.edges)
-    setUndoStack([])
-    setToast(null)
+    setUndoStack((st) => pushBounded(st, before))
+    setToast(before)
     setFixes({})
     setCodeId(null)
     clearRun()
   }
 
   const start = () => {
-    if (play.free?.blocked) return
+    if (play.free?.blocked || computing) return
     setMenu(null)
-    setRun(runLevel(arch, level, Date.now() & 0xffff))
-    setShown(0)
-    setPlaying(true)
+    setGain(0)
+    const id = ++runId.current
+    setComputing(true)
+    void runInBackground(arch, level, Date.now() & 0xffff).then((result) => {
+      if (runId.current !== id) return
+      setComputing(false)
+      setRun(result)
+      setShown(0)
+      setPlaying(true)
+    })
   }
 
   // Multi-region levels (or designs already spread out) show the regions on the canvas.
@@ -955,11 +1176,18 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   }, [nodes, level])
   const multiRegion = regionChoices.length > 0
 
+  // A piece keeps its display object until the piece, its numbers on screen or the level change,
+  // so a drag re-renders the piece being dragged and not the others.
+  const [cardCache] = useState(() => new WeakMap<ComponentNode, { stats?: NodeStats; level: Level; card: ComponentNode }>())
   const displayNodes = useMemo((): (ComponentNode | RegionAreaNode)[] => {
     const cards = nodes.map((n) => {
+      const stats = tick?.nodes[n.id]
+      const kept = cardCache.get(n)
+      if (kept && kept.stats === stats && kept.level === level) return kept.card
       const capacity = instanceCapacity(level, { id: n.id, kind: n.data.kind })
-      const data = { ...n.data, ...(capacity !== SPECS[n.data.kind].capacity ? { capacity } : {}), ...(tick ? { stats: tick.nodes[n.id] } : {}) }
-      return { ...n, data }
+      const card = { ...n, data: { ...n.data, ...(capacity !== SPECS[n.data.kind].capacity ? { capacity } : {}), ...(stats ? { stats } : {}) } }
+      cardCache.set(n, { stats, level, card })
+      return card
     })
     if (!multiRegion) return cards
     const PAD = 28
@@ -989,12 +1217,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       ]
     })
     return [...areas, ...cards]
-  }, [nodes, tick, multiRegion, regionChoices, level])
+  }, [nodes, tick, multiRegion, regionChoices, level, cardCache])
+  // The links only need each piece's name, which a drag does not change.
+  const labels = useMemo(() => new Map(arch.nodes.map((n) => [n.id, SPECS[n.kind].label])), [arch])
   const displayEdges = useMemo(() => {
-    const labelOf = (id: string) => {
-      const n = nodes.find((x) => x.id === id)
-      return n ? SPECS[n.data.kind].label : id
-    }
+    const labelOf = (id: string) => labels.get(id) ?? id
     const base = edges.map((e) => ({
       ...e,
       type: 'removable',
@@ -1017,7 +1244,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
         style: { strokeWidth: 1.5 + 6 * (rps / peak), opacity: rps > 0 || breaker ? 1 : 0.35 },
       }
     })
-  }, [nodes, edges, tick])
+  }, [labels, edges, tick])
 
   const visible = run ? run.ticks.slice(0, shown) : []
   const g = level.goals
@@ -1037,6 +1264,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             gargalo
           </h1>
           <button
+            ref={collapseRef}
             type="button"
             className="panel__toggle"
             onClick={togglePanel}
@@ -1093,7 +1321,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             })}
           </ul>
           <p className="help">
-            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar.
+            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar,
+            ou selecione a peça e use Ligar a, no painel dela.
             Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
             direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
@@ -1105,7 +1334,9 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       <main className="stage">
         <div className="workspace">
           <div
+            ref={canvasRef}
             className="canvas"
+            tabIndex={-1}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={cancelLongPress}
@@ -1119,40 +1350,35 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
-                onEdgesChange={(changes) => {
-                  if (editable) onEdgesChange(changes)
-                }}
+                onEdgesChange={onEdgesChangeWhenEditable}
                 onConnect={onConnect}
                 onConnectEnd={onConnectEnd}
+                onClickConnectStart={onClickConnectStart}
+                onClickConnectEnd={onClickConnectEnd}
                 autoPanOnNodeDrag={false}
                 selectNodesOnDrag={false}
                 isValidConnection={isValidConnection}
                 nodesConnectable={editable}
                 nodesDraggable={editable}
-                deleteKeyCode={editable ? ['Backspace', 'Delete'] : null}
+                deleteKeyCode={editable ? DELETE_KEYS : null}
                 onBeforeDelete={onBeforeDelete}
                 onNodeDragStart={onNodeDragStart}
                 onNodeDrag={onNodeDrag}
                 onNodeDragStop={onNodeDragStop}
-                onNodeContextMenu={(e, node) => {
-                  e.preventDefault()
-                  openMenu(e.clientX, e.clientY, { node }, e.currentTarget as Element)
-                }}
-                onEdgeContextMenu={(e, edge) => {
-                  e.preventDefault()
-                  openMenu(e.clientX, e.clientY, { edge }, e.currentTarget as Element)
-                }}
-                onMoveStart={() => setMenu(null)}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
+                onMoveStart={closeMenuOnMove}
                 onSelectionChange={onSelectionChange}
-                onPaneClick={() => setListInfo(null)}
+                onPaneClick={closeListInfo}
                 fitView
-                fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
+                fitViewOptions={FIT_VIEW}
                 minZoom={0.2}
               >
                 <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
                 <Controls showInteractive={false} position="top-left" />
                 {!panelOpen && (
                   <button
+                    ref={expandRef}
                     type="button"
                     className="panel__open"
                     onClick={togglePanel}
@@ -1178,7 +1404,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             )}
 
             <div className="toast-slot" role="status" aria-live="polite">
-              {notice && !toast && (
+              {notice && (
                 <div className="toast toast--notice">
                   <span>{notice}</span>
                   <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso">
@@ -1188,7 +1414,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               )}
               {toast && (
                 <div className="toast">
-                  <span>{removalMessage(toast)}</span>
+                  <span>{undoMessage(toast)}</span>
                   <button type="button" onClick={undo} disabled={!editable}>
                     Desfazer
                   </button>
@@ -1259,6 +1485,21 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               focusOnOpen={listInfo !== null}
               escapeCloses={!menu}
               capacity={!listInfo && selected.length === 1 ? instanceCapacity(level, { id: selected[0].id, kind: selected[0].data.kind }) : undefined}
+              links={
+                !listInfo && selected.length === 1
+                  ? {
+                      targets: nodes
+                        .filter((n) => canConnect(arch, selected[0].id, n.id, level))
+                        .map((n) => ({ id: n.id, label: capitalize(nodeName(arch, n.id)) })),
+                      editable,
+                      onLink: (target) => {
+                        const fits = edgesRef.current.length < MAX_EDGES
+                        onConnect({ source: selected[0].id, target, sourceHandle: null, targetHandle: null })
+                        if (fits) setNotice(`Ligado a ${nodeName(arch, target)}.`)
+                      },
+                    }
+                  : undefined
+              }
               balance={
                 !listInfo && selected.length === 1 && SPECS[selected[0].data.kind].balances && (canSetBalance(level, fixes) || forcedBalance)
                   ? {
@@ -1304,10 +1545,10 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
 
         <footer className="console">
           <div className="console__actions">
-            <button className="btn btn--primary run" onClick={start} disabled={running || !!play.free?.blocked} aria-busy={running}>
-              {running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
+            <button className="btn btn--primary run" onClick={start} disabled={running || computing || !!play.free?.blocked} aria-busy={running || computing}>
+              {computing ? 'Simulando…' : running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
             </button>
-            <button className="btn btn--ghost" onClick={reset} disabled={running}>
+            <button className="btn btn--ghost" onClick={reset} disabled={running || computing}>
               {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
             </button>
             {play.free?.blocked && <p className="hint" role="status">Para rodar, corrija o tráfego: {play.free.blocked}</p>}
@@ -1375,6 +1616,11 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               />
             </label>
           )}
+
+          {/* Always on the page, so screen readers announce the verdict when it arrives. */}
+          <p className="sr-only" role="status" aria-live="polite">
+            {finished ? verdictOf(free, run.summary.passed.all && !free) : ''}
+          </p>
 
           {finished && (
             <Result
@@ -1529,6 +1775,12 @@ const BOTTLENECK_TEXT: Record<Bottleneck['reason'], (lost: number) => string> = 
   latency: () => 'Nada se perdeu, mas foi onde as requisições mais esperaram.',
 }
 
+/** What the run's result says first: the verdict, also read out by screen readers. */
+function verdictOf(free: boolean, won: boolean): string {
+  if (free) return 'Rodada concluída. O selo da folha mostra o que foi medido.'
+  return won ? 'Fase concluída. Todas as metas foram cumpridas.' : 'Ainda não. Veja no selo da folha qual meta falhou.'
+}
+
 function Result({
   summary,
   ticks,
@@ -1554,21 +1806,16 @@ function Result({
   onSeek: (t: number) => void
   onConcept: (kind: Kind, opener: HTMLElement) => void
 }) {
-  const events = timeline(arch, ticks)
-  const neck = bottleneck(arch, ticks)
+  const events = useMemo(() => timeline(arch, ticks), [arch, ticks])
+  const neck = useMemo(() => bottleneck(arch, ticks), [arch, ticks])
+  const tips = useMemo(() => hints(summary, ticks, arch, level), [summary, ticks, arch, level])
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
   const won = summary.passed.all && !free
   const stars = won ? resultOf(summary, level).stars : 0
   const gaps = starGaps(summary, level)
   return (
-    <section className={`result ${free ? 'result--free' : won ? 'result--pass' : 'result--fail'}`} aria-live="polite">
-      <h2>
-        {free
-          ? 'Rodada concluída. O selo da folha mostra o que foi medido.'
-          : won
-            ? 'Fase concluída. Todas as metas foram cumpridas.'
-            : 'Ainda não. Veja no selo da folha qual meta falhou.'}
-      </h2>
+    <section className={`result ${free ? 'result--free' : won ? 'result--pass' : 'result--fail'}`}>
+      <h2>{verdictOf(free, won)}</h2>
       {won && (
         <div className="stars-line">
           <Stars count={stars} />
@@ -1605,7 +1852,7 @@ function Result({
       {lostByReason(summary.failed)?.includes(', ') && (
         <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
       )}
-      {hints(summary, ticks, arch, level).map((h) => (
+      {tips.map((h) => (
         <p key={h} className="hint">
           {h}
         </p>

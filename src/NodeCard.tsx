@@ -19,9 +19,29 @@ function heat(stats?: NodeStats): 'idle' | 'ok' | 'warm' | 'hot' | 'down' {
   return 'ok'
 }
 
-export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentNode>) {
-  const { editable, remove } = useEditor()
+/** The × on a selected piece. Only it follows the zoom, so zooming re-renders it and not every piece. */
+function RemoveButton({ id, label }: { id: string; label: string }) {
+  const { remove } = useEditor()
   const scale = useControlScale()
+  return (
+    <button
+      type="button"
+      className="remove-x node__remove nodrag nopan"
+      aria-label={`Remover ${label}`}
+      title="Remover"
+      style={{ transform: `scale(${scale})` }}
+      onClick={(e) => {
+        e.stopPropagation()
+        remove([id])
+      }}
+    >
+      <span aria-hidden>×</span>
+    </button>
+  )
+}
+
+export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentNode>) {
+  const { editable } = useEditor()
   const spec = SPECS[data.kind]
   const { stats } = data
   const state = heat(stats)
@@ -72,21 +92,7 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
       )}
       {odd && <div className="node__tag">máquina antiga</div>}
       {spec.maxOut > 0 && <Handle type="source" position={Position.Right} />}
-      {selected && editable && deletable && (
-        <button
-          type="button"
-          className="remove-x node__remove nodrag nopan"
-          aria-label={`Remover ${spec.label}`}
-          title="Remover"
-          style={{ transform: `scale(${scale})` }}
-          onClick={(e) => {
-            e.stopPropagation()
-            remove([id])
-          }}
-        >
-          <span aria-hidden>×</span>
-        </button>
-      )}
+      {selected && editable && deletable && <RemoveButton id={id} label={spec.label} />}
     </div>
   )
 }

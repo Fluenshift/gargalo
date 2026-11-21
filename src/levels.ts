@@ -313,7 +313,7 @@ export const BLACK_FRIDAY: Level = {
     { kind: 'payment', index: 0, from: 24, to: 27 },
     { kind: 'replica', index: 0, from: 28, to: 40 },
   ],
-  goals: { minAvailability: 0.985, maxP99Ms: 700, maxCost: 1000 },
+  goals: { minAvailability: 0.985, maxP99Ms: 800, maxCost: 1000 },
   tweaks: LONG_TAIL_CATALOG,
   start: withPayment({}),
 }

@@ -219,6 +219,7 @@ export const SPECS: Record<Kind, Spec> = {
     maxOut: 1,
     description: 'De onde vem o tráfego. O DNS só aponta para um lugar.',
     entry: true,
+    maxCount: 1,
     global: true,
     browserFacing: true,
   },
@@ -735,7 +736,7 @@ export interface CodeChallenge {
   locks?: { links: Link[]; reason: string }
 }
 
-/** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
+/** Whether `links` holds the link from one kind to the other. */
 const hasLink = (links: Link[] | undefined, from: Kind, to: Kind) => !!links?.some((l) => l.from === from && l.to.includes(to))
 
 /** Why the level's code forbids a link from one kind to another, or null when nothing does. */
@@ -779,6 +780,7 @@ export function openEdges(arch: Architecture, level: Pick<Level, 'code'> | undef
   })
 }
 
+/** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
 export function levelWork(level: Level, arch: Pick<Architecture, 'fixes'>): Work[] {
   return (level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)
 }

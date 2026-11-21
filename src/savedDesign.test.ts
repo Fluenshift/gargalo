@@ -30,15 +30,16 @@ describe('parseDesign', () => {
   it('keeps a link policy and drops values out of range', () => {
     const edges = [
       { id: 'a', source: 'client', target: 'server', data: { retries: 2, backoff: true, breaker: true, idempotent: true } },
-      { id: 'b', source: 'server', target: 'client', data: { retries: 9, backoff: 'yes', idempotent: 1 } },
+      { id: 'b', source: 'server', target: 'db', data: { retries: 9, backoff: 'yes', idempotent: 1 } },
     ]
-    const design = parseDesign(JSON.stringify({ ...valid, edges }))
+    const design = parseDesign(JSON.stringify({ nodes: [...valid.nodes, node('db', 'db')], edges }))
     expect(design?.edges[0].data).toEqual({ retries: 2, backoff: true, breaker: true, idempotent: true })
     expect(design?.edges[1].data).toBeUndefined()
   })
 
   it('keeps a protocol the link can use and drops the rest back to REST', () => {
-    const nodes = [node('client', 'client'), node('cdn', 'cdn'), node('lb', 'lb'), node('server', 'server'), node('db', 'db')]
+    const kinds = ['client', 'dns', 'cdn', 'lb', 'server', 'db']
+    const nodes = [...kinds.map((k) => node(k, k)), node('server-2', 'server')]
     const link = (source: string, target: string, protocol: unknown) => ({ id: `${source}->${target}`, source, target, data: { protocol } })
     const design = parseDesign(
       JSON.stringify({
@@ -46,10 +47,10 @@ describe('parseDesign', () => {
         edges: [
           link('client', 'cdn', 'graphql'), // a browser speaks GraphQL
           link('lb', 'server', 'grpc'), // internal link
-          link('client', 'server', 'grpc'), // a browser does not speak gRPC
+          link('dns', 'server-2', 'grpc'), // a browser does not speak gRPC
           link('server', 'db', 'graphql'), // the database takes no API calls
           link('cdn', 'lb', 'soap'), // unknown
-          link('cdn', 'server', 'rest'), // the default is not stored
+          link('lb', 'server-2', 'rest'), // the default is not stored
         ],
       }),
     )
@@ -85,6 +86,39 @@ describe('parseDesign', () => {
     expect(parseDesign(raw('where-in'), loop)?.fixes).toBeUndefined()
     // Without the level, any string pick is kept and the engine ignores unknown ones.
     expect(parseDesign(raw({ a: 'b', c: 1 }))?.fixes).toEqual({ a: 'b' })
+  })
+
+  it('keeps only links the board would draw', () => {
+    const kinds = ['client', 'cdn', 'lb', 'server', 'db']
+    const link = (source: string, target: string) => ({ id: `${source}->${target}`, source, target })
+    const design = parseDesign(
+      JSON.stringify({
+        nodes: [...kinds.map((k) => node(k, k)), node('server-2', 'server')],
+        edges: [
+          link('client', 'cdn'),
+          link('client', 'lb'), // the users link to one piece only
+          link('cdn', 'lb'),
+          { ...link('cdn', 'lb'), id: 'again' }, // the same two pieces twice
+          link('lb', 'server'),
+          link('lb', 'lb'), // a piece to itself
+          link('server', 'server-2'), // a server sends nothing to a server
+          link('db', 'client'), // nor a database to the users
+          link('server', 'db'),
+        ],
+      }),
+    )
+    expect(design?.edges.map((e) => e.id)).toEqual(['client->cdn', 'cdn->lb', 'lb->server', 'server->db'])
+  })
+
+  it('keeps the first of a kind the board allows only once, and drops the links of the rest', () => {
+    const design = parseDesign(
+      JSON.stringify({
+        nodes: [...valid.nodes, node('db', 'db'), node('db-2', 'db'), node('client-2', 'client')],
+        edges: [...valid.edges, { source: 'server', target: 'db' }, { source: 'server', target: 'db-2' }],
+      }),
+    )
+    expect(design?.nodes.map((n) => n.id)).toEqual(['client', 'server', 'db'])
+    expect(design?.edges.map((e) => e.target)).toEqual(['server', 'db'])
   })
 
   it('has no fixes when none were saved', () => {

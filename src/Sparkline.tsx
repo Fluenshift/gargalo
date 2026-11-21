@@ -12,12 +12,14 @@ const W = 160
 const H = 36
 
 export function Sparkline({ values, length, goal, max, min = 0, label }: Props) {
-  const y = (v: number) => H - ((Math.min(Math.max(v, min), max) - min) / (max - min)) * H
+  // Without a finite top (free mode has no goals), the line scales to its highest value.
+  const top = Number.isFinite(max) && max > min ? max : Math.max(min + 1, ...values.filter(Number.isFinite))
+  const y = (v: number) => H - ((Math.min(Math.max(v, min), top) - min) / (top - min)) * H
   const x = (i: number) => (length <= 1 ? 0 : (i / (length - 1)) * W)
   const points = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
   return (
     <svg className="spark" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} preserveAspectRatio="none">
-      {goal !== undefined && <line x1={0} x2={W} y1={y(goal)} y2={y(goal)} className="spark__goal" />}
+      {goal !== undefined && Number.isFinite(goal) && <line x1={0} x2={W} y1={y(goal)} y2={y(goal)} className="spark__goal" />}
       <polyline points={points} className="spark__line" />
     </svg>
   )

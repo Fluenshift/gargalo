@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FAILABLE, MAX_ROWS } from './freeMode'
+import { parseNumber } from './numbers'
 import type { FreeFailure, Spike, Traffic } from './freeMode'
 import { SPECS } from './sim/model'
 import type { UserClass } from './sim/model'
@@ -27,7 +28,7 @@ function NumField({ label, value, onChange, suffix, scale = 1 }: { label: string
           onBlur={() => setText(null)}
           onChange={(e) => {
             setText(e.target.value)
-            const n = e.target.value.trim() === '' ? NaN : Number(e.target.value.replace(',', '.'))
+            const n = parseNumber(e.target.value)
             if (Number.isFinite(n)) onChange(n / scale)
           }}
         />
@@ -130,13 +131,12 @@ export function TrafficEditor({ traffic, errors, onChange }: { traffic: Traffic;
         </button>
       </div>
 
-      {errors.length > 0 && (
-        <ul className="traffic__errors" aria-live="polite">
-          {errors.map((e) => (
-            <li key={e}>{e}</li>
-          ))}
-        </ul>
-      )}
+      {/* Always on the page, so screen readers hear each problem as it appears. */}
+      <ul className="traffic__errors" aria-live="polite">
+        {errors.map((e) => (
+          <li key={e}>{e}</li>
+        ))}
+      </ul>
     </section>
   )
 }

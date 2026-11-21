@@ -52,7 +52,7 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Latência baixa: a resposta vem da borda.',
     ],
     costs: [
-      'Não ajuda leituras e escritas, que seguem para a origem.',
+      'Ajuda pouco nas leituras: guarda só 10% delas, e só as que vêm por REST. Escritas seguem para a origem.',
       'Arquivo trocado demora a aparecer até a cópia expirar.',
     ],
     mistakes: [
@@ -462,7 +462,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'dns',
     term: 'DNS',
-    definition: 'Traduz o nome do site para o endereço de uma peça. Aqui aponta para um único lugar.',
+    definition: 'Traduz o nome do site para o endereço de uma peça. O comum aponta para um lugar só; o DNS geográfico responde a cada pessoa com a peça viva mais perto dela.',
   },
   {
     id: 'regiao',

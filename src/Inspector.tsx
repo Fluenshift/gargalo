@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { escapeFor } from './keys'
 import { CONCEPTS, splitTerms } from './concepts'
 import type { GlossaryEntry } from './concepts'
 import { KindIcon } from './KindIcon'
@@ -31,6 +32,7 @@ export function Inspector({
   balance,
   capacity,
   code,
+  links,
 }: {
   kind: Kind
   /** The level on screen: a server lists its routes. */
@@ -53,13 +55,19 @@ export function Inspector({
   code?: string
   /** Regions to choose from for the selected piece; absent on single-region levels and for global pieces. */
   region?: { value: Region; choices: Region[]; editable: boolean; onChange: (r: Region) => void }
+  /** Pieces the selected one can link to: the way to draw a link without dragging (keyboard, screen readers). */
+  links?: { targets: { id: string; label: string }[]; editable: boolean; onLink: (targetId: string) => void }
 }) {
   const spec = SPECS[kind]
   const concept = CONCEPTS[kind]
   const titleId = useId()
   const defId = useId()
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const rootRef = useRef<HTMLElement>(null)
   const [term, setTerm] = useState<GlossaryEntry | null>(null)
+  const [linkTo, setLinkTo] = useState('')
+  // The pick stays while it can still be linked; otherwise the first piece that can.
+  const chosen = links?.targets.some((t) => t.id === linkTo) ? linkTo : (links?.targets[0]?.id ?? '')
   const [termKind, setTermKind] = useState(kind)
   // A definition belongs to the piece it was opened on.
   if (termKind !== kind) {
@@ -74,7 +82,8 @@ export function Inspector({
   useEffect(() => {
     if (!escapeCloses) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (!escapeFor(e, rootRef.current)) return
+      e.preventDefault()
       if (term) setTerm(null)
       else onClose()
     }
@@ -106,7 +115,7 @@ export function Inspector({
   const shownCapacity = capacity ?? spec.capacity
 
   return (
-    <aside className="inspector" aria-labelledby={titleId}>
+    <aside ref={rootRef} className="inspector" aria-labelledby={titleId}>
       <header className="inspector__head">
         <KindIcon kind={kind} size={30} />
         <div>
@@ -171,6 +180,34 @@ export function Inspector({
               </div>
               <p className="inspector__note">{BALANCES.find((b) => b.id === balance.value)?.hint}</p>
             </>
+          )}
+        </section>
+      )}
+
+      {links && (
+        <section>
+          <h3 id={`${titleId}-links`}>Ligar a</h3>
+          {links.targets.length > 0 ? (
+            <form
+              className="link-to"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (chosen) links.onLink(chosen)
+              }}
+            >
+              <select aria-labelledby={`${titleId}-links`} value={chosen} disabled={!links.editable} onChange={(e) => setLinkTo(e.target.value)}>
+                {links.targets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn btn--ghost btn--small" disabled={!links.editable}>
+                Ligar
+              </button>
+            </form>
+          ) : (
+            <p className="inspector__note">Nenhuma peça do desenho aceita uma ligação desta agora.</p>
           )}
         </section>
       )}

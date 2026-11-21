@@ -1,8 +1,12 @@
 // A design saved in localStorage is untrusted: an older version of the game,
 // another tab or a hand edit may have left something the board cannot draw.
 
-import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, openEdges, protocolRefusal } from './sim/model'
-import type { Balance, Kind, Level, Protocol, Region } from './sim/model'
+import { MAX_RETRIES, PROTOCOLS, REGIONS, SPECS, canConnect, protocolRefusal } from './sim/model'
+import type { Architecture, Balance, Kind, Level, Protocol, Region } from './sim/model'
+
+/** Most pieces and links one drawing may have. */
+export const MAX_NODES = 300
+export const MAX_EDGES = 600
 
 export interface SavedNode {
   id: string
@@ -76,6 +80,13 @@ export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; e
   }
   const ids = new Set(nodes.map((n) => n.id))
   if (ids.size !== nodes.length || !nodes.some((n) => n.data.kind === 'client')) return null
+  // Past the most a kind allows (one users node, one primary database), the first ones stay.
+  const count = new Map<Kind, number>()
+  const kept = nodes.filter((n) => {
+    const seen = (count.get(n.data.kind) ?? 0) + 1
+    count.set(n.data.kind, seen)
+    return seen <= (SPECS[n.data.kind].maxCount ?? Infinity)
+  })
 
   const edges: SavedEdge[] = []
   for (const e of value.edges) {
@@ -101,7 +112,13 @@ export function parseDesign(raw: string, level?: Level): { nodes: SavedNode[]; e
     })
   }
   const fixes = parseFixes(value.fixes, level)
-  // Links the picked code forbids cannot come back from storage.
-  const open = new Set(openEdges({ nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind })), edges, ...(fixes ? { fixes } : {}) }, level))
-  return { nodes, edges: edges.filter((e) => open.has(e)), ...(fixes ? { fixes } : {}) }
+  // Only links the board itself would draw come back: allowed between the two kinds, one per
+  // pair, no more than the source takes, and open in the picked code.
+  const drawn: Architecture = { nodes: kept.map((n) => ({ id: n.id, kind: n.data.kind })), edges: [], ...(fixes ? { fixes } : {}) }
+  const drawable = edges.filter((e) => {
+    if (!canConnect(drawn, e.source, e.target, level)) return false
+    drawn.edges.push({ source: e.source, target: e.target })
+    return true
+  })
+  return { nodes: kept, edges: drawable, ...(fixes ? { fixes } : {}) }
 }

@@ -1,4 +1,5 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { escapeFor } from './keys'
 import { GLOSSARY } from './concepts'
 import type { GlossaryEntry } from './concepts'
 import { MAX_RETRIES, PROTOCOLS, SPECS, protocolRefusal } from './sim/model'
@@ -58,9 +59,11 @@ export function LinkPanel({
     onChange(p === 'rest' ? rest : { ...rest, protocol: p })
   }
 
+  const rootRef = useRef<HTMLElement>(null)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      if (!escapeFor(e, rootRef.current)) return
+      e.preventDefault()
       if (term) setTerm(null)
       else onClose()
     }
@@ -69,7 +72,7 @@ export function LinkPanel({
   }, [term, onClose])
 
   return (
-    <aside className="inspector link-panel" aria-labelledby={titleId}>
+    <aside ref={rootRef} className="inspector link-panel" aria-labelledby={titleId}>
       <header className="inspector__head">
         <svg className="kind-icon" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
           <circle cx="5" cy="12" r="2.5" />

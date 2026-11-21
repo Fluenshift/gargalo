@@ -2,7 +2,7 @@
 // traffic and drawing. Everything here is pure; a system becomes a Level and
 // runs through the same engine as any stage, with goals that never fail.
 
-import { parseDesign } from './savedDesign'
+import { MAX_EDGES, MAX_NODES, parseDesign } from './savedDesign'
 import type { SavedEdge, SavedNode } from './savedDesign'
 import { SPECS } from './sim/model'
 import type { Architecture, Kind, Level, TrafficPhase, UserClass } from './sim/model'
@@ -18,8 +18,6 @@ export const MAX_ROWS = 20
 /** How far the mix may be from 100%, as a fraction. */
 export const MIX_TOLERANCE = 0.001
 const MAX_FILE_CHARS = 1_000_000
-const MAX_NODES = 300
-const MAX_EDGES = 600
 
 export interface Spike {
   from: number
@@ -53,6 +51,8 @@ export interface FreeSystem {
   name: string
   /** The guiding question of the template it started from, if any. */
   question?: string
+  /** Id of the template it started from, if any: starting over brings back the template's drawing. */
+  template?: string
   traffic: Traffic
   /** The drawing; null until the player touches the board (it then opens with the template's start or just the users). */
   design: SavedDesign | null
@@ -150,7 +150,8 @@ function readSystem(v: unknown, strict: boolean): { system: FreeSystem } | { err
   }
   const id = typeof v.id === 'string' && v.id ? v.id : newId()
   const question = typeof v.question === 'string' && v.question.trim() ? v.question.trim().slice(0, 300) : undefined
-  return { system: { id, name, ...(question ? { question } : {}), traffic, design } }
+  const template = knownTemplate(v.template)
+  return { system: { id, name, ...(question ? { question } : {}), ...(template ? { template } : {}), traffic, design } }
 }
 
 let counter = 0
@@ -183,12 +184,14 @@ export function loadSystems(raw: string | null): FreeSystem[] {
 
 export function createSystem(
   list: FreeSystem[],
-  opts: { name?: string; traffic?: Traffic; question?: string; design?: unknown } = {},
+  opts: { name?: string; traffic?: Traffic; question?: string; template?: string; design?: unknown } = {},
 ): { list: FreeSystem[]; system: FreeSystem } {
+  const template = knownTemplate(opts.template)
   const system: FreeSystem = {
     id: newId(),
     name: cleanName(opts.name ?? '') || `Sistema ${list.length + 1}`,
     ...(opts.question ? { question: opts.question } : {}),
+    ...(template ? { template } : {}),
     traffic: structuredClone(opts.traffic ?? defaultTraffic()),
     design: opts.design ? cleanDesign(opts.design) : null,
   }
@@ -268,12 +271,16 @@ export function levelOf(system: FreeSystem): Level {
 export interface ExportFile {
   format: typeof EXPORT_FORMAT
   version: typeof EXPORT_VERSION
-  system: { name: string; question?: string; traffic: Traffic; design: SavedDesign | null }
+  system: { name: string; question?: string; template?: string; traffic: Traffic; design: SavedDesign | null }
 }
 
 export function exportSystem(system: FreeSystem): string {
-  const { name, question, traffic, design } = system
-  const file: ExportFile = { format: EXPORT_FORMAT, version: EXPORT_VERSION, system: { name, ...(question ? { question } : {}), traffic, design } }
+  const { name, question, template, traffic, design } = system
+  const file: ExportFile = {
+    format: EXPORT_FORMAT,
+    version: EXPORT_VERSION,
+    system: { name, ...(question ? { question } : {}), ...(template ? { template } : {}), traffic, design },
+  }
   return JSON.stringify(file, null, 2)
 }
 
@@ -319,6 +326,16 @@ export interface Template {
 
 const node = (id: string, kind: Kind) => ({ id, kind })
 const link = (source: string, target: string) => ({ source, target })
+
+/** The id when it names a template, undefined otherwise. */
+function knownTemplate(id: unknown): string | undefined {
+  return typeof id === 'string' && TEMPLATES.some((t) => t.id === id) ? id : undefined
+}
+
+/** What a system's drawing starts from, and goes back to when the player starts over: its template's start, or just the users. */
+export function startOf(system: Pick<FreeSystem, 'template'>): Architecture {
+  return TEMPLATES.find((t) => t.id === system.template)?.start ?? { nodes: [{ id: 'client', kind: 'client' }], edges: [] }
+}
 
 export const TEMPLATES: Template[] = [
   {
