@@ -68,6 +68,16 @@ export const COMPANIES: Company[] = [
     // A team that grew from a startup like yours.
     start: STARTUP_LEGACY,
   },
+  {
+    id: 'streaming',
+    name: 'Streaming de vídeo',
+    budget: 'Uma plataforma de vídeo com milhões de assinantes. Vídeo é arquivo pesado, e uma estreia põe o país inteiro no mesmo episódio.',
+    levels: [level('upload-trava-servidor'), level('um-upload-cinco-tarefas'), level('busca-nao-acha')],
+    boss: level('estreia-de-serie'),
+    unlocks: ['storage', 'topic', 'search'],
+    // A video site that started as a plain web app.
+    start: STARTUP_LEGACY,
+  },
 ]
 
 export type Status = 'done' | 'open' | 'locked'

@@ -15,6 +15,9 @@ export type Kind =
   | 'payment'
   | 'shard'
   | 'dns'
+  | 'storage'
+  | 'topic'
+  | 'search'
 /** What people using the system ask for. */
 export type UserClass = 'static' | 'read' | 'write'
 /**
@@ -115,6 +118,8 @@ export interface Spec {
   global?: boolean
   /** Share of the calls that fail at random whatever the load (network blips): a retry usually gets through. */
   flaky?: number
+  /** Hands every target the whole load, a copy each (every subscriber of a topic gets every event), instead of splitting it. */
+  fanOut?: boolean
   /** Takes API calls: the link into it speaks a protocol (REST, GraphQL, gRPC). */
   api?: boolean
   /**
@@ -183,12 +188,44 @@ export const REPLICA_BASE_LAG_MS = 50
  */
 const HOT_RECORDS = 2000
 
+const SEARCH_CAPACITY = 1000
+/** An index makes what it took in searchable about once a second (its refresh). */
+export const SEARCH_REFRESH_MS = 1000
+/** New videos the searches tend to look for: a search misses one when it came out within the lag. */
+const FRESH_VIDEOS = 30_000
+
+/**
+ * A copy of the data fed by `feeder` (a replica by its primary, a search index by a
+ * topic). The changes it gets use what the reads leave of its capacity; the rest
+ * piles up and the lag grows. A read is outdated when its record changed within
+ * the lag: with W changes/s spread over `records`, 1 − e^(−W·lag/records).
+ */
+function laggingCopy(feeder: Kind, capacity: number, baseLagMs: number, records: number): Spec['step'] {
+  return (arriving, state, { sources, sourceRttMs }) => {
+    // Without a link from its feeder it never gets a change: every read may be old.
+    if (!sources.includes(feeder)) return { load: arriving, state: { pending: 0 }, lagMs: Infinity, staleRate: 1 }
+    const pending = (state?.pending ?? 0) + arriving.write
+    const applied = Math.min(pending, Math.max(0, capacity - arriving.read - arriving.static))
+    const behind = pending - applied
+    const utilization = Math.min(0.95, (arriving.static + arriving.read + applied) / capacity)
+    // A feeder in another region ships each change across it: half a round trip more.
+    const lagMs = baseLagMs / (1 - utilization) + sourceRttMs / 2 + (behind > 0 ? (behind / Math.max(applied, 1)) * 1000 : 0)
+    return {
+      load: { ...arriving, write: applied },
+      state: { pending: behind },
+      lagMs,
+      staleRate: 1 - Math.exp((-arriving.write * lagMs) / 1000 / records),
+    }
+  }
+}
+
 /** Pieces that only take writes, and pieces that only take reads. */
-const WRITE_ONLY: Kind[] = ['queue', 'payment']
-const READ_ONLY: Kind[] = ['replica']
+const WRITE_ONLY: Kind[] = ['queue', 'payment', 'topic']
+const READ_ONLY: Kind[] = ['replica', 'search']
 /** Where writes go first when connected: a checkout charges the card before anything else. */
-const WRITE_FIRST: Kind[] = ['payment', 'queue']
-const READ_FIRST: Kind[] = ['replica']
+const WRITE_FIRST: Kind[] = ['payment', 'queue', 'topic']
+/** A search goes to the index when there is one; other reads to read replicas. */
+const READ_FIRST: Kind[] = ['search', 'replica']
 
 /**
  * Writes go to the payment API or a queue when there is one, reads to read
@@ -203,9 +240,8 @@ function splitByClass(targets: RouteTarget[], c: RequestClass): RouteTarget[] {
     // Replicas are health-checked: a dead one gets no reads, and with none alive reads go to the primary.
     const preferred = usable.filter((t) => t.kind === kind && !(t.down && READ_ONLY.includes(kind)))
     if (preferred.length) return preferred
-    if (READ_ONLY.includes(kind)) return usable.filter((t) => t.kind !== kind)
   }
-  return usable
+  return usable.filter((t) => !READ_ONLY.includes(t.kind))
 }
 
 export const SPECS: Record<Kind, Spec> = {
@@ -243,10 +279,16 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 8,
     cost: 25,
     serves: { static: 0.95, read: 0.1, bot: 0.1 },
-    targets: ['limiter', 'gateway', 'lb', 'server'],
-    maxOut: 1,
+    targets: ['limiter', 'gateway', 'lb', 'server', 'storage'],
+    maxOut: 2,
     description:
-      'Serve 95% dos arquivos estáticos na borda e guarda 10% das leituras da API, quando elas chegam por REST. O resto segue para a origem.',
+      'Serve 95% dos arquivos estáticos na borda e guarda 10% das leituras da API, quando elas chegam por REST. O resto segue para a origem; arquivos e uploads, para o armazenamento de objetos se houver um.',
+    // Files and uploads go to object storage when there is one; API calls never do.
+    route: (targets, c) => {
+      const storage = targets.filter((t) => t.kind === 'storage')
+      if (storage.length && (c === 'static' || c === 'write')) return storage
+      return targets.filter((t) => t.kind !== 'storage')
+    },
     api: true,
     httpCache: true,
     browserFacing: true,
@@ -309,7 +351,7 @@ export const SPECS: Record<Kind, Spec> = {
     baseLatencyMs: 30,
     cost: 50,
     serves: { static: 1 },
-    targets: ['cache', 'db', 'shard', 'queue', 'replica', 'payment'],
+    targets: ['cache', 'db', 'shard', 'queue', 'replica', 'payment', 'topic', 'search'],
     maxOut: 5,
     description: 'Roda a aplicação. Responde estáticos; leituras e escritas vão adiante.',
     route: splitByClass,
@@ -373,7 +415,7 @@ export const SPECS: Record<Kind, Spec> = {
     serves: {},
     targets: ['db', 'shard'],
     maxOut: 4,
-    description: 'Consome mensagens da fila e grava no banco. Ninguém espera por ele.',
+    description: 'Consome mensagens de uma fila ou eventos de um tópico e grava no banco. Ninguém espera por ele.',
   },
   payment: {
     label: 'API de pagamento',
@@ -408,23 +450,45 @@ export const SPECS: Record<Kind, Spec> = {
     targets: [],
     maxOut: 0,
     description: 'Cópia do banco que responde leituras. Recebe as escritas do primário com atraso.',
-    step: (arriving, state, { sources, sourceRttMs }) => {
-      // Without a link from the primary it never gets a change: every read may be old.
-      if (!sources.includes('db')) return { load: arriving, state: { pending: 0 }, lagMs: Infinity, staleRate: 1 }
-      // Replicated writes use what the reads leave of the capacity; the rest piles up.
-      const pending = (state?.pending ?? 0) + arriving.write
-      const applied = Math.min(pending, Math.max(0, REPLICA_CAPACITY - arriving.read - arriving.static))
-      const behind = pending - applied
-      const utilization = Math.min(0.95, (arriving.static + arriving.read + applied) / REPLICA_CAPACITY)
-      // A primary in another region ships each change across it: half a round trip more.
-      const lagMs = REPLICA_BASE_LAG_MS / (1 - utilization) + sourceRttMs / 2 + (behind > 0 ? (behind / Math.max(applied, 1)) * 1000 : 0)
-      return {
-        load: { ...arriving, write: applied },
-        state: { pending: behind },
-        lagMs,
-        staleRate: 1 - Math.exp((-arriving.write * lagMs) / 1000 / HOT_RECORDS),
-      }
-    },
+    step: laggingCopy('db', REPLICA_CAPACITY, REPLICA_BASE_LAG_MS, HOT_RECORDS),
+  },
+  storage: {
+    label: 'Armazenamento de objetos',
+    capacity: 5000,
+    baseLatencyMs: 20,
+    cost: 20,
+    serves: { static: 1, write: 1 },
+    targets: ['topic'],
+    maxOut: 1,
+    description:
+      'Guarda arquivos grandes, como vídeos, por centavos. A CDN busca os trechos aqui e o upload chega direto, sem passar pelo servidor. Avisa um tópico a cada arquivo novo.',
+    // Each file stored becomes an event on the topic, a notice nobody waits for.
+    replicates: ['write'],
+  },
+  topic: {
+    label: 'Tópico pub/sub',
+    capacity: 20_000,
+    baseLatencyMs: 3,
+    cost: 35,
+    serves: {},
+    targets: ['worker', 'search'],
+    maxOut: 8,
+    description:
+      'Recebe um evento, responde a quem publicou na hora e entrega uma cópia a cada assinante. Uma fila entrega cada mensagem a um consumidor só.',
+    acknowledges: ['write'],
+    fanOut: true,
+  },
+  search: {
+    label: 'Índice de busca',
+    capacity: SEARCH_CAPACITY,
+    baseLatencyMs: 10,
+    cost: 70,
+    serves: { read: 1, write: 1, bot: 1 },
+    targets: [],
+    maxOut: 0,
+    description:
+      'Responde buscas por texto sem varrer o banco. Só fica sabendo de um vídeo novo pelo evento de um tópico, e ele aparece na busca com atraso.',
+    step: laggingCopy('topic', SEARCH_CAPACITY, SEARCH_REFRESH_MS, FRESH_VIDEOS),
   },
 }
 
@@ -573,6 +637,8 @@ export interface Level {
   endpoints?: Partial<Record<UserClass, string>>
   /** Bugs in the application's code, each fixed by picking one of its options. */
   code?: CodeChallenge[]
+  /** What requests cost on some pieces whatever the code: a 500 MB upload holds a server far longer than a click. */
+  work?: Work[]
   goals: Goals
   /**
    * What is already on the drawing when the level opens (the previous team's work).
@@ -782,5 +848,5 @@ export function openEdges(arch: Architecture, level: Pick<Level, 'code'> | undef
 
 /** What the requests cost in this design: the bug of every challenge not fixed, the picked option's work otherwise. */
 export function levelWork(level: Level, arch: Pick<Architecture, 'fixes'>): Work[] {
-  return (level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)
+  return [...(level.work ?? []), ...(level.code ?? []).flatMap((ch) => ch.options.find((o) => o.id === arch.fixes?.[ch.id])?.work ?? ch.bug)]
 }

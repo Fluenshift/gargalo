@@ -71,6 +71,10 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'replica-parada': ['injecao-dependencia', 'replica', 'cache'],
   'servidor-velho': ['strategy', 'menos-conexoes', 'lb'],
   'extrato-lento': ['indice', 'db'],
+  'upload-trava-servidor': ['storage', 'url-assinada', 'origem'],
+  'um-upload-cinco-tarefas': ['topic', 'pub-sub', 'observer', 'evento'],
+  'busca-nao-acha': ['search', 'consistencia-eventual'],
+  'estreia-de-serie': ['origem', 'storage', 'search'],
 }
 
 describe('level concepts', () => {

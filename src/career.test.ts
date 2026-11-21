@@ -60,6 +60,13 @@ describe('career data', () => {
     }
   })
 
+  it('the Streaming unlocks object storage, pub/sub and the search index', () => {
+    for (const kind of ['storage', 'topic', 'search'] as const) {
+      expect(pieceUnlock(kind, 2)).toMatchObject({ unlocked: false, by: { id: 'streaming' } })
+      expect(pieceUnlock(kind, 3)).toEqual({ unlocked: true })
+    }
+  })
+
   it('every level belongs to exactly one company', () => {
     const ids = stages().map((s) => s.level.id)
     expect(new Set(ids).size).toBe(ids.length)
@@ -208,6 +215,6 @@ describe('progress migration', () => {
   })
 
   it('points at the last level when everything is done', () => {
-    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('fechamento-do-mes')
+    expect(nextLevel(LEVELS.map((l) => l.id))).toBe('estreia-de-serie')
   })
 })

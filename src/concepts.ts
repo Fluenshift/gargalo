@@ -246,6 +246,60 @@ export const CONCEPTS: Record<Kind, Concept> = {
       'Dimensionar pelo pico: basta vencer a média e ter fila para o resto.',
     ],
   },
+  storage: {
+    whatIs:
+      'Guarda arquivos grandes por nome, como vídeos e fotos: 5.000 req/s, 20 ms, $20/mês. Não faz consulta: só guarda e devolve o arquivo inteiro.',
+    whenToUse:
+      'Quando arquivos pesados passam pelo servidor ou moram no banco. Ligue a CDN a ele: os trechos e os uploads vão direto, com URL assinada.',
+    gains: [
+      'O servidor só assina a URL: o upload de 500 MB não prende mais ninguém.',
+      'É a origem da CDN: o que a borda não tem vem daqui, sem passar pelo servidor.',
+    ],
+    costs: [
+      'Não responde buscas nem filtros: os dados do vídeo continuam no banco ou no índice.',
+      'Cada chamada leva uns 20 ms, mais que um disco local.',
+    ],
+    mistakes: [
+      'Guardar o vídeo no banco: cada upload vira uma escrita gigante.',
+      'Deixar a CDN buscar os vídeos no servidor: na estreia, o pico de misses derruba a aplicação.',
+    ],
+  },
+  topic: {
+    whatIs:
+      'Pub/sub: recebe um evento e entrega uma cópia a cada assinante. 20.000 eventos/s, 3 ms, $35/mês. Responde a quem publicou na hora.',
+    whenToUse:
+      'Quando um acontecimento dispara várias tarefas independentes: thumbnail, notificação, recomendação, busca. Cada uma assina o evento.',
+    gains: [
+      'Quem publica não espera nenhuma tarefa e não sabe quem assina: um serviço novo só assina.',
+      'Uma tarefa lenta ou fora do ar não atrasa as outras.',
+    ],
+    costs: [
+      'Cada assinante recebe todos os eventos: 5 assinantes fazem 5 vezes o trabalho de uma fila.',
+      'As tarefas terminam depois da resposta: consistência eventual.',
+    ],
+    mistakes: [
+      'Usar uma fila para várias tarefas: cada mensagem vai para um consumidor só.',
+      'Publicar sem assinantes: o evento sai e ninguém faz nada com ele.',
+    ],
+  },
+  search: {
+    whatIs:
+      'Índice de busca: responde buscas por texto sem varrer o banco. 1.000 req/s, 10 ms, $70/mês. Recebe os vídeos novos por evento.',
+    whenToUse:
+      'Quando a busca por palavras pesa no banco. Ligue os servidores a ele e assine o índice no tópico dos vídeos publicados.',
+    gains: [
+      'Busca por palavra, relevância e filtros, sem tocar no banco.',
+      'Cada índice a mais soma 1.000 buscas por segundo.',
+    ],
+    costs: [
+      'Um vídeo novo só aparece depois de indexado, cerca de 1 s ou mais: consistência eventual.',
+      'Cada índice aplica todos os eventos: lotado de buscas, ele fica para trás.',
+    ],
+    mistakes: [
+      'Não assinar o tópico: o índice nunca fica sabendo dos vídeos novos.',
+      'Lotar um índice de buscas: sem fôlego para indexar, o atraso dispara.',
+    ],
+  },
 }
 
 export interface GlossaryEntry {
@@ -588,6 +642,39 @@ export const GLOSSARY: GlossaryEntry[] = [
     forms: ['paginar'],
     definition:
       'Devolver a lista em páginas pequenas (LIMIT, com um cursor para a próxima) em vez de tudo de uma vez. O banco lê menos, o servidor monta um JSON menor e a tela mostra o mesmo. Comprimir ou cachear a lista inteira não tira o custo de montá-la.',
+  },
+  {
+    id: 'pub-sub',
+    term: 'pub/sub',
+    forms: ['publish/subscribe', 'assinante', 'assinantes'],
+    definition:
+      'Quem publica manda um evento a um tópico, e cada assinante recebe a sua cópia. Diferente da fila, onde cada mensagem vai a um consumidor só: no pub/sub, cinco assinantes fazem cinco tarefas com o mesmo evento.',
+  },
+  {
+    id: 'evento',
+    term: 'evento',
+    forms: ['eventos'],
+    definition: 'Aviso de que algo aconteceu ("vídeo publicado"), sem dizer o que fazer com ele. Quem se interessa assina e decide.',
+  },
+  {
+    id: 'observer',
+    term: 'Observer',
+    forms: ['observador'],
+    definition:
+      'Padrão de projeto: quem muda de estado avisa os interessados por um evento, em vez de chamar cada um. Quem publica não conhece os assinantes, então dá para somar uma tarefa sem mexer nele.',
+  },
+  {
+    id: 'url-assinada',
+    term: 'URL assinada',
+    forms: ['URLs assinadas', 'presigned URL'],
+    definition:
+      'Endereço temporário que o servidor gera para o app enviar ou baixar um arquivo direto do armazenamento de objetos. O servidor autoriza, mas os bytes não passam por ele.',
+  },
+  {
+    id: 'origem',
+    term: 'origem',
+    definition:
+      'De onde a CDN busca o que ainda não tem na borda. Se a origem é o servidor, cada miss pesa nele; numa estreia, os misses chegam todos juntos.',
   },
   {
     id: 'indice',

@@ -1,5 +1,5 @@
-import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
-import type { ArchEdge, Architecture, Level } from './sim/model'
+import { CHAINED_CALLS, FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
+import type { ArchEdge, Architecture, Level, Work } from './sim/model'
 
 /** The Startup's levels and boss. */
 export const STARTUP_LEVELS: Level[] = [
@@ -406,5 +406,108 @@ export const FECHAMENTO_DO_MES: Level = {
   goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 1200 },
 }
 
+/** A 500 MB upload through the app holds a server like 20 clicks, and for longer. */
+const HEAVY_UPLOADS: Work[] = [{ kinds: ['server'], classes: ['write'], factor: 20, extraMs: 300 }]
+/** A text search in the database reads the whole table of videos: it weighs like 4 reads. */
+const SEARCH_IN_DB: Work[] = [{ kinds: ['db', 'shard', 'replica'], classes: ['read', 'bot'], factor: 4 }]
+const STREAMING_ROUTES: Level['endpoints'] = { static: 'GET /videos/:id/trechos/:n', read: 'GET /busca', write: 'POST /videos' }
+const STREAM_SERVERS = ['server-1', 'server-2', 'server-3', 'server-4']
+
+export const STREAMING_LEVELS: Level[] = [
+  {
+    id: 'upload-trava-servidor',
+    title: 'Upload que trava o servidor',
+    briefing:
+      'Você entrou numa plataforma de vídeo. Cada upload tem uns 500 MB e passa inteiro pelo servidor até o banco: prende o servidor como 20 requisições comuns. São 1.000 req/s, 10% uploads e 60% trechos de vídeo. Orçamento de $450.',
+    durationS: 30,
+    mix: { static: 0.6, read: 0.3, write: 0.1 },
+    traffic: [{ from: 0, rps: 1000 }],
+    failures: [],
+    work: HEAVY_UPLOADS,
+    endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id' },
+    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 450 },
+  },
+  {
+    id: 'um-upload-cinco-tarefas',
+    title: 'Um upload, cinco tarefas',
+    briefing:
+      'Quando um vídeo é publicado, cinco coisas precisam acontecer: thumbnail, legendas, aviso aos seguidores, recomendações e busca. Hoje o criador espera todas, e publicar leva meio segundo. São 1.200 req/s, 10% publicações. Leia o código de POST /videos/:id/publicar. Orçamento de $650.',
+    durationS: 30,
+    mix: { static: 0.5, read: 0.4, write: 0.1 },
+    traffic: [{ from: 0, rps: 1200 }],
+    failures: [],
+    code: [CHAINED_CALLS],
+    endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id', write: 'POST /videos/:id/publicar' },
+    goals: { minAvailability: 0.99, maxP99Ms: 250, maxCost: 650 },
+  },
+  {
+    id: 'busca-nao-acha',
+    title: 'Busca que não acha o vídeo',
+    briefing:
+      'Criadores reclamam: o vídeo sai e não aparece na busca. O índice de busca do time anterior só é atualizado de madrugada. São 2.000 req/s, 40% buscas e 8% uploads, que já avisam um tópico. Um índice aguenta 1.000 req/s, entre buscas e vídeos novos. No máximo 3% das buscas podem perder um vídeo novo. Orçamento de $620.',
+    durationS: 60,
+    mix: { static: 0.52, read: 0.4, write: 0.08 },
+    traffic: [{ from: 0, rps: 2000 }],
+    failures: [],
+    work: SEARCH_IN_DB,
+    tweaks: { cache: { serves: { read: 0.2, bot: 0.2 } } },
+    endpoints: STREAMING_ROUTES,
+    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 620, maxStaleReads: 0.03 },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'cdn', kind: 'cdn' },
+        { id: 'storage', kind: 'storage' },
+        { id: 'lb', kind: 'lb' },
+        ...STREAM_SERVERS.map((id) => ({ id, kind: 'server' as const })),
+        { id: 'search', kind: 'search' },
+        { id: 'topic', kind: 'topic' },
+        { id: 'worker', kind: 'worker' },
+        { id: 'db', kind: 'db' },
+      ],
+      edges: [
+        { source: 'client', target: 'cdn' },
+        { source: 'cdn', target: 'storage' },
+        { source: 'cdn', target: 'lb' },
+        ...STREAM_SERVERS.flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'search' },
+        ]),
+        { source: 'storage', target: 'topic' },
+        { source: 'topic', target: 'worker' },
+        { source: 'worker', target: 'db' },
+      ],
+    },
+  },
+]
+
+export const ESTREIA_DE_SERIE: Level = {
+  id: 'estreia-de-serie',
+  title: 'Estreia de série',
+  briefing:
+    'Estreia da série mais esperada do ano. Aos 15s o tráfego sobe de 2.000 para 12.000 req/s e fica lá até os 45s: 85% são trechos do mesmo episódio, 12% buscas e 3% uploads. O episódio é novo e a CDN acerta só 80% dos trechos. Busca no banco varre a tabela, e no máximo 5% das buscas podem perder um vídeo novo. Orçamento de $650.',
+  durationS: 60,
+  mix: { static: 0.85, read: 0.12, write: 0.03 },
+  traffic: [
+    { from: 0, rps: 2000 },
+    { from: 15, rps: 6000 },
+    { from: 16, rps: 12000 },
+    { from: 45, rps: 3000 },
+  ],
+  failures: [],
+  work: [...HEAVY_UPLOADS, ...SEARCH_IN_DB],
+  tweaks: { cdn: { serves: { static: 0.8, read: 0.1, bot: 0.1 } }, cache: { serves: { read: 0.2, bot: 0.2 } } },
+  endpoints: { ...STREAMING_ROUTES, static: 'GET /series/:id/episodios/1/trechos/:n' },
+  goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 650, maxStaleReads: 0.05 },
+}
+
 /** Every level of the career. `src/career.ts` arranges them into companies. */
-export const LEVELS: Level[] = [...STARTUP_LEVELS, ...ECOMMERCE_LEVELS, BLACK_FRIDAY, ...FINTECH_LEVELS, FECHAMENTO_DO_MES]
+export const LEVELS: Level[] = [
+  ...STARTUP_LEVELS,
+  ...ECOMMERCE_LEVELS,
+  BLACK_FRIDAY,
+  ...FINTECH_LEVELS,
+  FECHAMENTO_DO_MES,
+  ...STREAMING_LEVELS,
+  ESTREIA_DE_SERIE,
+]

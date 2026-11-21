@@ -66,4 +66,16 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'extrato-lento': [
     'LIMIT 50 sem índice quase não muda nada: o banco ainda acha e ordena todos os lançamentos da conta antes de cortar, e a disponibilidade fica perto de 46%. Selecionar só as colunas usadas também não: a resposta encolhe, mas a tabela continua sendo varrida. Com o índice, o p99 cai para perto de 175 ms, e cada escrita fica 10% mais cara no banco.',
   ],
+  'upload-trava-servidor': [
+    'Armazenamento de objetos atrás da CDN passa por $415 de $450, com o p99 perto de 70 ms: trechos e uploads vão direto para ele, e os servidores ficam só com a API. Quatro servidores a mais custam $595, estouram o orçamento e ainda deixam o p99 perto de 535 ms, porque cada upload segue preso no servidor.',
+  ],
+  'um-upload-cinco-tarefas': [
+    'Observer com um tópico e um worker por tarefa passa por $630 de $650, com o p99 perto de 135 ms. A fila com um worker que faz as cinco também passa, por $465, mas o worker conhece cada tarefa e refaz todas quando uma falha. Promise.all ainda espera as legendas, e o p99 fica perto de 300 ms. Disparar sem await deixa as chamadas no servidor: a disponibilidade cai para perto de 92%.',
+  ],
+  'busca-nao-acha': [
+    'Dois índices assinando o tópico passam por $600 de $620: cada um fica com metade das buscas, indexa com pouco atraso e só 1% das buscas perdem um vídeo novo. Um índice só, mesmo assinando, fica lotado de buscas, atrasa vários segundos, erra 4% e leva o p99 para perto de 350 ms. Buscar no banco com o cache na frente derruba a disponibilidade para perto de 73%: cada busca varre a tabela.',
+  ],
+  'estreia-de-serie': [
+    'CDN com o armazenamento de objetos como origem, 5 servidores e 3 índices assinando o tópico do armazenamento passam por $560, com o p99 perto de 210 ms e 4% das buscas sem o vídeo novo. Com 4 servidores também passa, por $510, e o p99 sobe para perto de 335 ms. Com 2 índices, cada um fica lotado e 16% das buscas perdem vídeos. Manter o cache e o banco da casa custa $150 a mais e estoura o orçamento.',
+  ],
 }

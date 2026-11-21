@@ -39,7 +39,8 @@
 // A node splits what it forwards evenly among its targets, except among
 // partitions of the data: each gets an equal key range, and the level's hot key
 // lands whole on one of them. A geographic piece (DNS) sends each region's
-// users to the closest live targets instead.
+// users to the closest live targets instead, and a fan-out piece (a pub/sub
+// topic) sends every target a copy of everything.
 //
 // Pieces run in regions. A call that crosses regions pays the round trip
 // between them, and a region can go dark with everything running in it.
@@ -397,6 +398,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     return split
   }
   const splitAmong = (node: ArchNode, targets: string[], c: RequestClass, from?: Region): number[] => {
+    if (pieces[node.kind].fanOut) return targets.map(() => 1)
     const even = 1 / targets.length
     if (g.balance.get(node.id) === 'least-conn') {
       const room = targets.map((id) => effectiveCapacity(id))
@@ -653,6 +655,8 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
   // how often the answer is outdated, and why it fails when it does. Links that retry or break
   // judge their target by it, and the users they settled get their fate from it. Children first.
   const outcome = new Map<string, Record<UserClass, Outcome>>()
+  // One call into a fan-out piece fares like its copies on average.
+  const oneCall = (node: ArchNode, split: number[]) => (pieces[node.kind].fanOut ? split.map((s) => s / split.length) : split)
   for (const node of g.reversed) {
     const spec = pieces[node.kind]
     const flow = flowAt.get(node.id)!
@@ -677,7 +681,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
       const targets = routable(node, c)
       const onward: Outcome = { ok: 0, stale: 0, failed: emptyFailures() }
       if (targets.length === 0) onward.failed.noRoute = 1
-      const split = targets.length ? shares(node, targets, c) : []
+      const split = targets.length ? oneCall(node, shares(node, targets, c)) : []
       for (const [i, target] of targets.entries()) {
         const key = `${node.id}->${target}`
         const policy = policies.get(key)
@@ -753,7 +757,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
       // Crossing regions costs a round trip. A global piece is wherever the user is.
       const at = (n: ArchNode) => (pieces[n.kind].global ? from : regionOf(n))
       found = {
-        weights: targets.length ? shares(node, targets, c, from) : [],
+        weights: targets.length ? oneCall(node, shares(node, targets, c, from)) : [],
         hops: targets.map((id): Hop => {
           const link = `${node.id}->${id}`
           const next = byId.get(id)

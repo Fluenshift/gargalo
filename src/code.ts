@@ -1,7 +1,7 @@
 // Code challenges: the bottleneck is not in the drawing, it is in the code of one endpoint.
 // Each option says what a request costs after the change, so the simulation shows the fix.
 
-import type { CodeChallenge, Kind } from './sim/model'
+import type { CodeChallenge, Kind, Work } from './sim/model'
 
 const DATABASES: Kind[] = ['db', 'shard', 'replica']
 
@@ -384,6 +384,108 @@ const db: Banco = new PostgresAdapter(process.env.DB_PRIMARIO)`,
       explanation:
         'O ORM escreve o SQL por você, mas continua espalhado pelo serviço e falando com um banco só. Trocar a forma de escrever as consultas não diz onde cada conta está.',
       work: [],
+    },
+  ],
+}
+
+/** What the five tasks after a publish cost wherever the write lands while someone waits for them. */
+const FIVE_TASKS = (extraMs: number): Work[] => [{ kinds: ['db', 'shard', 'storage'], classes: ['write'], factor: 1, extraMs }]
+
+/** Publishing a video calls the five services that react to it, one after the other. */
+export const CHAINED_CALLS: CodeChallenge = {
+  id: 'chamadas-encadeadas',
+  class: 'write',
+  title: 'Cinco chamadas em fila',
+  code: `// POST /videos/:id/publicar
+async function publicar(id: string) {
+  const video = await db.query("UPDATE videos SET status = 'publicado' WHERE id = $1 RETURNING *", [id])
+  // O criador espera as cinco, uma depois da outra: 120 + 200 + 60 + 40 + 30 ms.
+  await thumbnails.gerar(video)
+  await legendas.transcrever(video)
+  await notificacoes.avisarSeguidores(video)
+  await recomendacoes.atualizar(video)
+  await busca.indexar(video)
+  return video
+}`,
+  bug: FIVE_TASKS(450),
+  locks: {
+    links: [{ from: 'server', to: ['topic', 'queue'] }],
+    reason: 'O código chama os cinco serviços direto e espera cada um. Para pôr um tópico ou uma fila no meio, o código precisa mudar.',
+  },
+  options: [
+    {
+      id: 'observer',
+      label: 'Publicar um evento e deixar cada serviço assinar',
+      code: `async function publicar(id: string) {
+  const video = await db.query("UPDATE videos SET status = 'publicado' WHERE id = $1 RETURNING *", [id])
+  await eventos.publicar('video-publicado', video)
+  return video
+}
+
+// Cada serviço assina por conta própria; publicar não conhece nenhum.
+eventos.assinar('video-publicado', thumbnails.gerar)
+eventos.assinar('video-publicado', legendas.transcrever)
+eventos.assinar('video-publicado', notificacoes.avisarSeguidores)
+eventos.assinar('video-publicado', recomendacoes.atualizar)
+eventos.assinar('video-publicado', busca.indexar)`,
+      fixes: true,
+      explanation:
+        'Observer: publicar só avisa que o vídeo saiu, e cada serviço que se interessa assina o evento. Ligue os servidores a um tópico pub/sub e o tópico a um worker por tarefa: o criador recebe a resposta na hora, e um serviço novo é só mais uma assinatura.',
+      work: FIVE_TASKS(450),
+      allows: [{ from: 'server', to: ['topic'] }],
+    },
+    {
+      id: 'fila',
+      label: 'Pôr um job numa fila e um worker que faz as cinco',
+      code: `async function publicar(id: string) {
+  const video = await db.query("UPDATE videos SET status = 'publicado' WHERE id = $1 RETURNING *", [id])
+  await fila.enviar('processar-video', video)
+  return video
+}
+
+// O worker que pega a mensagem faz as cinco tarefas, uma depois da outra.
+fila.consumir('processar-video', async (video) => {
+  await thumbnails.gerar(video)
+  await legendas.transcrever(video)
+  await notificacoes.avisarSeguidores(video)
+  await recomendacoes.atualizar(video)
+  await busca.indexar(video)
+})`,
+      fixes: true,
+      explanation:
+        'O criador para de esperar: a fila responde na hora. Mas cada mensagem vai para um consumidor só, então um worker faz as cinco tarefas em sequência: se a notificação falha, o thumbnail é refeito, e o sexto serviço vai mexer nesse worker de novo.',
+      caveat: 'Funciona, mas o worker conhece as cinco tarefas.',
+      work: FIVE_TASKS(450),
+      allows: [{ from: 'server', to: ['queue'] }],
+    },
+    {
+      id: 'paralelo',
+      label: 'Chamar os cinco em paralelo com Promise.all',
+      code: `await Promise.all([
+  thumbnails.gerar(video),
+  legendas.transcrever(video),
+  notificacoes.avisarSeguidores(video),
+  recomendacoes.atualizar(video),
+  busca.indexar(video),
+])`,
+      fixes: false,
+      explanation:
+        'O criador ainda espera o mais lento, os 200 ms das legendas, e se um dos cinco cai a publicação inteira falha. Quem publica continua conhecendo cada serviço.',
+      work: FIVE_TASKS(200),
+    },
+    {
+      id: 'sem-await',
+      label: 'Disparar as cinco chamadas sem await',
+      code: `thumbnails.gerar(video)
+legendas.transcrever(video)
+notificacoes.avisarSeguidores(video)
+recomendacoes.atualizar(video)
+busca.indexar(video)
+return video // responde antes de as chamadas terminarem`,
+      fixes: false,
+      explanation:
+        'A resposta sai na hora, mas as cinco chamadas continuam rodando dentro do servidor, segurando conexões e memória: cada publicação pesa como 12 requisições. E se o servidor reinicia no meio, as tarefas somem sem ninguém saber.',
+      work: [{ kinds: ['server'], classes: ['write'], factor: 12 }],
     },
   ],
 }

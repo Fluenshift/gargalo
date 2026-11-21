@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
+import { BLACK_FRIDAY, ESTREIA_DE_SERIE, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
 import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, balanceOf, canConnect, canSetBalance, connectRefusal, instanceCapacity, protocolRefusal } from './model'
@@ -810,6 +810,25 @@ function blackFriday(limiter: boolean): Architecture {
   return extend(paymentPolicy(BLACK_FRIDAY.start!, policy), add, limiter ? [['cdn', 'lb']] : [])
 }
 
+/** The legacy servers publishing to a topic (or a queue) with `n` workers behind it, under the code option `fix`. */
+function publishing(fix: string, n: number, via: 'topic' | 'queue' = 'topic'): Architecture {
+  const subscribers = Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
+  return { ...extend(STARTUP_LEGACY, [...legacyTo(via), ...subscribers]), fixes: { 'chamadas-encadeadas': fix } }
+}
+/** The search level's drawing with `n` indexes, each subscribed to the topic and searched by every server. */
+const searchIndexes = (n: number) => {
+  const ids = Array.from({ length: n }, (_, i) => (i === 0 ? 'search' : `search#${i}`))
+  return extend(byId('busca-nao-acha').start!, ids.flatMap((id) => [['topic', id] as [string, string], ...legacyTo(id)]))
+}
+/** Users, a CDN pulling from object storage, `servers` servers searching `indexes` indexes fed by the storage's topic. */
+function premiere(servers: number, indexes: number, fed = true): Architecture {
+  const idx = Array.from({ length: indexes }, (_, i) => `search#${i}`)
+  const edges: [string, string][] = [['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'lb']]
+  for (let i = 0; i < servers; i++) edges.push(['lb', `server#${i}`], ...idx.map((s) => [`server#${i}`, s] as [string, string]))
+  if (fed) edges.push(['storage', 'topic'], ...idx.map((s) => ['topic', s] as [string, string]))
+  return arch(edges)
+}
+
 describe('levels', () => {
   const cases: [string, boolean, Architecture][] = [
     // A server alone keeps nothing: reads and writes have nowhere to go.
@@ -869,6 +888,22 @@ describe('levels', () => {
     ['fechamento-do-mes', false, monthEnd('sa', 8)],
     ['fechamento-do-mes', false, monthEnd('us', 5)],
     ['fechamento-do-mes', true, monthEnd('us', 8)],
+    // Streaming, starting from a plain web app.
+    // Uploads through the servers drown them; more servers break the budget.
+    ['upload-trava-servidor', false, STARTUP_LEGACY],
+    ['upload-trava-servidor', false, extend(STARTUP_LEGACY, servers(4))],
+    ['upload-trava-servidor', true, extend(STARTUP_LEGACY, [['cdn', 'storage']])],
+    // The creator waits for five services in a row; publishing an event to a topic answers at once.
+    ['um-upload-cinco-tarefas', false, STARTUP_LEGACY],
+    ['um-upload-cinco-tarefas', true, publishing('observer', 5)],
+    // The index nobody feeds misses every new video; one fed index lags under the searches.
+    ['busca-nao-acha', false, byId('busca-nao-acha').start!],
+    ['busca-nao-acha', false, extend(byId('busca-nao-acha').start!, [['topic', 'search']])],
+    ['busca-nao-acha', true, searchIndexes(2)],
+    // The premiere: misses on the servers sink them; storage as origin and three fed indexes hold.
+    ['estreia-de-serie', false, STARTUP_LEGACY],
+    ['estreia-de-serie', false, premiere(5, 2)],
+    ['estreia-de-serie', true, premiere(5, 3)],
   ]
   it.each(cases)('%s: design passes = %s', (id, shouldPass, a) => {
     const { summary } = runLevel(a, byId(id))
@@ -1119,6 +1154,178 @@ describe('code that locks the partitions', () => {
   ]
   for (const [name, build, passes] of cases) {
     it(`sql-espalhado: ${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
+})
+
+describe('object storage', () => {
+  const files: Level = { ...steady, mix: { static: 0.6, read: 0.3, write: 0.1 }, traffic: [{ from: 0, rps: 1000 }] }
+
+  it('hangs below the CDN only, and announces new files to a topic', () => {
+    const a = arch([], ['cdn', 'lb', 'server', 'storage', 'topic'])
+    expect(canConnect(a, 'cdn', 'storage')).toBe(true)
+    expect(canConnect(a, 'server', 'storage')).toBe(false)
+    expect(canConnect(a, 'storage', 'topic')).toBe(true)
+    expect(canConnect(a, 'storage', 'server')).toBe(false)
+    // The CDN keeps one link to the application besides the storage.
+    expect(canConnect({ ...a, edges: [{ source: 'cdn', target: 'lb' }] }, 'cdn', 'storage')).toBe(true)
+  })
+
+  it('takes the files and uploads off the servers; API reads still reach them', () => {
+    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db']])
+    const r = simulateTick(a, files, 0, mulberry32(1))
+    expect(r.nodes.storage.load).toBeCloseTo(600 * 0.05 + 100)
+    expect(r.nodes.server.load).toBeCloseTo(300 * 0.9)
+    expect(r.nodes.db.load).toBeCloseTo(300 * 0.9)
+  })
+
+  it('copies each upload it stores to the topic, as work nobody waits for', () => {
+    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db'], ['storage', 'topic'], ['topic', 'worker'], ['worker', 'db']])
+    const r = simulateTick(a, files, 0, mulberry32(1))
+    expect(r.edges['storage->topic']).toBeCloseTo(100)
+    expect(r.nodes.worker.load).toBeCloseTo(100)
+    expect(r.served).toBeCloseTo(1000)
+  })
+})
+
+describe('pub/sub topic', () => {
+  const writes: Level = { ...steady, mix: { static: 0, read: 0, write: 1 }, traffic: [{ from: 0, rps: 150 }] }
+  const subscribers = (via: 'topic' | 'queue', n: number) =>
+    arch([
+      ['client', 'server'],
+      ['server', via],
+      ...Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat(),
+    ])
+
+  it('hands every subscriber a copy of every event, where a queue splits them', () => {
+    const topic = simulateTick(subscribers('topic', 3), writes, 0, mulberry32(1))
+    const queue = simulateTick(subscribers('queue', 3), writes, 0, mulberry32(1))
+    for (let i = 0; i < 3; i++) {
+      expect(topic.nodes[`worker#${i}`].load).toBeCloseTo(150)
+      expect(queue.nodes[`worker#${i}`].load).toBeCloseTo(50)
+    }
+    // Three subscribers do three times the work downstream.
+    expect(topic.nodes.db.load).toBeCloseTo(450)
+    expect(queue.nodes.db.load).toBeCloseTo(150)
+  })
+
+  it('answers the publisher on acceptance: a slow subscriber is no failure', () => {
+    const r = simulateTick(subscribers('topic', 2), { ...writes, traffic: [{ from: 0, rps: 400 }] }, 0, mulberry32(1))
+    // Each worker takes 200 of the 400 events it gets: the rest is lost after the answer.
+    expect(r.served).toBeCloseTo(400)
+    expect(r.async.lost).toBeCloseTo(400)
+    expect(Object.values(r.failed).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('takes writes only, from servers and storage, and feeds workers and indexes', () => {
+    const a = arch([], ['server', 'topic', 'worker', 'search', 'db'])
+    expect(canConnect(a, 'server', 'topic')).toBe(true)
+    expect(canConnect(a, 'topic', 'worker')).toBe(true)
+    expect(canConnect(a, 'topic', 'search')).toBe(true)
+    expect(canConnect(a, 'topic', 'db')).toBe(false)
+    const reads = simulateTick(arch([['client', 'server'], ['server', 'topic'], ['server', 'db'], ['topic', 'worker'], ['worker', 'db']]), { ...steady, traffic: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    expect(reads.nodes.topic.load).toBe(0)
+    expect(reads.nodes.db.load).toBeCloseTo(300)
+  })
+})
+
+describe('search index', () => {
+  const searches: Level = { ...steady, mix: { static: 0, read: 0.8, write: 0.2 }, traffic: [{ from: 0, rps: 1000 }] }
+  /** Four servers search `indexes` indexes and publish videos to a topic; the first `fed` indexes subscribe to it. */
+  const design = (indexes: number, fed = indexes) =>
+    arch([
+      ['client', 'lb'],
+      ...Array.from({ length: 4 }, (_, i) =>
+        [['lb', `server#${i}`], [`server#${i}`, 'topic'], ...Array.from({ length: indexes }, (_, j) => [`server#${i}`, `search#${j}`])] as [string, string][],
+      ).flat(),
+      ...Array.from({ length: fed }, (_, j) => ['topic', `search#${j}`] as [string, string]),
+    ])
+
+  it('answers the searches; publications reach it only through the topic', () => {
+    const r = simulateTick(design(1), searches, 0, mulberry32(1))
+    expect(r.edges['server#0->search#0']).toBeCloseTo(200)
+    expect(r.edges['server#0->topic']).toBeCloseTo(50)
+    expect(r.edges['topic->search#0']).toBeCloseTo(200)
+  })
+
+  it('an index the topic does not feed misses every new video', () => {
+    const r = simulateTick(design(1, 0), searches, 0, mulberry32(1))
+    expect(r.nodes['search#0'].lagMs).toBe(Infinity)
+    expect(r.stale / r.servedByClass.read).toBeCloseTo(1)
+  })
+
+  it('lags behind when the searches leave no room to index, and a second index fixes it', () => {
+    const settled = (indexes: number) => {
+      const state = new Map()
+      let r = simulateTick(design(indexes), searches, 0, mulberry32(1), state)
+      for (let t = 1; t < 10; t++) r = simulateTick(design(indexes), searches, t, mulberry32(1), state)
+      return r
+    }
+    const one = settled(1)
+    const two = settled(2)
+    expect(one.nodes['search#0'].lagMs!).toBeGreaterThan(5000)
+    expect(two.nodes['search#0'].lagMs!).toBeLessThan(3000)
+    expect(two.stale).toBeLessThan(one.stale / 4)
+  })
+})
+
+describe('code that publishes an event', () => {
+  const level = byId('um-upload-cinco-tarefas')
+  const ch = level.code![0]
+
+  it('refuses a topic or a queue after the servers until the code stops calling the services itself', () => {
+    const a = arch([], ['server', 'topic', 'queue'])
+    for (const fix of [undefined, 'paralelo', 'sem-await']) {
+      const fixed = { ...a, ...(fix ? { fixes: { [ch.id]: fix } } : {}) }
+      expect(connectRefusal(fixed, 'server', 'topic', level), fix).toBe(ch.locks!.reason)
+      expect(connectRefusal(fixed, 'server', 'queue', level), fix).toBe(ch.locks!.reason)
+    }
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'observer' } }, 'server', 'topic', level)).toBeNull()
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'observer' } }, 'server', 'queue', level)).toBe(ch.locks!.reason)
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'fila' } }, 'server', 'queue', level)).toBeNull()
+  })
+
+  it('every wrong option says why it does not solve it, and the queue says what it costs', () => {
+    for (const option of ch.options.filter((o) => !o.fixes)) expect(option.explanation.length).toBeGreaterThan(40)
+    expect(ch.options.find((o) => o.id === 'fila')!.caveat).toBeTruthy()
+  })
+
+  const cases: [string, () => Architecture, boolean][] = [
+    ['the Observer with a topic and five workers', () => publishing('observer', 5), true],
+    ['a queue with one worker doing the five tasks', () => publishing('fila', 1, 'queue'), true],
+    ['the drawing as the level opens', () => STARTUP_LEGACY, false],
+    // The fix in the code alone: with nothing to publish to, the writes still wait for the tasks.
+    ['the Observer with nothing to publish to', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'observer' } }), false],
+    ['Promise.all', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'paralelo' } }), false],
+    ['calls without await', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'sem-await' } }), false],
+    // A locked link on the drawing carries nothing.
+    ['the chained calls with a topic drawn anyway', () => ({ ...publishing('observer', 5), fixes: {} }), false],
+    // Writes sent through the CDN into storage still wait for the five tasks.
+    ['the Observer with the writes sent to storage', () => ({ ...extend(STARTUP_LEGACY, [['cdn', 'storage']]), fixes: { [ch.id]: 'observer' } }), false],
+  ]
+  for (const [name, build, passes] of cases) {
+    it(`${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
+})
+
+describe('streaming levels across seeds', () => {
+  const cases: [string, string, () => Architecture, boolean][] = [
+    ['upload-trava-servidor', 'storage behind the CDN', () => extend(STARTUP_LEGACY, [['cdn', 'storage']]), true],
+    ['upload-trava-servidor', 'four servers more', () => extend(STARTUP_LEGACY, servers(4)), false],
+    ['busca-nao-acha', 'two fed indexes', () => searchIndexes(2), true],
+    ['busca-nao-acha', 'one fed index', () => extend(byId('busca-nao-acha').start!, [['topic', 'search']]), false],
+    ['busca-nao-acha', 'the search in the database', () => extend(byId('busca-nao-acha').start!, [...legacyTo('cache'), ['cache', 'db']], [], ['search']), false],
+    ['estreia-de-serie', 'storage as origin, five servers, three fed indexes', () => premiere(5, 3), true],
+    ['estreia-de-serie', 'two indexes', () => premiere(5, 2), false],
+    ['estreia-de-serie', 'indexes nobody feeds', () => premiere(5, 3, false), false],
+    ['estreia-de-serie', 'the legacy with storage behind the CDN', () => extend(STARTUP_LEGACY, [['cdn', 'storage']]), false],
+  ]
+  for (const [id, name, build, passes] of cases) {
+    it(`${id}: ${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      const level = id === ESTREIA_DE_SERIE.id ? ESTREIA_DE_SERIE : byId(id)
       for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
     })
   }

@@ -86,6 +86,26 @@ const PATHS: Record<Kind, ReactNode> = {
       <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
     </>
   ),
+  // A bucket: files kept by name, the way object storage keeps them.
+  storage: (
+    <>
+      <ellipse cx="12" cy="6" rx="8" ry="2.5" />
+      <path d="M4 6l2 13.5c.2 1 2.8 1.8 6 1.8s5.8-.8 6-1.8L20 6" />
+    </>
+  ),
+  // Waves going out on every side: one event, heard by every subscriber.
+  topic: (
+    <>
+      <circle cx="12" cy="12" r="2" />
+      <path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8" />
+    </>
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="M15 15l5.5 5.5" />
+    </>
+  ),
 }
 
 export function KindIcon({ kind, size = 20 }: { kind: Kind; size?: number }) {
