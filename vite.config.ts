@@ -16,7 +16,7 @@ export default defineConfig({
       provider: 'v8',
       // Logic lives in .ts; React screens (.tsx) are checked with the verify-ui skill, not unit tests.
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/sim/worker.ts'],
+      exclude: ['src/**/*.test.ts', 'src/sim/worker.ts', 'src/oficina/oficinaWorker.ts'],
       reporter: ['text-summary', 'lcov'],
       thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 },
     },
