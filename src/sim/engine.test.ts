@@ -879,6 +879,10 @@ describe('levels', () => {
     ['fechamento-do-mes', false, monthEnd('us', 5)],
     ['fechamento-do-mes', true, monthEnd('us', 8)],
     // Streaming, starting from a plain web app.
+    // Uploads through the servers drown them; more servers break the budget.
+    ['upload-trava-servidor', false, STARTUP_LEGACY],
+    ['upload-trava-servidor', false, extend(STARTUP_LEGACY, servers(4))],
+    ['upload-trava-servidor', true, extend(STARTUP_LEGACY, [['cdn', 'storage']])],
     // The premiere: misses on the servers sink them; storage as origin and three fed indexes hold.
     ['estreia-de-serie', false, STARTUP_LEGACY],
     ['estreia-de-serie', false, premiere(5, 2)],
@@ -1251,6 +1255,8 @@ describe('search index', () => {
 
 describe('streaming levels across seeds', () => {
   const cases: [string, string, () => Architecture, boolean][] = [
+    ['upload-trava-servidor', 'storage behind the CDN', () => extend(STARTUP_LEGACY, [['cdn', 'storage']]), true],
+    ['upload-trava-servidor', 'four servers more', () => extend(STARTUP_LEGACY, servers(4)), false],
     ['estreia-de-serie', 'storage as origin, five servers, three fed indexes', () => premiere(5, 3), true],
     ['estreia-de-serie', 'two indexes', () => premiere(5, 2), false],
     ['estreia-de-serie', 'indexes nobody feeds', () => premiere(5, 3, false), false],

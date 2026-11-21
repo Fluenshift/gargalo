@@ -66,6 +66,9 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'extrato-lento': [
     'LIMIT 50 sem índice quase não muda nada: o banco ainda acha e ordena todos os lançamentos da conta antes de cortar, e a disponibilidade fica perto de 46%. Selecionar só as colunas usadas também não: a resposta encolhe, mas a tabela continua sendo varrida. Com o índice, o p99 cai para perto de 175 ms, e cada escrita fica 10% mais cara no banco.',
   ],
+  'upload-trava-servidor': [
+    'Armazenamento de objetos atrás da CDN passa por $415 de $450, com o p99 perto de 70 ms: trechos e uploads vão direto para ele, e os servidores ficam só com a API. Quatro servidores a mais custam $595, estouram o orçamento e ainda deixam o p99 perto de 535 ms, porque cada upload segue preso no servidor.',
+  ],
   'estreia-de-serie': [
     'CDN com o armazenamento de objetos como origem, 5 servidores e 3 índices assinando o tópico do armazenamento passam por $560, com o p99 perto de 210 ms e 4% das buscas sem o vídeo novo. Com 4 servidores também passa, por $510, e o p99 sobe para perto de 335 ms. Com 2 índices, cada um fica lotado e 16% das buscas perdem vídeos. Manter o cache e o banco da casa custa $150 a mais e estoura o orçamento.',
   ],

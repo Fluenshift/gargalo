@@ -412,7 +412,21 @@ const HEAVY_UPLOADS: Work[] = [{ kinds: ['server'], classes: ['write'], factor: 
 const SEARCH_IN_DB: Work[] = [{ kinds: ['db', 'shard', 'replica'], classes: ['read', 'bot'], factor: 4 }]
 const STREAMING_ROUTES: Level['endpoints'] = { static: 'GET /videos/:id/trechos/:n', read: 'GET /busca', write: 'POST /videos' }
 
-export const STREAMING_LEVELS: Level[] = []
+export const STREAMING_LEVELS: Level[] = [
+  {
+    id: 'upload-trava-servidor',
+    title: 'Upload que trava o servidor',
+    briefing:
+      'Você entrou numa plataforma de vídeo. Cada upload tem uns 500 MB e passa inteiro pelo servidor até o banco: prende o servidor como 20 requisições comuns. São 1.000 req/s, 10% uploads e 60% trechos de vídeo. Orçamento de $450.',
+    durationS: 30,
+    mix: { static: 0.6, read: 0.3, write: 0.1 },
+    traffic: [{ from: 0, rps: 1000 }],
+    failures: [],
+    work: HEAVY_UPLOADS,
+    endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id' },
+    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 450 },
+  },
+]
 
 export const ESTREIA_DE_SERIE: Level = {
   id: 'estreia-de-serie',
