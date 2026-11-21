@@ -18,6 +18,12 @@ A change is done when `npx oxlint --deny-warnings && npm run test:coverage && np
 - The look is a gallery wall label on warm putty paper (black room at night): serif headings at weight 400, mono for everything else, 1px hairlines, pill controls, no shadows; line icons in `src/KindIcon.tsx` (24×24, stroke 1.5). Colour carries one meaning, load state; the single primary action is a black ink pill, never a hue. Read `DESIGN.md` before any visual change; tokens live on `:root` in `src/App.css`.
 - The game teaches: a new mechanic arrives with its concept and tradeoffs in `src/concepts.ts`, and what the player learns should change something in the simulation.
 
+## Dependencies
+
+- No new dependency without the owner's approval in the conversation or issue. Prefer what the platform, the standard library or an installed package already does.
+- Before proposing a package, confirm it is real and healthy on the npm registry (`npm view <name> time.created repository.url maintainers`, weekly downloads on npmjs.com): exact name, an existing source repository, real maintainers and history. AI-suggested names can be hallucinated and squatted with malware (slopsquatting); never install a name you have not checked.
+- Install with `npm install <name>@<exact version>` so the lockfile records it, and say in the PR why the package is needed.
+
 ## Git
 
 - One branch and PR per issue; the PR body is Portuguese and ends with `Closes #N`. No "Generated with Claude Code" footer.
