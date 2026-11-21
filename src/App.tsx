@@ -54,6 +54,8 @@ import type { RegionAreaNode } from './RegionArea'
 import { NodeRunStats } from './NodeRunStats'
 import type { ComponentNode } from './NodeCard'
 import { MAX_EDGES, MAX_NODES, parseDesign } from './savedDesign'
+import { drawShareCard } from './shareImage'
+import { decodeShare, encodeShare } from './shareLink'
 import { LinkPanel } from './LinkPanel'
 import type { LinkPolicy } from './LinkPanel'
 import { RemovableEdge } from './RemovableEdge'
@@ -133,6 +135,10 @@ interface Play {
   unlock: (kind: Kind) => ReturnType<typeof pieceUnlock>
   /** Caption of the goals sheet. */
   sheet: string
+  /** A design opened from a shared link: shown instead of the saved one, and never saved over it. */
+  shared?: ReturnType<typeof parseDesign>
+  /** Career phases can be shared as an image and a link. */
+  linkable?: boolean
   /** Makes a result worth sharing; the Result then offers to copy it. */
   share?: (stars: number, cost: number, p99Ms: number) => string
   /** A free-mode system: no goals to pass, nothing recorded, the drawing lives on the system. */
@@ -146,8 +152,10 @@ interface Play {
 
 const DAILY_PIECES: Kind[] = ['client', 'cdn', 'limiter', 'lb', 'server', 'cache', 'db']
 
-function careerPlay(stage: Stage): Play {
+function careerPlay(stage: Stage, shared?: Play['shared']): Play {
   return {
+    shared,
+    linkable: true,
     level: stage.level,
     start: startArchitecture(stage),
     pieces: PALETTE,
@@ -214,6 +222,7 @@ function freshDesign(arch: Architecture): Design {
 }
 
 function loadDesign(play: Play): Design {
+  if (play.shared) return play.shared
   if (play.free) return (play.free.design as Design | null) ?? freshDesign(play.start)
   const raw = readStorage(designKey(play.level))
   // Storage unavailable or holding something the board cannot draw: start from scratch.
@@ -345,7 +354,12 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
 }
 
 export default function App() {
-  const [progress, setProgress] = useState<Progress>(() => loadProgress(readStorage))
+  // A shared link opens its phase with the sender's design; the saved design stays untouched.
+  const [shared, setShared] = useState(() => decodeShare(location.search))
+  const [progress, setProgress] = useState<Progress>(() => {
+    const saved = loadProgress(readStorage)
+    return shared ? { ...saved, current: shared.level.id } : saved
+  })
   const [results, setResults] = useState<Results>(() => loadResults(readStorage(RESULTS_KEY), progress.passed))
   const resultsRef = useRef(results)
   const [view, setView] = useState<'board' | 'map'>('board')
@@ -462,6 +476,7 @@ export default function App() {
   const focusLevel = useRef<string | null>(null)
   const play = (levelId: string) => {
     focusLevel.current = levelId
+    setShared(null)
     setProgress((prev) => ({ ...prev, current: levelId }))
     setDaily(null)
     setFree(null)
@@ -469,12 +484,14 @@ export default function App() {
   }
 
   const openDaily = () => {
+    setShared(null)
     setFree(null)
     setDaily(dailyLevel(today))
     setView('board')
   }
   const saveDesign = (id: string, design: unknown) => store.commit(updateDesign(store.list, id, design), false)
   const openFreeList = () => {
+    setShared(null)
     setSystems(store.list)
     setDaily(null)
     setFree({ id: null })
@@ -633,7 +650,7 @@ export default function App() {
     <ReactFlowProvider key={stage.level.id}>
       {profile}
       <Board
-        play={careerPlay(stage)}
+        play={careerPlay(stage, shared?.level.id === stage.level.id ? shared.design : undefined)}
         onPassed={markPassed}
         nav={
           <nav className="levels" aria-labelledby="levels-company">
@@ -724,6 +741,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const pendingSave = useRef<(() => void) | null>(null)
   useEffect(() => {
     pendingSave.current = () => {
+      if (play.shared) return
       if (onDesign.current) onDesign.current({ nodes, edges })
       else save(designKey(level), { nodes, edges, fixes })
     }
@@ -732,7 +750,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
       pendingSave.current = null
     }, SAVE_DELAY_MS)
     return () => clearTimeout(id)
-  }, [level, nodes, edges, fixes])
+  }, [level, nodes, edges, fixes, play.shared])
   useEffect(() => {
     const flush = () => {
       pendingSave.current?.()
@@ -1280,6 +1298,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
         {nav}
 
         <p className="brief">{level.briefing}</p>
+        {play.shared && <p className="hint">Desenho de um link compartilhado: o que você mudar aqui não é salvo.</p>}
 
         <section className="parts" aria-labelledby="parts-title">
           <h2 id="parts-title">Peças</h2>
@@ -1630,6 +1649,8 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
               level={level}
               free={!!play.free}
               share={play.share}
+              sheet={play.linkable ? play.sheet : undefined}
+              shareQuery={() => encodeShare(level.id, { nodes, edges, fixes })}
               xpGained={gain}
               onSeek={(t) => {
                 setPlaying(false)
@@ -1788,6 +1809,8 @@ function Result({
   level,
   free,
   share,
+  sheet,
+  shareQuery,
   xpGained,
   onSeek,
   onConcept,
@@ -1800,6 +1823,10 @@ function Result({
   free: boolean
   /** Builds the text to copy for a passing run (the daily challenge). */
   share?: Play['share']
+  /** Caption of the goals sheet when the phase can be shared as image and link. */
+  sheet?: string
+  /** Query string that reopens this phase with the drawing on screen. */
+  shareQuery: () => string
   /** XP this run added to the saved result. */
   xpGained: number
   /** Shows the given second on the canvas. */
@@ -1810,6 +1837,7 @@ function Result({
   const neck = useMemo(() => bottleneck(arch, ticks), [arch, ticks])
   const tips = useMemo(() => hints(summary, ticks, arch, level), [summary, ticks, arch, level])
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
+  const [shareNote, setShareNote] = useState<string | null>(null)
   const won = summary.passed.all && !free
   const stars = won ? resultOf(summary, level).stars : 0
   const gaps = starGaps(summary, level)
@@ -1835,6 +1863,57 @@ function Result({
             >
               {copied === 'ok' ? 'Copiado' : 'Copiar resultado'}
             </button>
+          )}
+          {sheet && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={async () => {
+                const url = `${location.origin}${location.pathname}${shareQuery()}`
+                const g = level.goals
+                const image = await drawShareCard({
+                  sheet,
+                  title: level.title,
+                  stars,
+                  rows: [
+                    { label: 'Disponibilidade', value: pct(summary.availability), goal: `meta: ${pct(g.minAvailability)}` },
+                    { label: 'Latência p99', value: ms(summary.p99Ms), goal: `meta: até ${ms(g.maxP99Ms)}` },
+                    { label: 'Custo por mês', value: money(summary.cost), goal: `meta: até ${money(g.maxCost)}` },
+                  ],
+                }).catch(() => null)
+                if (!image) return setShareNote('Não deu para gerar a imagem.')
+                const file = new File([image], `gargalo-${level.id}.png`, { type: 'image/png' })
+                const text = `gargalo, ${sheet.toLowerCase()}: ${level.title} ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`
+                if (navigator.canShare?.({ files: [file] })) {
+                  try {
+                    await navigator.share({ files: [file], text, url })
+                    setShareNote(null)
+                  } catch (e) {
+                    // The player closing the share sheet is not an error.
+                    if (!(e instanceof DOMException && e.name === 'AbortError')) setShareNote('Não deu para compartilhar.')
+                  }
+                  return
+                }
+                const a = document.createElement('a')
+                a.href = URL.createObjectURL(file)
+                a.download = file.name
+                a.click()
+                URL.revokeObjectURL(a.href)
+                try {
+                  await navigator.clipboard.writeText(url)
+                  setShareNote('Imagem baixada e link copiado.')
+                } catch {
+                  setShareNote(`Imagem baixada. Seu navegador bloqueou a cópia; o link é ${url}`)
+                }
+              }}
+            >
+              Compartilhar
+            </button>
+          )}
+          {shareNote && (
+            <p className="hint" role="status">
+              {shareNote}
+            </p>
           )}
           {copied === 'fail' && <p className="hint">Não deu para copiar. Seu navegador bloqueou a área de transferência.</p>}
           {!gaps.thrifty.earned && <p className="hint">Gaste até {THRIFTY_PCT}% do orçamento ({money(gaps.thrifty.limit)}) para ganhar mais uma estrela.</p>}
