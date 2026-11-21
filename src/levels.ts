@@ -1,5 +1,5 @@
 import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
-import type { ArchEdge, Architecture, Level } from './sim/model'
+import type { ArchEdge, Architecture, Level, Work } from './sim/model'
 
 /** The Startup's levels and boss. */
 export const STARTUP_LEVELS: Level[] = [
@@ -406,5 +406,41 @@ export const FECHAMENTO_DO_MES: Level = {
   goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 1200 },
 }
 
+/** A 500 MB upload through the app holds a server like 20 clicks, and for longer. */
+const HEAVY_UPLOADS: Work[] = [{ kinds: ['server'], classes: ['write'], factor: 20, extraMs: 300 }]
+/** A text search in the database reads the whole table of videos: it weighs like 4 reads. */
+const SEARCH_IN_DB: Work[] = [{ kinds: ['db', 'shard', 'replica'], classes: ['read', 'bot'], factor: 4 }]
+const STREAMING_ROUTES: Level['endpoints'] = { static: 'GET /videos/:id/trechos/:n', read: 'GET /busca', write: 'POST /videos' }
+
+export const STREAMING_LEVELS: Level[] = []
+
+export const ESTREIA_DE_SERIE: Level = {
+  id: 'estreia-de-serie',
+  title: 'Estreia de série',
+  briefing:
+    'Estreia da série mais esperada do ano. Aos 15s o tráfego sobe de 2.000 para 12.000 req/s e fica lá até os 45s: 85% são trechos do mesmo episódio, 12% buscas e 3% uploads. O episódio é novo e a CDN acerta só 80% dos trechos. Busca no banco varre a tabela, e no máximo 5% das buscas podem perder um vídeo novo. Orçamento de $650.',
+  durationS: 60,
+  mix: { static: 0.85, read: 0.12, write: 0.03 },
+  traffic: [
+    { from: 0, rps: 2000 },
+    { from: 15, rps: 6000 },
+    { from: 16, rps: 12000 },
+    { from: 45, rps: 3000 },
+  ],
+  failures: [],
+  work: [...HEAVY_UPLOADS, ...SEARCH_IN_DB],
+  tweaks: { cdn: { serves: { static: 0.8, read: 0.1, bot: 0.1 } }, cache: { serves: { read: 0.2, bot: 0.2 } } },
+  endpoints: { ...STREAMING_ROUTES, static: 'GET /series/:id/episodios/1/trechos/:n' },
+  goals: { minAvailability: 0.985, maxP99Ms: 400, maxCost: 650, maxStaleReads: 0.05 },
+}
+
 /** Every level of the career. `src/career.ts` arranges them into companies. */
-export const LEVELS: Level[] = [...STARTUP_LEVELS, ...ECOMMERCE_LEVELS, BLACK_FRIDAY, ...FINTECH_LEVELS, FECHAMENTO_DO_MES]
+export const LEVELS: Level[] = [
+  ...STARTUP_LEVELS,
+  ...ECOMMERCE_LEVELS,
+  BLACK_FRIDAY,
+  ...FINTECH_LEVELS,
+  FECHAMENTO_DO_MES,
+  ...STREAMING_LEVELS,
+  ESTREIA_DE_SERIE,
+]

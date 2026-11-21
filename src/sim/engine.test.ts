@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BLACK_FRIDAY, LEVELS, STARTUP_LEGACY } from '../levels'
+import { BLACK_FRIDAY, ESTREIA_DE_SERIE, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
 import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, balanceOf, canConnect, canSetBalance, connectRefusal, instanceCapacity, protocolRefusal } from './model'
@@ -810,6 +810,15 @@ function blackFriday(limiter: boolean): Architecture {
   return extend(paymentPolicy(BLACK_FRIDAY.start!, policy), add, limiter ? [['cdn', 'lb']] : [])
 }
 
+/** Users, a CDN pulling from object storage, `servers` servers searching `indexes` indexes fed by the storage's topic. */
+function premiere(servers: number, indexes: number, fed = true): Architecture {
+  const idx = Array.from({ length: indexes }, (_, i) => `search#${i}`)
+  const edges: [string, string][] = [['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'lb']]
+  for (let i = 0; i < servers; i++) edges.push(['lb', `server#${i}`], ...idx.map((s) => [`server#${i}`, s] as [string, string]))
+  if (fed) edges.push(['storage', 'topic'], ...idx.map((s) => ['topic', s] as [string, string]))
+  return arch(edges)
+}
+
 describe('levels', () => {
   const cases: [string, boolean, Architecture][] = [
     // A server alone keeps nothing: reads and writes have nowhere to go.
@@ -869,6 +878,11 @@ describe('levels', () => {
     ['fechamento-do-mes', false, monthEnd('sa', 8)],
     ['fechamento-do-mes', false, monthEnd('us', 5)],
     ['fechamento-do-mes', true, monthEnd('us', 8)],
+    // Streaming, starting from a plain web app.
+    // The premiere: misses on the servers sink them; storage as origin and three fed indexes hold.
+    ['estreia-de-serie', false, STARTUP_LEGACY],
+    ['estreia-de-serie', false, premiere(5, 2)],
+    ['estreia-de-serie', true, premiere(5, 3)],
   ]
   it.each(cases)('%s: design passes = %s', (id, shouldPass, a) => {
     const { summary } = runLevel(a, byId(id))
@@ -1233,4 +1247,19 @@ describe('search index', () => {
     expect(two.nodes['search#0'].lagMs!).toBeLessThan(3000)
     expect(two.stale).toBeLessThan(one.stale / 4)
   })
+})
+
+describe('streaming levels across seeds', () => {
+  const cases: [string, string, () => Architecture, boolean][] = [
+    ['estreia-de-serie', 'storage as origin, five servers, three fed indexes', () => premiere(5, 3), true],
+    ['estreia-de-serie', 'two indexes', () => premiere(5, 2), false],
+    ['estreia-de-serie', 'indexes nobody feeds', () => premiere(5, 3, false), false],
+    ['estreia-de-serie', 'the legacy with storage behind the CDN', () => extend(STARTUP_LEGACY, [['cdn', 'storage']]), false],
+  ]
+  for (const [id, name, build, passes] of cases) {
+    it(`${id}: ${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      const level = id === ESTREIA_DE_SERIE.id ? ESTREIA_DE_SERIE : byId(id)
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
 })
