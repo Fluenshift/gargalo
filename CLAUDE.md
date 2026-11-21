@@ -4,7 +4,7 @@ A browser game for learning system design: the player wires pieces (CDN, load ba
 
 ## Done means green
 
-A change is done when `npx oxlint --deny-warnings && npm test && npm run build` passes (the CI gate in `.github/workflows/ci.yml`) and, for anything visible, the `verify-ui` skill has been run.
+A change is done when `npx oxlint --deny-warnings && npm run test:coverage && npm run build` passes (the Quality Gate in `.github/workflows/quality-gate.yml`, coverage ≥ 80% on `src/**/*.ts`) and, for anything visible, the `verify-ui` skill has been run.
 
 ## Simulation
 
