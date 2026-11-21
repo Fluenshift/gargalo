@@ -1,0 +1,3 @@
+# Any dependency change needs the owner's review, including PRs opened by agents or bots.
+/package.json      @levyrodrigues23
+/package-lock.json @levyrodrigues23
