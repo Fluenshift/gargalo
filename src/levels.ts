@@ -1,4 +1,4 @@
-import { FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
+import { CHAINED_CALLS, FIXED_ROUND_ROBIN, HIDDEN_CLIENT, SCATTERED_SQL, NO_INDEX, NO_PAGINATION, N_PLUS_ONE } from './code'
 import type { ArchEdge, Architecture, Level, Work } from './sim/model'
 
 /** The Startup's levels and boss. */
@@ -425,6 +425,19 @@ export const STREAMING_LEVELS: Level[] = [
     work: HEAVY_UPLOADS,
     endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id' },
     goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 450 },
+  },
+  {
+    id: 'um-upload-cinco-tarefas',
+    title: 'Um upload, cinco tarefas',
+    briefing:
+      'Quando um vídeo é publicado, cinco coisas precisam acontecer: thumbnail, legendas, aviso aos seguidores, recomendações e busca. Hoje o criador espera todas, e publicar leva meio segundo. São 1.200 req/s, 10% publicações. Leia o código de POST /videos/:id/publicar. Orçamento de $650.',
+    durationS: 30,
+    mix: { static: 0.5, read: 0.4, write: 0.1 },
+    traffic: [{ from: 0, rps: 1200 }],
+    failures: [],
+    code: [CHAINED_CALLS],
+    endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id', write: 'POST /videos/:id/publicar' },
+    goals: { minAvailability: 0.99, maxP99Ms: 250, maxCost: 650 },
   },
 ]
 

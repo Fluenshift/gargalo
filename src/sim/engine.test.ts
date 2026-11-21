@@ -810,6 +810,11 @@ function blackFriday(limiter: boolean): Architecture {
   return extend(paymentPolicy(BLACK_FRIDAY.start!, policy), add, limiter ? [['cdn', 'lb']] : [])
 }
 
+/** The legacy servers publishing to a topic (or a queue) with `n` workers behind it, under the code option `fix`. */
+function publishing(fix: string, n: number, via: 'topic' | 'queue' = 'topic'): Architecture {
+  const subscribers = Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
+  return { ...extend(STARTUP_LEGACY, [...legacyTo(via), ...subscribers]), fixes: { 'chamadas-encadeadas': fix } }
+}
 /** Users, a CDN pulling from object storage, `servers` servers searching `indexes` indexes fed by the storage's topic. */
 function premiere(servers: number, indexes: number, fed = true): Architecture {
   const idx = Array.from({ length: indexes }, (_, i) => `search#${i}`)
@@ -883,6 +888,9 @@ describe('levels', () => {
     ['upload-trava-servidor', false, STARTUP_LEGACY],
     ['upload-trava-servidor', false, extend(STARTUP_LEGACY, servers(4))],
     ['upload-trava-servidor', true, extend(STARTUP_LEGACY, [['cdn', 'storage']])],
+    // The creator waits for five services in a row; publishing an event to a topic answers at once.
+    ['um-upload-cinco-tarefas', false, STARTUP_LEGACY],
+    ['um-upload-cinco-tarefas', true, publishing('observer', 5)],
     // The premiere: misses on the servers sink them; storage as origin and three fed indexes hold.
     ['estreia-de-serie', false, STARTUP_LEGACY],
     ['estreia-de-serie', false, premiere(5, 2)],
@@ -1251,6 +1259,47 @@ describe('search index', () => {
     expect(two.nodes['search#0'].lagMs!).toBeLessThan(3000)
     expect(two.stale).toBeLessThan(one.stale / 4)
   })
+})
+
+describe('code that publishes an event', () => {
+  const level = byId('um-upload-cinco-tarefas')
+  const ch = level.code![0]
+
+  it('refuses a topic or a queue after the servers until the code stops calling the services itself', () => {
+    const a = arch([], ['server', 'topic', 'queue'])
+    for (const fix of [undefined, 'paralelo', 'sem-await']) {
+      const fixed = { ...a, ...(fix ? { fixes: { [ch.id]: fix } } : {}) }
+      expect(connectRefusal(fixed, 'server', 'topic', level), fix).toBe(ch.locks!.reason)
+      expect(connectRefusal(fixed, 'server', 'queue', level), fix).toBe(ch.locks!.reason)
+    }
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'observer' } }, 'server', 'topic', level)).toBeNull()
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'observer' } }, 'server', 'queue', level)).toBe(ch.locks!.reason)
+    expect(connectRefusal({ ...a, fixes: { [ch.id]: 'fila' } }, 'server', 'queue', level)).toBeNull()
+  })
+
+  it('every wrong option says why it does not solve it, and the queue says what it costs', () => {
+    for (const option of ch.options.filter((o) => !o.fixes)) expect(option.explanation.length).toBeGreaterThan(40)
+    expect(ch.options.find((o) => o.id === 'fila')!.caveat).toBeTruthy()
+  })
+
+  const cases: [string, () => Architecture, boolean][] = [
+    ['the Observer with a topic and five workers', () => publishing('observer', 5), true],
+    ['a queue with one worker doing the five tasks', () => publishing('fila', 1, 'queue'), true],
+    ['the drawing as the level opens', () => STARTUP_LEGACY, false],
+    // The fix in the code alone: with nothing to publish to, the writes still wait for the tasks.
+    ['the Observer with nothing to publish to', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'observer' } }), false],
+    ['Promise.all', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'paralelo' } }), false],
+    ['calls without await', () => ({ ...STARTUP_LEGACY, fixes: { [ch.id]: 'sem-await' } }), false],
+    // A locked link on the drawing carries nothing.
+    ['the chained calls with a topic drawn anyway', () => ({ ...publishing('observer', 5), fixes: {} }), false],
+    // Writes sent through the CDN into storage still wait for the five tasks.
+    ['the Observer with the writes sent to storage', () => ({ ...extend(STARTUP_LEGACY, [['cdn', 'storage']]), fixes: { [ch.id]: 'observer' } }), false],
+  ]
+  for (const [name, build, passes] of cases) {
+    it(`${name} ${passes ? 'passes' : 'fails'} on every seed`, () => {
+      for (let seed = 1; seed <= 20; seed++) expect(runLevel(build(), level, seed).summary.passed.all, `seed ${seed}`).toBe(passes)
+    })
+  }
 })
 
 describe('streaming levels across seeds', () => {

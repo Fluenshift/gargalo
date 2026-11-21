@@ -69,6 +69,9 @@ export const ALTERNATIVES: Record<string, string[]> = {
   'upload-trava-servidor': [
     'Armazenamento de objetos atrás da CDN passa por $415 de $450, com o p99 perto de 70 ms: trechos e uploads vão direto para ele, e os servidores ficam só com a API. Quatro servidores a mais custam $595, estouram o orçamento e ainda deixam o p99 perto de 535 ms, porque cada upload segue preso no servidor.',
   ],
+  'um-upload-cinco-tarefas': [
+    'Observer com um tópico e um worker por tarefa passa por $630 de $650, com o p99 perto de 135 ms. A fila com um worker que faz as cinco também passa, por $465, mas o worker conhece cada tarefa e refaz todas quando uma falha. Promise.all ainda espera as legendas, e o p99 fica perto de 300 ms. Disparar sem await deixa as chamadas no servidor: a disponibilidade cai para perto de 92%.',
+  ],
   'estreia-de-serie': [
     'CDN com o armazenamento de objetos como origem, 5 servidores e 3 índices assinando o tópico do armazenamento passam por $560, com o p99 perto de 210 ms e 4% das buscas sem o vídeo novo. Com 4 servidores também passa, por $510, e o p99 sobe para perto de 335 ms. Com 2 índices, cada um fica lotado e 16% das buscas perdem vídeos. Manter o cache e o banco da casa custa $150 a mais e estoura o orçamento.',
   ],

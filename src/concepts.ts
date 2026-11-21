@@ -651,6 +651,19 @@ export const GLOSSARY: GlossaryEntry[] = [
       'Quem publica manda um evento a um tópico, e cada assinante recebe a sua cópia. Diferente da fila, onde cada mensagem vai a um consumidor só: no pub/sub, cinco assinantes fazem cinco tarefas com o mesmo evento.',
   },
   {
+    id: 'evento',
+    term: 'evento',
+    forms: ['eventos'],
+    definition: 'Aviso de que algo aconteceu ("vídeo publicado"), sem dizer o que fazer com ele. Quem se interessa assina e decide.',
+  },
+  {
+    id: 'observer',
+    term: 'Observer',
+    forms: ['observador'],
+    definition:
+      'Padrão de projeto: quem muda de estado avisa os interessados por um evento, em vez de chamar cada um. Quem publica não conhece os assinantes, então dá para somar uma tarefa sem mexer nele.',
+  },
+  {
     id: 'url-assinada',
     term: 'URL assinada',
     forms: ['URLs assinadas', 'presigned URL'],
