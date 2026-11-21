@@ -1,6 +1,6 @@
 import { ThemeToggle } from './ThemeToggle'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -475,6 +475,8 @@ export default function App() {
     return dailyXp(next, date) - dailyXp(before, date)
   }, [])
 
+  /** The panel's open tab, kept across levels so picking a phase leaves the list open. */
+  const [panelTab, setPanelTab] = useState<PanelTab>('parts')
   /** The level the player just opened: its button in the new board's list takes the focus. */
   const focusLevel = useRef<string | null>(null)
   const play = (levelId: string) => {
@@ -604,26 +606,23 @@ export default function App() {
         <Board
           play={freePlay(system, freeLevel, errors[0], (design) => saveDesign(system.id, design))}
           onPassed={() => 0}
-          nav={
-            <>
-              <nav className="levels" aria-labelledby="levels-company">
-                <div className="levels__head">
-                  <h2 id="levels-company">
-                    <span className="levels__where">Modo livre</span> {system.name}
-                  </h2>
-                  <span className="levels__links">
-                    <button type="button" className="levels__map" onClick={openFreeList}>
-                      Meus sistemas
-                    </button>
-                    <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
-                      Voltar à carreira
-                    </button>
-                  </span>
-                </div>
-              </nav>
-              <TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />
-            </>
+          where="Modo livre"
+          links={
+            <span className="levels__links">
+              <button type="button" className="levels__map" onClick={openFreeList}>
+                Meus sistemas
+              </button>
+              <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
+                Voltar à carreira
+              </button>
+            </span>
           }
+          phases={{
+            label: 'Tráfego',
+            content: <TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />,
+          }}
+          tab={panelTab}
+          onTab={setPanelTab}
         />
       </ReactFlowProvider>
     )
@@ -636,15 +635,11 @@ export default function App() {
         <Board
           play={dailyPlay(daily)}
           onPassed={(_, result) => markDaily(daily.date, result)}
-          nav={
-            <nav className="levels" aria-labelledby="levels-company">
-              <div className="levels__head">
-                <h2 id="levels-company">{daily.level.title}</h2>
-                {dailyLinks}
-              </div>
-              {streakNote}
-            </nav>
-          }
+          where={daily.date.split('-').reverse().join('/')}
+          note={streakNote}
+          links={dailyLinks}
+          tab={panelTab}
+          onTab={setPanelTab}
         />
       </ReactFlowProvider>
     )
@@ -655,15 +650,15 @@ export default function App() {
       <Board
         play={careerPlay(stage, shared?.level.id === stage.level.id ? shared.design : undefined)}
         onPassed={markPassed}
-        nav={
-          <nav className="levels" aria-labelledby="levels-company">
-            <div className="levels__head">
-              <h2 id="levels-company">
-                <span className="levels__where">Empresa {stage.companyIndex + 1}</span> {company.name}
-              </h2>
-              {dailyLinks}
-            </div>
-            {streakNote}
+        where={`Empresa ${stage.companyIndex + 1} · ${company.name}`}
+        note={streakNote}
+        links={dailyLinks}
+        tab={panelTab}
+        onTab={setPanelTab}
+        phases={{
+          label: 'Fases',
+          content: (
+          <nav className="levels" aria-label={`Fases da empresa ${company.name}`}>
             {[...company.levels, company.boss].map((l, i) => {
               const status = levelStatus(l.id, passed)
               const isBoss = l === company.boss
@@ -699,7 +694,8 @@ export default function App() {
               )
             })}
           </nav>
-        }
+          ),
+        }}
       />
     </ReactFlowProvider>
   )
@@ -709,7 +705,24 @@ const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: r
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: (id: string, result: LevelResult) => number }) {
+type PanelTab = 'phases' | 'parts'
+const PANEL_TABS: PanelTab[] = ['phases', 'parts']
+
+type BoardProps = {
+  play: Play
+  /** Where the level sits (company, daily, free mode), above its title. */
+  where: string
+  note?: ReactNode
+  /** Links to the other screens, in the panel header. */
+  links: ReactNode
+  /** What the first panel tab holds (the company's phases, the free system's traffic); without it the panel shows only the pieces. */
+  phases?: { label: string; content: ReactNode }
+  tab: PanelTab
+  onTab: (tab: PanelTab) => void
+  onPassed: (id: string, result: LevelResult) => number
+}
+
+function Board({ play, where, note, links, phases, tab, onTab, onPassed }: BoardProps) {
   const { level } = play
   const { fitView } = useReactFlow()
   /** Id of a just-added node to bring into view once React Flow has measured it. */
@@ -1275,13 +1288,22 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
   const saturated = tick && mostSaturated(tick)
   const perMillion = costPerMillion(cost, level)
   const selectNode = (id: string) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
+  // Two tabs: either arrow moves to the other one, Home and End go to the ends.
+  const onTabKey = (e: ReactKeyboardEvent) => {
+    const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+    const next: PanelTab | null = e.key === 'Home' ? 'phases' : e.key === 'End' ? 'parts' : arrow ? (tab === 'phases' ? 'parts' : 'phases') : null
+    if (!next) return
+    e.preventDefault()
+    onTab(next)
+    document.getElementById(`tab-${next}`)?.focus()
+  }
 
   return (
     <div className={`app${panelOpen ? '' : ' is-collapsed'}`}>
       <aside className="panel" id="panel" hidden={!panelOpen}>
         <header className="brand">
           <h1>
-            <BrandMark size={52} />
+            <BrandMark size={30} />
             gargalo
           </h1>
           <button
@@ -1295,16 +1317,50 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
           >
             <PanelIcon />
           </button>
-          <p>Monte a arquitetura. O tráfego vem depois.</p>
+          <nav className="brand__links" aria-label="Outras telas">
+            {links}
+          </nav>
         </header>
 
-        {nav}
+        <div className="phase">
+          <p className="phase__where">{where}</p>
+          <h2 className="phase__title">{level.title}</h2>
+          {note}
+        </div>
 
         <p className="brief">{level.briefing}</p>
         {play.shared && <p className="hint">Desenho de um link compartilhado: o que você mudar aqui não é salvo.</p>}
 
-        <section className="parts" aria-labelledby="parts-title">
-          <h2 id="parts-title">Peças</h2>
+        {phases && (
+          <>
+            <div className="segmented panel__tabs" role="tablist" aria-label="Painel da fase" onKeyDown={onTabKey}>
+              {PANEL_TABS.map((t) => (
+                <button
+                  key={t}
+                  id={`tab-${t}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  aria-controls={`tabpanel-${t}`}
+                  tabIndex={tab === t ? 0 : -1}
+                  onClick={() => onTab(t)}
+                >
+                  {t === 'phases' ? phases.label : 'Peças'}
+                </button>
+              ))}
+            </div>
+            <div className="panel__tabpanel" id="tabpanel-phases" role="tabpanel" aria-labelledby="tab-phases" hidden={tab !== 'phases'}>
+              {phases.content}
+            </div>
+          </>
+        )}
+
+        <section
+          className="parts panel__tabpanel"
+          {...(phases ? { id: 'tabpanel-parts', role: 'tabpanel', 'aria-labelledby': 'tab-parts' } : { 'aria-labelledby': 'parts-title' })}
+          hidden={!!phases && tab !== 'parts'}
+        >
+          {!phases && <h2 id="parts-title">Peças</h2>}
           <ul>
             {play.pieces.map((kind) => {
               const unlock = play.unlock(kind)

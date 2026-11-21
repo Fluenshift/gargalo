@@ -63,7 +63,7 @@ As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam 
 
 | Papel | Fonte | Peso | Notas |
 |---|---|---|---|
-| Títulos e números grandes | Instrument Serif (`--serif`) | 400, sempre | Logo, título da fase na folha, cabeçalho do painel de conceitos, resultado da rodada, valores dos medidores, mapa da carreira. `--tracking-tight`. |
+| Títulos e números grandes | Instrument Serif (`--serif`) | 400, sempre | Logo, título da fase no painel e na folha, cabeçalho do painel de conceitos, resultado da rodada, valores dos medidores, mapa da carreira. `--tracking-tight`. |
 | Todo o resto | IBM Plex Mono (`--mono`) | 400 e 500 | Corpo `--text-base`, auxiliares `--text-xs`/`--text-sm`. 500 só para rótulos de destaque. |
 | Rótulos de seção e botões | IBM Plex Mono | 500 | Caixa-alta, `--text-label` a `--text-sm`, `--tracking-caps`. |
 
@@ -77,11 +77,10 @@ As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam 
 | `--title-xs` | 22px | Chefão na lista, estrelas |
 | `--title-sm` | 24px | Título da folha, resultado, cartão do modo livre |
 | `--title-meter-compact` | 26px | Medidor em telas até 1400px |
-| `--title-md` | 28px | Painel de conceitos, código, modal |
+| `--title-md` | 28px | Logo, painel de conceitos, código, modal |
 | `--title-lg` | 32px | Medidores, empresas, seções |
-| `--title-xl` | 40px | Patente no perfil |
+| `--title-xl` | 40px | Título da fase no painel, patente no perfil |
 | `--title-2xl` | 44px | Título do modo livre no celular |
-| `--title-3xl` | 48px | Logo |
 | `--title-4xl` | 56px | Título do mapa da carreira |
 
 Tracking: `--tracking-tight` −0.02em, `--tracking-caps` 0.02em, `--tracking-wide` 0.04em, `--tracking-stars` 0.08em, `--tracking-none` 0. Entrelinha: `--leading` 1.35.
@@ -103,11 +102,15 @@ Nunca deixe um título em negrito. Nunca troque o mono por uma sans no corpo: a 
 
 Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (osso → massa).
 
-Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--panel-width` 360px, `--inspector-width` 340px, `--piece-width` 184px, `--page-width` 1200px.
+Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--panel-width` 360px, `--tabpanel-min-height` 240px (altura mínima da aba aberta do painel antes de o painel todo rolar), `--inspector-width` 340px, `--piece-width` 184px, `--page-width` 1200px.
 
 ## Espaço
 
 Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56). Os passos ímpares (3, 5, 7, 9) existem para as listas densas e não devem crescer. Cartões com 20–24px de respiro; o canvas é o centro e os painéis cedem espaço a ele. O painel da esquerda pode ser recolhido.
+
+### O painel da fase
+
+De cima para baixo: cabeçalho mínimo (logo pequeno, botão de recolher e os links para as outras telas: Desafio do dia, Modo livre, Mapa da carreira, Perfil), onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
 
 ## Camadas
 
@@ -132,7 +135,7 @@ Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 
   - `.btn--primary`: `--accent` com texto `--on-accent`. Um por tela. `.run` só fixa a largura mínima do botão de rodar.
   - `.btn--ghost`: transparente com borda `--ink` de 1px.
   - `.btn--small`: 6px × 14px, `--text-xs`.
-- **Abas** (`.segmented`): grupo de botões com `aria-pressed`; o pressionado é invertido. `.segmented--small` no seletor de tema.
+- **Abas** (`.segmented`): grupo de botões com `aria-pressed`; o pressionado é invertido. `.segmented--small` no seletor de tema. As abas do painel (`.panel__tabs`) usam o mesmo visual com `role="tab"` e `aria-selected`; setas, Home e End trocam de aba.
 - **Painel** (`.inspector`): folha lateral à direita do desenho, com cabeçalho serifado e régua de ganhos e custos (`.ledger`). No celular vira folha inferior.
 - **Peça no canvas** (`.node`): papel, borda `--line`, `--radius-piece`, título em mono caixa-alta. A peça Usuários é invertida. Carga pinta o fundo com o preenchimento do estado (`.heat--warm`, `.heat--hot`, `.heat--down` com listras).
 - **Ligações:** traço `--ink-soft`, mais grosso quanto mais tráfego passa; selecionada em `--accent`; disjuntor aberto pontilhado em `--hot`, meio-aberto tracejado em `--warm`.

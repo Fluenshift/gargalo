@@ -32,7 +32,7 @@ const COLORS: { name: string; use: string }[] = [
 ]
 
 const TEXT = ['--text-label', '--text-xs', '--text-sm', '--text-base', '--text-glyph', '--text-glyph-lg']
-const TITLES = ['--title-xs', '--title-sm', '--title-meter-compact', '--title-md', '--title-lg', '--title-xl', '--title-2xl', '--title-3xl', '--title-4xl']
+const TITLES = ['--title-xs', '--title-sm', '--title-meter-compact', '--title-md', '--title-lg', '--title-xl', '--title-2xl', '--title-4xl']
 const SPACES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56].map((n) => `--space-${n}`)
 const RADII = ['--radius-pill', '--radius-card', '--radius-piece', '--radius-field', '--radius-field-sm', '--radius-round']
 const LAYERS = ['--z-under', '--z-float', '--z-toast', '--z-menu', '--z-sheet']
