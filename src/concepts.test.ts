@@ -73,6 +73,7 @@ const LEVEL_CONCEPTS: Record<string, string[]> = {
   'extrato-lento': ['indice', 'db'],
   'upload-trava-servidor': ['storage', 'url-assinada', 'origem'],
   'um-upload-cinco-tarefas': ['topic', 'pub-sub', 'observer', 'evento'],
+  'busca-nao-acha': ['search', 'consistencia-eventual'],
   'estreia-de-serie': ['origem', 'storage', 'search'],
 }
 

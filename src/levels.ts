@@ -411,6 +411,7 @@ const HEAVY_UPLOADS: Work[] = [{ kinds: ['server'], classes: ['write'], factor: 
 /** A text search in the database reads the whole table of videos: it weighs like 4 reads. */
 const SEARCH_IN_DB: Work[] = [{ kinds: ['db', 'shard', 'replica'], classes: ['read', 'bot'], factor: 4 }]
 const STREAMING_ROUTES: Level['endpoints'] = { static: 'GET /videos/:id/trechos/:n', read: 'GET /busca', write: 'POST /videos' }
+const STREAM_SERVERS = ['server-1', 'server-2', 'server-3', 'server-4']
 
 export const STREAMING_LEVELS: Level[] = [
   {
@@ -438,6 +439,45 @@ export const STREAMING_LEVELS: Level[] = [
     code: [CHAINED_CALLS],
     endpoints: { ...STREAMING_ROUTES, read: 'GET /videos/:id', write: 'POST /videos/:id/publicar' },
     goals: { minAvailability: 0.99, maxP99Ms: 250, maxCost: 650 },
+  },
+  {
+    id: 'busca-nao-acha',
+    title: 'Busca que não acha o vídeo',
+    briefing:
+      'Criadores reclamam: o vídeo sai e não aparece na busca. O índice de busca do time anterior só é atualizado de madrugada. São 2.000 req/s, 40% buscas e 8% uploads, que já avisam um tópico. Um índice aguenta 1.000 req/s, entre buscas e vídeos novos. No máximo 3% das buscas podem perder um vídeo novo. Orçamento de $620.',
+    durationS: 60,
+    mix: { static: 0.52, read: 0.4, write: 0.08 },
+    traffic: [{ from: 0, rps: 2000 }],
+    failures: [],
+    work: SEARCH_IN_DB,
+    tweaks: { cache: { serves: { read: 0.2, bot: 0.2 } } },
+    endpoints: STREAMING_ROUTES,
+    goals: { minAvailability: 0.99, maxP99Ms: 300, maxCost: 620, maxStaleReads: 0.03 },
+    start: {
+      nodes: [
+        { id: 'client', kind: 'client' },
+        { id: 'cdn', kind: 'cdn' },
+        { id: 'storage', kind: 'storage' },
+        { id: 'lb', kind: 'lb' },
+        ...STREAM_SERVERS.map((id) => ({ id, kind: 'server' as const })),
+        { id: 'search', kind: 'search' },
+        { id: 'topic', kind: 'topic' },
+        { id: 'worker', kind: 'worker' },
+        { id: 'db', kind: 'db' },
+      ],
+      edges: [
+        { source: 'client', target: 'cdn' },
+        { source: 'cdn', target: 'storage' },
+        { source: 'cdn', target: 'lb' },
+        ...STREAM_SERVERS.flatMap((s) => [
+          { source: 'lb', target: s },
+          { source: s, target: 'search' },
+        ]),
+        { source: 'storage', target: 'topic' },
+        { source: 'topic', target: 'worker' },
+        { source: 'worker', target: 'db' },
+      ],
+    },
   },
 ]
 

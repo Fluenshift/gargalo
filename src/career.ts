@@ -72,7 +72,7 @@ export const COMPANIES: Company[] = [
     id: 'streaming',
     name: 'Streaming de vídeo',
     budget: 'Uma plataforma de vídeo com milhões de assinantes. Vídeo é arquivo pesado, e uma estreia põe o país inteiro no mesmo episódio.',
-    levels: [level('upload-trava-servidor'), level('um-upload-cinco-tarefas')],
+    levels: [level('upload-trava-servidor'), level('um-upload-cinco-tarefas'), level('busca-nao-acha')],
     boss: level('estreia-de-serie'),
     unlocks: ['storage', 'topic', 'search'],
     // A video site that started as a plain web app.

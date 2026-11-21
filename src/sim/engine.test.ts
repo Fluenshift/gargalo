@@ -815,6 +815,11 @@ function publishing(fix: string, n: number, via: 'topic' | 'queue' = 'topic'): A
   const subscribers = Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
   return { ...extend(STARTUP_LEGACY, [...legacyTo(via), ...subscribers]), fixes: { 'chamadas-encadeadas': fix } }
 }
+/** The search level's drawing with `n` indexes, each subscribed to the topic and searched by every server. */
+const searchIndexes = (n: number) => {
+  const ids = Array.from({ length: n }, (_, i) => (i === 0 ? 'search' : `search#${i}`))
+  return extend(byId('busca-nao-acha').start!, ids.flatMap((id) => [['topic', id] as [string, string], ...legacyTo(id)]))
+}
 /** Users, a CDN pulling from object storage, `servers` servers searching `indexes` indexes fed by the storage's topic. */
 function premiere(servers: number, indexes: number, fed = true): Architecture {
   const idx = Array.from({ length: indexes }, (_, i) => `search#${i}`)
@@ -891,6 +896,10 @@ describe('levels', () => {
     // The creator waits for five services in a row; publishing an event to a topic answers at once.
     ['um-upload-cinco-tarefas', false, STARTUP_LEGACY],
     ['um-upload-cinco-tarefas', true, publishing('observer', 5)],
+    // The index nobody feeds misses every new video; one fed index lags under the searches.
+    ['busca-nao-acha', false, byId('busca-nao-acha').start!],
+    ['busca-nao-acha', false, extend(byId('busca-nao-acha').start!, [['topic', 'search']])],
+    ['busca-nao-acha', true, searchIndexes(2)],
     // The premiere: misses on the servers sink them; storage as origin and three fed indexes hold.
     ['estreia-de-serie', false, STARTUP_LEGACY],
     ['estreia-de-serie', false, premiere(5, 2)],
@@ -1306,6 +1315,9 @@ describe('streaming levels across seeds', () => {
   const cases: [string, string, () => Architecture, boolean][] = [
     ['upload-trava-servidor', 'storage behind the CDN', () => extend(STARTUP_LEGACY, [['cdn', 'storage']]), true],
     ['upload-trava-servidor', 'four servers more', () => extend(STARTUP_LEGACY, servers(4)), false],
+    ['busca-nao-acha', 'two fed indexes', () => searchIndexes(2), true],
+    ['busca-nao-acha', 'one fed index', () => extend(byId('busca-nao-acha').start!, [['topic', 'search']]), false],
+    ['busca-nao-acha', 'the search in the database', () => extend(byId('busca-nao-acha').start!, [...legacyTo('cache'), ['cache', 'db']], [], ['search']), false],
     ['estreia-de-serie', 'storage as origin, five servers, three fed indexes', () => premiere(5, 3), true],
     ['estreia-de-serie', 'two indexes', () => premiere(5, 2), false],
     ['estreia-de-serie', 'indexes nobody feeds', () => premiere(5, 3, false), false],
