@@ -78,7 +78,7 @@ const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
 /** How long the drawing must stay still before it is saved. */
 const SAVE_DELAY_MS = 300
 const edgeTypes = { removable: RemovableEdge }
-const PALETTE: Kind[] = ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker']
+const PALETTE: Kind[] = ['dns', 'cdn', 'limiter', 'gateway', 'lb', 'server', 'cache', 'db', 'shard', 'replica', 'queue', 'worker', 'storage', 'topic', 'search']
 const COLUMN: Record<Kind, number> = {
   client: 0,
   dns: 200,
@@ -94,9 +94,12 @@ const COLUMN: Record<Kind, number> = {
   worker: 1020,
   replica: 1240,
   payment: 820,
+  storage: 400,
+  topic: 820,
+  search: 1240,
 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { dns: -230, queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340 }
+const FIRST_ROW: Partial<Record<Kind, number>> = { dns: -230, queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340, storage: -330, topic: 540, search: -220 }
 /** Height of the canvas band each region keeps: São Paulo on top, then Virgínia, then Frankfurt. */
 const REGION_BAND = 900
 const bandOf = (region: Region) => (Object.keys(REGIONS) as Region[]).indexOf(region)
@@ -332,7 +335,7 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
         : 'Nenhuma requisição se perdeu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.',
     )
   if (summary.staleReadRate >= 0.01)
-    out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas atrasam mais quando recebem muitas escritas ou estão cheias de leituras; uma réplica sem ligação do banco nunca é atualizada.`)
+    out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas e índices de busca atrasam mais quando recebem muitas mudanças ou estão cheios de leituras; uma réplica sem ligação do banco, ou um índice que não assina um tópico, nunca é atualizado.`)
   if (!summary.passed.duplicates)
     out.push(`${pct(summary.duplicateRate)} das escritas foram executadas duas vezes: a resposta se perdeu e a tentativa extra repetiu o pedido. Ligue a chave de idempotência na ligação, para o destino reconhecer a repetição.`)
   if (summary.backlogAtEnd >= 1)
@@ -1537,7 +1540,7 @@ function Board({ play, nav, onPassed }: { play: Play; nav: ReactNode; onPassed: 
             >
               {/* A piece picked on the canvas also shows how it did in the run on screen. */}
               {!listInfo && selected.length === 1 && run && shown > 0 && (
-                <NodeRunStats ticks={run.ticks} nodeId={selected[0].id} shown={shown} />
+                <NodeRunStats ticks={run.ticks} nodeId={selected[0].id} kind={selected[0].data.kind} shown={shown} />
               )}
             </Inspector>
           )}

@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { Sparkline } from './Sparkline'
 import type { TickResult } from './sim/engine'
+import type { Kind } from './sim/model'
 import { nodeSeries, waitLabel } from './sim/metrics'
 
 interface Props {
   ticks: TickResult[]
   nodeId: string
+  kind: Kind
   /** How many simulated seconds are on screen (the "rever o segundo" position). */
   shown: number
 }
@@ -14,7 +16,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR')
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
 /** One piece's load, utilization, drop rate and latency over the run, up to the second on screen. */
-export function NodeRunStats({ ticks, nodeId, shown }: Props) {
+export function NodeRunStats({ ticks, nodeId, kind, shown }: Props) {
   const series = useMemo(() => nodeSeries(ticks, nodeId), [ticks, nodeId])
   const i = Math.min(shown, ticks.length) - 1
   const now = i >= 0
@@ -79,14 +81,14 @@ export function NodeRunStats({ ticks, nodeId, shown }: Props) {
     const lagTop = peak(finiteLag)
     rows.push(
       {
-        name: 'Atraso de replicação',
-        value: now ? waitLabel(series.lagMs[i], 'sem primário') : '—',
+        name: kind === 'search' ? 'Atraso do índice' : 'Atraso de replicação',
+        value: now ? waitLabel(series.lagMs[i], kind === 'search' ? 'sem tópico' : 'sem primário') : '—',
         bad: now && !Number.isFinite(series.lagMs[i]),
         values: series.lagMs.map((v) => (Number.isFinite(v) ? v : lagTop)),
         max: lagTop,
       },
       {
-        name: 'Leituras desatualizadas',
+        name: kind === 'search' ? 'Buscas sem os vídeos novos' : 'Leituras desatualizadas',
         value: now ? pct(series.staleRate[i]) : '—',
         bad: now && series.staleRate[i] >= 0.01,
         values: series.staleRate,

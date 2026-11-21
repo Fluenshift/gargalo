@@ -25,6 +25,8 @@ const CALLS: Partial<Record<Kind, Record<'read' | 'write', string>>> = {
   },
   queue: { read: '', write: "fila.publicar('pedido-criado', dados)" },
   payment: { read: '', write: 'pagamentos.cobrar(dados)' },
+  topic: { read: '', write: "eventos.publicar('video-publicado', dados)" },
+  search: { read: 'busca.procurar(termo)', write: '' },
 }
 
 const WRITES_DATA: Kind[] = ['db', 'shard', 'cache', 'payment']
@@ -68,6 +70,8 @@ function handler(route: string, cls: 'read' | 'write', out: OutLink[]): string {
     else if (targets.length > 1) lines.push(`// Reveza entre ${targets.length} peças do tipo ${SPECS[kinds[0]].label}.`)
     lines.push(...call(targets[0].kind, targets[0].edge, cls))
     if (targets[0].kind === 'queue') lines.push('return { status: 202 } // responde já; um worker grava depois')
+    else if (targets[0].kind === 'topic') lines.push('return { status: 202 } // responde já; cada assinante faz a sua parte depois')
+    else if (targets[0].kind === 'search') lines.push('return resultado // um vídeo de agora há pouco pode ainda não estar no índice')
     else if (targets[0].kind === 'replica') lines.push('return resultado // pode estar alguns milissegundos atrás do primário')
     else lines.push('return resultado')
   }

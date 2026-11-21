@@ -1123,3 +1123,114 @@ describe('code that locks the partitions', () => {
     })
   }
 })
+
+describe('object storage', () => {
+  const files: Level = { ...steady, mix: { static: 0.6, read: 0.3, write: 0.1 }, traffic: [{ from: 0, rps: 1000 }] }
+
+  it('hangs below the CDN only, and announces new files to a topic', () => {
+    const a = arch([], ['cdn', 'lb', 'server', 'storage', 'topic'])
+    expect(canConnect(a, 'cdn', 'storage')).toBe(true)
+    expect(canConnect(a, 'server', 'storage')).toBe(false)
+    expect(canConnect(a, 'storage', 'topic')).toBe(true)
+    expect(canConnect(a, 'storage', 'server')).toBe(false)
+    // The CDN keeps one link to the application besides the storage.
+    expect(canConnect({ ...a, edges: [{ source: 'cdn', target: 'lb' }] }, 'cdn', 'storage')).toBe(true)
+  })
+
+  it('takes the files and uploads off the servers; API reads still reach them', () => {
+    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db']])
+    const r = simulateTick(a, files, 0, mulberry32(1))
+    expect(r.nodes.storage.load).toBeCloseTo(600 * 0.05 + 100)
+    expect(r.nodes.server.load).toBeCloseTo(300 * 0.9)
+    expect(r.nodes.db.load).toBeCloseTo(300 * 0.9)
+  })
+
+  it('copies each upload it stores to the topic, as work nobody waits for', () => {
+    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db'], ['storage', 'topic'], ['topic', 'worker'], ['worker', 'db']])
+    const r = simulateTick(a, files, 0, mulberry32(1))
+    expect(r.edges['storage->topic']).toBeCloseTo(100)
+    expect(r.nodes.worker.load).toBeCloseTo(100)
+    expect(r.served).toBeCloseTo(1000)
+  })
+})
+
+describe('pub/sub topic', () => {
+  const writes: Level = { ...steady, mix: { static: 0, read: 0, write: 1 }, traffic: [{ from: 0, rps: 150 }] }
+  const subscribers = (via: 'topic' | 'queue', n: number) =>
+    arch([
+      ['client', 'server'],
+      ['server', via],
+      ...Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat(),
+    ])
+
+  it('hands every subscriber a copy of every event, where a queue splits them', () => {
+    const topic = simulateTick(subscribers('topic', 3), writes, 0, mulberry32(1))
+    const queue = simulateTick(subscribers('queue', 3), writes, 0, mulberry32(1))
+    for (let i = 0; i < 3; i++) {
+      expect(topic.nodes[`worker#${i}`].load).toBeCloseTo(150)
+      expect(queue.nodes[`worker#${i}`].load).toBeCloseTo(50)
+    }
+    // Three subscribers do three times the work downstream.
+    expect(topic.nodes.db.load).toBeCloseTo(450)
+    expect(queue.nodes.db.load).toBeCloseTo(150)
+  })
+
+  it('answers the publisher on acceptance: a slow subscriber is no failure', () => {
+    const r = simulateTick(subscribers('topic', 2), { ...writes, traffic: [{ from: 0, rps: 400 }] }, 0, mulberry32(1))
+    // Each worker takes 200 of the 400 events it gets: the rest is lost after the answer.
+    expect(r.served).toBeCloseTo(400)
+    expect(r.async.lost).toBeCloseTo(400)
+    expect(Object.values(r.failed).reduce((a, b) => a + b, 0)).toBe(0)
+  })
+
+  it('takes writes only, from servers and storage, and feeds workers and indexes', () => {
+    const a = arch([], ['server', 'topic', 'worker', 'search', 'db'])
+    expect(canConnect(a, 'server', 'topic')).toBe(true)
+    expect(canConnect(a, 'topic', 'worker')).toBe(true)
+    expect(canConnect(a, 'topic', 'search')).toBe(true)
+    expect(canConnect(a, 'topic', 'db')).toBe(false)
+    const reads = simulateTick(arch([['client', 'server'], ['server', 'topic'], ['server', 'db'], ['topic', 'worker'], ['worker', 'db']]), { ...steady, traffic: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    expect(reads.nodes.topic.load).toBe(0)
+    expect(reads.nodes.db.load).toBeCloseTo(300)
+  })
+})
+
+describe('search index', () => {
+  const searches: Level = { ...steady, mix: { static: 0, read: 0.8, write: 0.2 }, traffic: [{ from: 0, rps: 1000 }] }
+  /** Four servers search `indexes` indexes and publish videos to a topic; the first `fed` indexes subscribe to it. */
+  const design = (indexes: number, fed = indexes) =>
+    arch([
+      ['client', 'lb'],
+      ...Array.from({ length: 4 }, (_, i) =>
+        [['lb', `server#${i}`], [`server#${i}`, 'topic'], ...Array.from({ length: indexes }, (_, j) => [`server#${i}`, `search#${j}`])] as [string, string][],
+      ).flat(),
+      ...Array.from({ length: fed }, (_, j) => ['topic', `search#${j}`] as [string, string]),
+    ])
+
+  it('answers the searches; publications reach it only through the topic', () => {
+    const r = simulateTick(design(1), searches, 0, mulberry32(1))
+    expect(r.edges['server#0->search#0']).toBeCloseTo(200)
+    expect(r.edges['server#0->topic']).toBeCloseTo(50)
+    expect(r.edges['topic->search#0']).toBeCloseTo(200)
+  })
+
+  it('an index the topic does not feed misses every new video', () => {
+    const r = simulateTick(design(1, 0), searches, 0, mulberry32(1))
+    expect(r.nodes['search#0'].lagMs).toBe(Infinity)
+    expect(r.stale / r.servedByClass.read).toBeCloseTo(1)
+  })
+
+  it('lags behind when the searches leave no room to index, and a second index fixes it', () => {
+    const settled = (indexes: number) => {
+      const state = new Map()
+      let r = simulateTick(design(indexes), searches, 0, mulberry32(1), state)
+      for (let t = 1; t < 10; t++) r = simulateTick(design(indexes), searches, t, mulberry32(1), state)
+      return r
+    }
+    const one = settled(1)
+    const two = settled(2)
+    expect(one.nodes['search#0'].lagMs!).toBeGreaterThan(5000)
+    expect(two.nodes['search#0'].lagMs!).toBeLessThan(3000)
+    expect(two.stale).toBeLessThan(one.stale / 4)
+  })
+})

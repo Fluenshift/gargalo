@@ -73,7 +73,7 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
           )}
           {stats.lagMs !== undefined && state !== 'down' && (
             <div className="node__queue">
-              atraso {waitLabel(stats.lagMs, 'sem primário')}
+              atraso {waitLabel(stats.lagMs, data.kind === 'search' ? 'sem tópico' : 'sem primário')}
               {Number.isFinite(stats.lagMs) && ` · ${Math.round((stats.staleRate ?? 0) * 100)}% velhas`}
             </div>
           )}
