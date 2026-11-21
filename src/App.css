@@ -438,6 +438,16 @@ ul {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
+  color: var(--ink-soft);
+}
+
+/* The black pill is reserved for the primary action: the open tab is marked by ink text and an underline. */
+.segmented.panel__tabs button[aria-selected='true'] {
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
 }
 
 /* The open tab scrolls on its own, so the brief above it stays in view. */
