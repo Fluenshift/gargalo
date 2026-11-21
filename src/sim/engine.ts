@@ -10,7 +10,9 @@
 //
 // A piece may acknowledge a class (a queue answers writes on acceptance). From
 // there on the flow pass tracks that load as async work: it no longer counts
-// for availability or latency, and losing it is reported apart.
+// for availability or latency, and losing it is reported apart. Work a piece
+// carries to the next second (a backlog) keeps the shares it arrived with, and a
+// primary's copies to its replicas are ghost load: nobody waits for them.
 //
 // A piece may also refuse load on purpose (a rate limiter answering 429). That
 // is fast and cheap, so it adds no latency, but the user still got no answer:
@@ -18,16 +20,20 @@
 //
 // Traffic of class `bot` comes from an abusive client. It loads every piece it
 // reaches, but nobody waits for it, so it never counts for availability or
-// latency.
+// latency. Each class gets through a piece on its own terms: a 429 to the bot
+// says nothing about how the users fare.
 //
 // A link can retry failed calls and carry a circuit breaker. Such a link
-// settles its users' fate right there, from how often the target answered in
-// the previous second: with r retries a user fails only if all r + 1 attempts
-// fail. Every attempt still loads the target, but past the link that load is
-// "ghost" work whose outcome nobody counts any more. Without backoff all
-// retries land in the same second and pile on a struggling target; a piece
-// with `crashesAbove` goes down when that pile gets too big. A breaker stops
-// calling a target that fails most calls, fails fast for a while and then
+// settles its users' fate right there, from what happens this second to one
+// call into its target (answered, answered with outdated data, or failed and
+// why): with r retries a user fails only if all r + 1 attempts fail, and for the
+// reason the last one did. How many attempts pile on follows from how the target
+// did the second before. Every attempt still loads the target, but past the link
+// that load is "ghost" work whose outcome nobody counts any more. Without backoff
+// all retries land in the same second and pile on a struggling target; a piece
+// with `crashesAbove` goes down when that pile gets too big. A breaker judges
+// every call that goes through it, retries and background work included: it
+// stops calling a target that fails most calls, fails fast for a while and then
 // lets a probe through.
 //
 // A node splits what it forwards evenly among its targets, except among
@@ -120,8 +126,8 @@ export interface RunSummary extends Percentiles {
   failed: Record<FailureReason, number>
   async: AsyncWork
   /**
-   * Requests still waiting in some backlog when the run ends. Acknowledged ones
-   * were already answered; the others never were, so they lower availability.
+   * Requests still waiting in some backlog when the run ends (messages in a queue). The queue
+   * acknowledged them, so they count as answered: they are work left undone, not lost answers.
    */
   backlogAtEnd: number
   /** Share of the reads answered with outdated data. */
