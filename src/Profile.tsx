@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { dailyXp, streak } from './daily'
 import type { DailyRecord } from './daily'
-import { ACHIEVEMENTS, RANKS, achievements, rankFor, totalXp } from './score'
+import { ACHIEVEMENTS, OFICINA_PREFIX, RANKS, achievements, oficinaXp, rankFor, totalXp } from './score'
 import type { Results } from './score'
 
 const xp = (n: number) => `${n.toLocaleString('pt-BR')} XP`
@@ -19,6 +19,8 @@ export function Profile({ results, daily, today, onClose }: { results: Results; 
   const run = streak(daily, today)
   const rank = rankFor(total)
   const earned = new Set(achievements(results))
+  const oficina = Object.entries(results).filter(([id]) => id.startsWith(OFICINA_PREFIX))
+  const oficinaStars = oficina.reduce((sum, [, r]) => sum + r.stars, 0)
   const from = RANKS.find((r) => r.title === rank.title)!.xp
   const share = rank.next ? (total - from) / (total - from + rank.next.missing) : 1
 
@@ -45,6 +47,12 @@ export function Profile({ results, daily, today, onClose }: { results: Results; 
       <p className="profile__daily">
         Sequência: {run} {run === 1 ? 'dia' : 'dias'} · {days} {days === 1 ? 'dia jogado' : 'dias jogados'} no desafio do dia
       </p>
+      {oficina.length > 0 && (
+        <p className="profile__daily">
+          Oficina: {oficina.length} {oficina.length === 1 ? 'exercício' : 'exercícios'} · {oficinaStars} {oficinaStars === 1 ? 'estrela' : 'estrelas'} ·{' '}
+          {xp(oficinaXp(results))}
+        </p>
+      )}
 
       <h3>
         Conquistas ({earned.size}/{ACHIEVEMENTS.length})

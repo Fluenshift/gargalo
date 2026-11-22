@@ -1,5 +1,7 @@
-// What the Oficina screen keeps: the player's code per exercise (in localStorage) and which hints a run of failed submissions unlocks.
+// What the Oficina screen keeps: the player's code per exercise and its best result (in localStorage), and which hints a run of failed submissions unlocks.
 
+import { OFICINA_PREFIX, RESULTS_KEY, loadResults, record, xpGain } from '../score'
+import type { LevelResult, Results } from '../score'
 import type { TestResult } from './exercise'
 
 export const codeKey = (id: string) => `gargalo:oficina:code:${id}`
@@ -41,4 +43,28 @@ export function byCompany<T extends { company: string }>(items: T[]): [string, T
   const groups = new Map<string, T[]>()
   for (const item of items) groups.set(item.company, [...(groups.get(item.company) ?? []), item])
   return [...groups]
+}
+
+export const resultId = (id: string) => `${OFICINA_PREFIX}${id}`
+
+/** Every saved result, the career's included (they share one key); none when storage is off. */
+export function loadSavedResults(): Results {
+  try {
+    return loadResults(localStorage.getItem(RESULTS_KEY), [])
+  } catch {
+    return {}
+  }
+}
+
+/** Keeps the exercise's result when it beats the saved one; returns what is saved now and the XP it added. */
+export function saveResult(id: string, result: LevelResult): { results: Results; xp: number } {
+  const saved = loadSavedResults()
+  const results = record(saved, resultId(id), result)
+  if (results !== saved)
+    try {
+      localStorage.setItem(RESULTS_KEY, JSON.stringify(results))
+    } catch {
+      // Storage off: the result holds for this visit only.
+    }
+  return { results, xp: xpGain(saved, resultId(id), result) }
 }
