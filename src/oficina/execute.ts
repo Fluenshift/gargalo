@@ -1,7 +1,9 @@
 // Runs the player's handler against an exercise's tests. Plain function: the worker wraps it, unit tests call it directly.
 
 import { transform } from 'sucrase'
-import type { Ctx, Db, ExpectedResponse, RequestSpec, TestCase, TestResult } from './exercise'
+// With the extension: runner.test.ts loads this file in a plain Node thread, which resolves no extensionless paths.
+import { measured } from './db.ts'
+import type { Ctx, Db, ExpectedResponse, RequestMetrics, RequestSpec, TestCase, TestResult } from './exercise'
 
 type Handler = (req: Request, ctx: Ctx) => Promise<Response>
 
@@ -16,6 +18,9 @@ export interface WorkerOutput {
   index: number
   result: TestResult
 }
+
+/** Sent once by the worker when its database has loaded (or failed to), before any WorkerOutput. */
+export type WorkerReady = { ready: true } | { ready: false; message: string }
 
 /** Opens a database with the exercise's schema and data, fresh for each test. */
 export type OpenDb = (schema: string, seed: string) => Promise<Db>
@@ -112,21 +117,28 @@ async function compareResponse(res: unknown, expect: ExpectedResponse): Promise<
 }
 
 async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestResult> {
-  const ctx: Ctx = { db, now: () => test.now ?? DEFAULT_NOW }
-  // Every handler starts before any finishes, so concurrent requests interleave at their awaits.
-  const responses = await Promise.all(test.requests.map(({ request }) => handler(toRequest(request), ctx)))
+  const now = () => test.now ?? DEFAULT_NOW
+  const metrics: RequestMetrics[] = test.requests.map(() => ({ queries: 0, rowsRead: 0, handlerMs: 0 }))
+  // Every handler starts before any finishes, so concurrent requests interleave at their awaits. Each has its own meter.
+  const responses = await Promise.all(test.requests.map(async ({ request }, i) => {
+    const m = metrics[i]
+    const start = performance.now()
+    const res = await handler(toRequest(request), { db: measured(db, m), now })
+    m.handlerMs = Math.max(0, m.handlerMs + performance.now() - start)
+    return res
+  }))
   for (const [i, { expect }] of test.requests.entries()) {
     const diff = expect && (await compareResponse(responses[i], expect))
     if (diff) {
       const prefix = test.requests.length > 1 ? `Requisição ${i + 1}: ` : ''
-      return { name: test.name, passed: false, ...diff, message: prefix + diff.message }
+      return { name: test.name, passed: false, ...diff, message: prefix + diff.message, metrics }
     }
   }
   if (test.db) {
     const rows = await db.query(test.db.sql, test.db.params)
-    if (!matches(test.db.rows, rows)) return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows }
+    if (!matches(test.db.rows, rows)) return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows, metrics }
   }
-  return { name: test.name, passed: true }
+  return { name: test.name, passed: true, metrics }
 }
 
 /** Runs the tests in order, reporting each result as soon as it is known. */

@@ -61,4 +61,16 @@ export interface TestResult {
   received?: unknown
   /** Line in the player's code where the error happened. */
   line?: number
+  /** What each request cost, in the order of `TestCase.requests`; absent when the handler didn't run to the end. */
+  metrics?: RequestMetrics[]
+}
+
+/** The cost of one request, measured in the worker. */
+export interface RequestMetrics {
+  /** Calls to ctx.db.query, including those inside transactions. */
+  queries: number
+  /** Rows the scans touched (returned plus filtered out), summed from EXPLAIN ANALYZE. INSERTs count 0. */
+  rowsRead: number
+  /** Handler wall time in ms, without the time spent measuring. Concurrent requests include waiting for each other. */
+  handlerMs: number
 }
