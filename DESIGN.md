@@ -110,7 +110,7 @@ As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam 
 
 | Papel | Fonte | Peso | Notas |
 |---|---|---|---|
-| Títulos e números grandes | Instrument Serif (`--serif`) | 400, sempre | Logo, título da fase no painel e na folha, cabeçalho do painel de conceitos, resultado da rodada, valores dos medidores, mapa da carreira. `--tracking-tight`. |
+| Títulos e números grandes | Instrument Serif (`--serif`) | 400, sempre | Logo, título da fase sobre o canvas e na folha, cabeçalho do painel da direita, resultado da rodada, valores dos medidores, mapa da carreira. `--tracking-tight`. |
 | Todo o resto | IBM Plex Mono (`--mono`) | 400 e 500 | Corpo `--text-base`, auxiliares `--text-xs`/`--text-sm`. 500 só para rótulos de destaque. |
 | Rótulos de seção e botões | IBM Plex Mono | 500 | Caixa-alta, `--text-label` a `--text-sm`, `--tracking-caps`. |
 
@@ -124,9 +124,9 @@ As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam 
 | `--title-xs` | 22px | Chefão na lista, estrelas, título do cartão de fase na Carreira |
 | `--title-sm` | 24px | Título da folha, resultado, cartão do modo livre |
 | `--title-meter-compact` | 26px | Medidor em telas até 1400px |
-| `--title-md` | 28px | Logo, painel de conceitos, código, modal, blocos do perfil |
+| `--title-md` | 28px | Logo, painel da direita, código, modal, blocos do perfil |
 | `--title-lg` | 32px | Medidores, empresas, seções, destinos do Menu no celular |
-| `--title-xl` | 40px | Título da fase no painel |
+| `--title-xl` | 40px | Título da fase sobre o canvas (`--title-sm` no celular) |
 | `--title-2xl` | 44px | Título do modo livre e das páginas no celular, números do perfil |
 | `--title-4xl` | 56px | Título das páginas (Carreira, Perfil, Oficina, Modo livre) |
 
@@ -149,11 +149,11 @@ Nunca deixe um título em negrito. Nunca troque o mono por uma sans no corpo: a 
 
 Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (papel → hover).
 
-Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--panel-width` 360px, `--tabpanel-min-height` 240px (altura mínima da aba aberta do painel antes de o painel todo rolar), `--inspector-width` 340px, `--piece-width` 184px, `--page-width` 1200px.
+Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--inspector-width` 380px (o painel da direita), `--piece-width` 184px, `--page-width` 1200px.
 
 ## Espaço
 
-Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56). Os passos ímpares (3, 5, 7, 9) existem para as listas densas e não devem crescer. Cartões com 20–24px de respiro; o canvas é o centro e os painéis cedem espaço a ele. O painel da esquerda pode ser recolhido.
+Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56). Os passos ímpares (3, 5, 7, 9) existem para as listas densas e não devem crescer. Cartões com 20–24px de respiro; o canvas é o centro e os painéis cedem espaço a ele.
 
 ### A barra do topo e os endereços
 
@@ -168,9 +168,17 @@ Páginas comuns abaixo da barra (`.page`, largura `--page-width`): rótulo em ca
 - **Carreira** (`/carreira`): a ação principal é "Continuar: <fase>" (a pílula preta). Cada empresa é uma seção (rótulo, nome em `--title-lg`, estado, orçamento) com um cartão por fase (`.phase-card`, `--radius-piece`): feita (✓ e estrelas), agora (superfície invertida `--ink`), aberta ("Jogar →"), trancada (`--ink-soft`, borda tracejada, cadeado e o porquê) e chefão (borda `--ink`). Embaixo, as peças que a empresa libera.
 - **Perfil** (`/perfil`): patente em `--title-4xl`, XP com a barra de progresso e o que falta; três blocos (Carreira, Oficina, Desafio do dia) com o número em `--title-2xl`; conquistas em duas colunas (uma no celular).
 
-### O painel da fase
+### A tela da fase
 
-De cima para baixo: cabeçalho mínimo (onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o botão de recolher e, no desafio do dia e no modo livre, só o caminho de volta: Voltar à carreira, Meus sistemas; o resto foi para a barra do topo), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
+Não há lateral: abaixo da barra do topo, o canvas ocupa a tela toda, e o resto flutua sobre ele ou corre embaixo dele. A mesma tela serve à carreira, ao modo livre e ao desafio do dia.
+
+- **Bloco do título** (`.hud`, canto de cima à esquerda, `--z-hud`): onde a fase está (`.phase__where`, caixa-alta na cor de linha com a faixa antes), o título em serifa `--title-xl` (`.phase__title`), a sequência do desafio e o aviso do desenho compartilhado. Embaixo, pílulas fantasma pequenas: **Briefing**, **Fases** (no modo livre, **Tráfego**; no desafio do dia, nenhuma) e **Metas** (no modo livre, **Medidas**), mais os caminhos de volta (Meus sistemas, Voltar à carreira). A pílula aberta tem `aria-expanded` e fundo `--sunk` com borda `--ink`. Só os cartões pegam o ponteiro: o canvas em volta continua arrastável. Com o painel da direita aberto o bloco quebra a linha antes de chegar nele.
+- **Briefing** (`.brief`): cartão `--company-wash` de até 380px, aberto ao entrar na fase; "Como montar" (as instruções do canvas) fica dobrado dentro dele, e Recolher o fecha. Ao rodar, recolhe sozinho. Rola por dentro se a janela for baixa.
+- **Fases**: popover (`.popover`, `--radius-piece`) sob o botão com a lista da empresa (`.levels`: número, nome, ✓ e estrelas, cadeado, selo de chefão; a atual invertida). Abre com o foco na atual; setas, Home e End andam pelas abertas; Esc fecha e devolve o foco ao botão; sair dele com Tab ou clicar fora também fecha. Escolher uma fase abre a fase e põe o foco no botão Fases dela.
+- **Dock** (`.dock`, embaixo, linha `--line` em cima): rótulo Peças, as peças em pílulas (`.dock__part`: ícone, nome e preço em `--ink-soft`; trancada tracejada, em `--ink-soft`, com cadeado), com rolagem lateral quando não cabem; cada uma tem o ⓘ (`.part__info`) que abre o conceito no painel da direita. Clique põe a peça no desenho; a que já está no limite fica desabilitada. Capacidade, preço por mês, o limite e o porquê do cadeado vão no `title` e em texto para leitor de tela. Depois, Recomeçar (fantasma) e **Rodar simulação** (a pílula cobalto). No modo livre, um tráfego inválido aparece ali, antes dos botões.
+- **Painel da direita** (`.inspector`, cartão `--radius-card` com borda `--line`, `--inspector-width`, `--z-float`, preso a 16px das bordas do palco): mostra uma coisa de cada vez, nesta ordem: o código de um desafio (`CodePanel`), a peça selecionada ou aberta pelo ⓘ (`Inspector`), a ligação selecionada (`LinkPanel`), ou então a folha da fase (`.side`). A folha abre por Metas ou sozinha ao rodar (o foco fica no Rodar, e o canvas reenquadra o desenho na parte livre); traz o resultado (veredito, estrelas, XP, Próxima fase, Compartilhar, gargalo com Ver o conceito, dicas e a linha do tempo), os medidores com sparkline, o controle para rever cada segundo e o selo de metas. No modo livre, Tráfego abre ali o editor de tráfego. Uma peça aberta por cima da folha não a fecha: ao sair, a folha volta. Fechar (× ou Esc) devolve o foco a quem abriu.
+- **Esc** fecha só a camada de cima: menu de contexto, depois o popover de Fases, depois a definição de um termo, depois o painel da direita.
+- **Celular (até 640px):** o bloco do título fica compacto em cima (título `--title-sm`), o canvas no meio e o dock embaixo, com as peças numa linha que rola e Recomeçar e Rodar (largo) abaixo dela. Briefing e o painel da direita sobem de baixo como folhas (`--z-sheet`, no máximo 60% do palco, cantos de cima arredondados).
 
 ### A Oficina (`/oficina`)
 
@@ -187,10 +195,11 @@ Página própria, carregada sob demanda com o editor. A barra do topo; abaixo, t
 | Token | Valor | Uso |
 |---|---|---|
 | `--z-under` | −1 | Mancha do mapa da carreira |
-| `--z-float` | 5 | Lixeira, botão de abrir o painel |
+| `--z-float` | 5 | Lixeira, painel da direita |
+| `--z-hud` | 7 | Bloco do título da fase e o popover de Fases, sobre o canvas e o painel |
 | `--z-toast` | 6 | Toasts |
 | `--z-menu` | 20 | Menu de contexto, barra do topo |
-| `--z-sheet` | 30 | Painel de conceitos como folha inferior no celular |
+| `--z-sheet` | 30 | Briefing e painel da direita como folha inferior no celular |
 
 ## Estados
 
@@ -205,8 +214,9 @@ Página própria, carregada sob demanda com o editor. A barra do topo; abaixo, t
   - `.btn--primary`: `--accent` com texto `--on-accent`. Um por tela. `.run` só fixa a largura mínima do botão de rodar.
   - `.btn--ghost`: transparente com borda `--ink` de 1px.
   - `.btn--small`: 6px × 14px, `--text-xs`.
-- **Abas** (`.segmented`): grupo de botões com `aria-pressed`; o pressionado é invertido. `.segmented--small` no seletor de tema. As abas do painel (`.panel__tabs`) usam o mesmo visual com `role="tab"` e `aria-selected`; setas, Home e End trocam de aba.
-- **Painel** (`.inspector`): folha lateral à direita do desenho, com cabeçalho serifado e régua de ganhos e custos (`.ledger`). No celular vira folha inferior.
+- **Abas** (`.segmented`): grupo de botões com `aria-pressed`; o pressionado é invertido. `.segmented--small` no seletor de tema.
+- **Painel** (`.inspector`): cartão sobre a direita do canvas, com cabeçalho serifado e régua de ganhos e custos (`.ledger`). No celular vira folha inferior. Ver "A tela da fase".
+- **Dock** (`.dock`) e **popover** (`.popover`): ver "A tela da fase".
 - **Peça no canvas** (`.node`): papel, borda `--line`, `--radius-piece`, título em mono caixa-alta. A peça Usuários é invertida. Carga pinta o fundo com o preenchimento do estado (`.heat--warm`, `.heat--hot`, `.heat--down` com listras).
 - **Ligações:** traço `--ink-soft`, mais grosso quanto mais tráfego passa; selecionada em `--accent`; disjuntor aberto pontilhado em `--hot`, meio-aberto tracejado em `--warm`.
 - **Briefing da fase** (`.brief`): cartão `--company-wash` (ou `--wash` sem empresa), `--radius-card`.

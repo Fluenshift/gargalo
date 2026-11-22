@@ -72,16 +72,15 @@
   --control-md: 36px;
   --disabled-opacity: 0.5;
   --focus-width: 2px;
-  --panel-width: 360px; /* the level sidebar */
-  --tabpanel-min-height: 240px; /* the panel's open tab before the whole panel scrolls */
-  --inspector-width: 340px; /* the side sheet */
+  --inspector-width: 380px; /* the right panel over the canvas */
   --piece-width: 184px; /* a piece on the canvas */
   --page-width: 1200px; /* career map and free mode */
   --duration: 120ms;
 
   /* Layers */
   --z-under: -1;
-  --z-float: 5; /* trash, the open-panel button */
+  --z-float: 5; /* trash, the right panel */
+  --z-hud: 7; /* the title block and its popover, over the canvas and the right panel */
   --z-toast: 6;
   --z-menu: 20;
   --z-sheet: 30; /* the inspector as a bottom sheet on phones */
@@ -398,40 +397,25 @@ ul {
   flex: none;
 }
 
-/* Layout */
+/* Layout: the phase screen. The canvas fills the board; the title block and the right panel float
+   over it, and the dock of pieces runs under it. */
 
 .app {
-  display: grid;
-  grid-template-columns: var(--panel-width) 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
 }
 
-.panel {
-  background: var(--paper);
-  border-right: 1px solid var(--line);
-  padding: var(--space-24) var(--space-20);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-18);
-}
-
 .stage {
-  display: grid;
-  grid-template-rows: 1fr auto;
-  min-width: 0;
+  position: relative;
+  flex: 1;
   min-height: 0;
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  min-height: 0;
+  overflow: hidden;
 }
 
 .canvas {
-  position: relative;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
 }
 
 /* Focus comes back here when the piece a menu was opened on is removed. */
@@ -440,33 +424,79 @@ ul {
   outline-offset: -2px;
 }
 
-/* Sidebar */
-
-.brand h1 {
+/* Title block over the canvas: where, title, the Briefing / Fases / Metas pills and the brief.
+   Only its own boxes take the pointer, so the canvas around them still pans. */
+.hud {
+  position: absolute;
+  z-index: var(--z-hud);
+  top: var(--space-20);
+  left: var(--space-24);
+  right: var(--space-24);
+  max-height: calc(100% - var(--space-40));
   display: flex;
-  align-items: center;
-  gap: var(--space-10);
-  font-size: var(--title-md);
-  line-height: 1;
-  font-family: var(--serif);
-  font-weight: 400;
-  letter-spacing: var(--tracking-tight);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-12);
+  pointer-events: none;
 }
 
-.brand {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: var(--space-10) var(--space-12);
-  padding-bottom: var(--space-12);
-  border-bottom: 1px solid var(--line);
+.hud > * {
+  pointer-events: auto;
 }
 
-.brand__links {
-  grid-column: 1 / -1;
+/* With the right panel open the title block wraps before reaching it. */
+.stage.has-side .hud {
+  right: calc(var(--inspector-width) + var(--space-40));
+}
+
+.phase__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-8);
+}
+
+.phase__actions .btn {
+  background: var(--paper);
+  border-color: var(--line);
+}
+
+.phase__actions .btn[aria-expanded='true'] {
+  background: var(--sunk);
+  border-color: var(--ink);
+}
+
+.phase__actions .levels__links {
+  margin-left: var(--space-8);
+}
+
+/* The phases popover hangs under its button. */
+.popover-anchor {
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + var(--space-8));
+  left: 0;
+  width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-piece);
+  background: var(--paper);
+}
+
+.popover[hidden] {
+  display: none;
 }
 
 /* The phase: where it sits in small caps, its title in large serif. */
+.phase {
+  max-width: 60ch;
+}
+
 .phase__where {
   font-size: var(--text-xs);
   font-weight: 500;
@@ -494,88 +524,6 @@ ul {
   font-weight: 400;
   line-height: 1.05;
   letter-spacing: var(--tracking-tight);
-}
-
-.panel__tabs {
-  display: flex;
-  flex: none;
-  margin-top: 0;
-}
-
-.panel__tabs button {
-  flex: 1;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--ink-soft);
-}
-
-/* The black pill is reserved for the primary action: the open tab is marked by ink text and an underline. */
-.segmented.panel__tabs button[aria-selected='true'] {
-  background: var(--paper);
-  color: var(--ink);
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-}
-
-/* The open tab scrolls on its own, so the brief above it stays in view. */
-.panel__tabpanel {
-  flex: 1 1 auto;
-  min-height: var(--tabpanel-min-height);
-  overflow-y: auto;
-}
-
-.panel__tabpanel[hidden] {
-  display: none;
-}
-
-.panel__toggle,
-.panel__open {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  background: var(--paper);
-  color: var(--ink);
-}
-
-.panel__toggle {
-  justify-content: center;
-  width: var(--control-md);
-  height: var(--control-md);
-  padding: 0;
-}
-
-.panel__toggle:hover,
-.panel__open:hover {
-  background: var(--sunk);
-}
-
-.panel__open {
-  position: absolute;
-  z-index: var(--z-float);
-  top: 15px;
-  left: 15px;
-  padding: var(--space-8) var(--space-16) var(--space-8) var(--space-12);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-}
-
-.app.is-collapsed {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.panel[hidden] {
-  display: none;
-}
-
-.app.is-collapsed .react-flow__controls {
-  top: 56px;
 }
 
 .toast.toast--notice {
@@ -688,26 +636,6 @@ ul {
   color: var(--ink-soft);
 }
 
-.parts li.is-locked .part {
-  opacity: 1;
-  color: var(--ink-soft);
-}
-
-.parts li.is-locked .kind-icon {
-  opacity: 0.45;
-}
-
-.parts li.is-locked .part__name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  font-weight: 500;
-}
-
-.parts li.is-locked .part__spec {
-  color: var(--ink);
-}
-
 .brief {
   max-width: 60ch;
   padding: var(--space-20);
@@ -715,34 +643,79 @@ ul {
   background: var(--company-wash, var(--wash));
 }
 
-.parts h2 {
-  font-size: var(--text-xs);
+/* Over the canvas the brief is a card that folds away; it scrolls when the window is short. */
+.hud .brief {
+  width: 380px;
+  max-width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hud .brief[hidden] {
+  display: none;
+}
+
+.brief > .levels__map {
+  margin-top: var(--space-10);
+}
+
+/* Dock: the pieces as pills, then Recomeçar and Rodar. The pieces scroll sideways when they do not fit. */
+.dock {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-10) var(--space-16) var(--space-10) var(--space-24);
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.dock__label {
+  flex: none;
+  font-size: var(--text-label);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
-  margin-bottom: var(--space-8);
+  color: var(--ink-soft);
 }
 
-.parts ul {
-  border-top: 1px solid var(--line);
-}
-
-.parts li {
-  border-bottom: 1px solid var(--line);
+.dock__parts {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  align-items: flex-start;
+  gap: var(--space-8);
+  overflow-x: auto;
+  /* Room for the focus ring inside the scroller. */
+  padding: var(--space-4);
+}
+
+.dock__part {
+  /* Keeps each piece's screen-reader text inside the scroller. */
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+}
+
+.dock__part.is-locked {
+  border-style: dashed;
+  color: var(--ink-soft);
 }
 
 .part {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 30px 1fr;
-  column-gap: var(--space-8);
-  text-align: left;
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: var(--control-md);
+  padding: 0 var(--space-4) 0 var(--space-12);
   border: none;
-  padding: var(--space-9) var(--space-4);
+  border-radius: var(--radius-pill);
+  background: none;
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 .part:hover:not(:disabled) {
@@ -753,19 +726,27 @@ ul {
   background: var(--line);
 }
 
-.part .kind-icon {
-  grid-row: span 3;
-  align-self: start;
-  margin-top: 1px;
+/* Locked is not dimmed: it reads in --ink-soft with its lock. */
+.dock__part.is-locked .part {
+  opacity: 1;
+}
+
+.part__name {
+  font-weight: 500;
+}
+
+.part__spec {
+  color: var(--ink-soft);
 }
 
 .part__info {
   flex: none;
   display: grid;
   place-items: center;
-  width: var(--control-sm);
-  height: var(--control-sm);
-  margin: var(--space-6) 0 0 var(--space-2);
+  width: var(--control-xs);
+  height: var(--control-xs);
+  margin-right: var(--space-4);
+  padding: 0;
   border: none;
   border-radius: var(--radius-round);
   background: none;
@@ -782,35 +763,49 @@ ul {
   background: var(--ink);
 }
 
-.part__name {
-  font-weight: 500;
+.dock__blocked {
+  flex: 0 1 240px;
+  margin: 0;
+  font-size: var(--text-xs);
 }
 
-.part__spec {
-  font-size: var(--text-sm);
-  color: var(--ink-soft);
+.dock__actions {
+  flex: none;
+  display: flex;
+  gap: var(--space-8);
 }
 
-.part__desc {
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--ink-soft);
-}
-
+/* How to build, folded inside the brief. */
 .help {
+  margin-top: var(--space-10);
   font-size: var(--text-sm);
   color: var(--ink-soft);
-  margin-top: var(--space-10);
 }
 
-/* Concepts panel: a detail sheet docked to the right of the drawing */
+.help summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.help p {
+  margin-top: var(--space-6);
+}
+
+/* Right panel: a card over the right of the canvas. It holds the open piece (concepts), link or code,
+   or else the goals and result (.side). */
 
 .inspector {
-  position: relative;
+  position: absolute;
+  z-index: var(--z-float);
+  top: var(--space-16);
+  right: var(--space-16);
+  bottom: var(--space-16);
   width: var(--inspector-width);
-  min-height: 0;
+  max-width: calc(100% - var(--space-32));
   overflow-y: auto;
-  border-left: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   background: var(--paper);
   padding: var(--space-18) var(--space-20) 0;
   display: flex;
@@ -1210,6 +1205,11 @@ ul {
   transition: transform var(--duration) ease, background var(--duration) ease, color var(--duration) ease;
 }
 
+/* Clear of the right panel when it is open. */
+.stage.has-side .trash {
+  right: calc(var(--inspector-width) + var(--space-48));
+}
+
 .trash.is-armed {
   background: var(--paper);
   border-color: var(--ink);
@@ -1309,9 +1309,6 @@ ul {
 /* Title block: the level's requirements, drawn like an engineering sheet's stamp. */
 
 .sheet {
-  grid-column: 2;
-  grid-row: 1 / span 3;
-  align-self: start;
   border-collapse: separate;
   border-spacing: 0;
   border: 1px solid var(--line);
@@ -1375,31 +1372,51 @@ ul {
   color: var(--hot);
 }
 
-/* Console */
+/* The goals and result in the right panel. */
+.side[hidden] {
+  display: none;
+}
 
-.console {
-  border-top: 1px solid var(--line);
-  background: var(--paper);
-  padding: var(--space-14) var(--space-20);
+.side {
+  padding-bottom: var(--space-20);
+}
+
+.side .meters {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space-12) var(--space-28);
-  align-items: center;
-  /* A long debrief scrolls here instead of squeezing the canvas. */
-  max-height: 48vh;
-  overflow-y: auto;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-16);
 }
 
-.meters {
-  grid-column: 1;
-  grid-row: 1;
+.side .spark {
+  width: 100%;
 }
 
-.console__actions {
-  grid-column: 1;
-  grid-row: 2;
-  display: flex;
-  gap: var(--space-8);
+.side .scrub {
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  font-size: var(--text-sm);
+}
+
+.side .scrub input {
+  width: 100%;
+}
+
+.side .sheet {
+  width: 100%;
+  padding-inline: var(--space-4);
+}
+
+.side .sheet th,
+.side .sheet td {
+  padding-inline: var(--space-6);
+}
+
+.side .sheet td:last-child {
+  min-width: 0;
+}
+
+.side .result {
+  padding: var(--space-16);
 }
 
 /* The run button keeps its width while its label counts the seconds. */
@@ -1491,8 +1508,6 @@ ul {
 }
 
 .scrub {
-  grid-column: 1;
-  grid-row: 3;
   display: flex;
   align-items: center;
   gap: var(--space-14);
@@ -1510,7 +1525,6 @@ ul {
 }
 
 .result {
-  grid-column: 1 / -1;
   padding: var(--space-20) var(--space-24);
   border: 1px solid var(--hot);
   border-radius: var(--radius-card);
@@ -1878,95 +1892,6 @@ ul {
 }
 
 @media (max-width: 860px) {
-  .app {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-
-  .panel {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    padding: var(--space-20) var(--space-16);
-  }
-
-  .panel__tabpanel {
-    flex: none;
-    max-height: 50vh;
-  }
-
-  .stage {
-    grid-template-rows: auto auto;
-  }
-
-  .canvas {
-    height: 60vh;
-  }
-
-  .workspace {
-    grid-template-columns: 1fr;
-  }
-
-  /* Bottom sheet over the page; the drawing keeps its full width. */
-  .inspector {
-    position: fixed;
-    z-index: var(--z-sheet);
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: auto;
-    max-height: 70vh;
-    border-left: none;
-    border-top: 1px solid var(--line);
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
-    padding: var(--space-16) var(--space-16) 0;
-  }
-
-  .definition {
-    margin: auto calc(-1 * var(--space-16)) 0;
-  }
-
-  .definition:not(:empty) {
-    padding: var(--space-12) var(--space-16) var(--space-14);
-  }
-
-  .console__actions,
-  .meters,
-  .sheet,
-  .scrub,
-  .result {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
-  .sheet {
-    width: 100%;
-  }
-
-  /* On a phone the goal name wraps, not the numbers. */
-  .sheet td {
-    white-space: nowrap;
-  }
-
-  .console {
-    grid-template-columns: 1fr;
-    max-height: none;
-    padding: var(--space-14) var(--space-16);
-  }
-
-  .run {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .scrub {
-    flex-wrap: wrap;
-  }
-
-  .scrub input {
-    max-width: none;
-    width: 100%;
-  }
-
   .career {
     padding: var(--space-20) var(--space-16) var(--space-32);
   }
@@ -2086,10 +2011,6 @@ ul {
   margin-top: 0;
   align-self: flex-start;
   flex: none;
-}
-
-.panel > .theme-toggle {
-  margin-top: auto;
 }
 
 .toggle {
@@ -2575,7 +2496,7 @@ ul {
   font-size: var(--text-sm);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 640px) {
   .code-panel__verdict {
     margin: auto calc(-1 * var(--space-16)) 0;
   }
@@ -3367,6 +3288,8 @@ a.levels__map {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* Phones: the window without the browser's bars, so the dock stays on screen. */
+  height: 100dvh;
 }
 
 .shell > .app {
@@ -3510,11 +3433,6 @@ a.levels__map {
   }
 }
 
-@media (max-width: 860px) {
-  .shell {
-    height: auto;
-  }
-}
 
 /* A page under the bar: career, profile. */
 .page {
@@ -3801,4 +3719,90 @@ a.levels__map {
 /* The goal numbers never wrap. */
 .oficina__sheet td:not(:first-child) {
   white-space: nowrap;
+}
+
+/* Phone: the title block compact on top, the canvas in the middle, the dock at the bottom with
+   Rodar full width; the brief and the right panel rise from the bottom as sheets. */
+@media (max-width: 640px) {
+  .hud,
+  .stage.has-side .hud {
+    top: var(--space-12);
+    left: var(--space-16);
+    right: var(--space-16);
+    bottom: 0;
+    max-height: none;
+    gap: var(--space-8);
+  }
+
+  .phase__title {
+    font-size: var(--title-sm);
+  }
+
+  /* The phases list spans the title block instead of hanging off the screen. */
+  .phase__actions {
+    position: relative;
+    align-self: stretch;
+  }
+
+  .popover-anchor {
+    position: static;
+  }
+
+  .popover {
+    right: 0;
+    width: auto;
+  }
+
+  .hud .brief,
+  .inspector {
+    position: absolute;
+    z-index: var(--z-sheet);
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    max-height: 60%;
+    border: none;
+    border-top: 1px solid var(--line);
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    padding: var(--space-16) var(--space-16) 0;
+  }
+
+  /* The brief sits in the title block: it reaches out to the screen's edges. */
+  .hud .brief {
+    left: calc(-1 * var(--space-16));
+    right: calc(-1 * var(--space-16));
+    padding-bottom: var(--space-16);
+  }
+
+  .definition {
+    margin: auto calc(-1 * var(--space-16)) 0;
+  }
+
+  .definition:not(:empty) {
+    padding: var(--space-12) var(--space-16) var(--space-14);
+  }
+
+  .dock {
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-12) var(--space-12);
+  }
+
+  .dock__label {
+    display: none;
+  }
+
+  .dock__parts,
+  .dock__actions,
+  .dock__blocked {
+    flex: 1 0 100%;
+  }
+
+  .dock__actions .run {
+    flex: 1;
+    min-width: 0;
+  }
 }
