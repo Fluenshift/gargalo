@@ -12,7 +12,7 @@ interface Before {
 
 /** An item as a stage lists it: the id, plus what the behaviour items need to know about this stage's API. */
 export type CheckRef =
-  | { id: 'sql-parametrizado' | 'camadas' | 'sem-select-estrela' | 'transacao' }
+  | { id: 'sql-parametrizado' | 'camadas' | 'sem-select-estrela' | 'transacao' | 'saldo-atomico' | 'indice-busca' }
   | ({ id: 'criado-201-location'; /** Creates something. */ request: RequestSpec } & Before)
   | ({ id: 'problem-json'; /** Fails (404, 400…). */ request: RequestSpec } & Before)
   | ({ id: 'validacao-400'; /** Sends an invalid body. */ request: RequestSpec; /** Each must be named in the answer. */ fields: string[] } & Before)
@@ -188,7 +188,59 @@ function writesWithoutTransaction(src: string, path: string): string[] {
   return tables.size >= 2 && !inTransaction ? [`${path}: escreve em ${[...tables].join(', ')} sem db.transaction.`] : []
 }
 
+function nonAtomicBalanceUpdate(src: string, path: string): string[] {
+  const { literals } = scan(src)
+  const sqlLiterals = literals.filter((l) => SQL.test(l.text))
+  const debits = sqlLiterals.filter(
+    (l) =>
+      /\bupdate\s+\w+\s+set\b[\s\S]*\bsaldo_centavos\b/i.test(l.text) &&
+      !/\bupdate\s+\w+\s+set\b[\s\S]*\bsaldo_centavos\s*=\s*saldo_centavos\s*\+/i.test(l.text),
+  )
+  if (!debits.length) return []
+
+  const hasForUpdate = sqlLiterals.some((l) => /\bfor\s+update\b/i.test(l.text))
+  const safeDebits = debits.every(
+    (l) =>
+      /\bupdate\s+\w+\s+set\b[\s\S]*\bsaldo_centavos\s*=\s*saldo_centavos\s*-\s*[$?\w]+/i.test(l.text) &&
+      /\bwhere\b[\s\S]*\bsaldo_centavos\s*(?:>=|>)/i.test(l.text),
+  )
+
+  if (!hasForUpdate && !safeDebits) {
+    return [`${path}: débito de saldo sem UPDATE condicional (WHERE saldo_centavos >=) nem SELECT ... FOR UPDATE.`]
+  }
+  return []
+}
+
 const HASHING = /crypto\s*\.\s*subtle\s*\.\s*(digest|deriveBits|deriveKey)|pbkdf2|scrypt|bcrypt|argon2/i
+
+function checkIndiceBusca(files: Files): Verdict {
+  const ts = sources(files)
+  const allLiterals = ts.flatMap(([, src]) => scan(src).literals)
+
+  const hasLowerNomeLike = allLiterals.some((l) => /\blower\s*\(\s*nome\s*\)\s+like\b/i.test(l.text))
+  if (!hasLowerNomeLike) {
+    return fail('A consulta deve usar lower(nome) LIKE para aproveitar o índice.')
+  }
+
+  const hasLeadingPercent =
+    allLiterals.some((l) => /\b(?:like|ilike)\s*['"`]?\s*%/i.test(l.text)) ||
+    allLiterals.some((l) => l.interpolated && /^\s*%/.test(l.text)) ||
+    ts.some(([, src]) => /['"`]%\s*['"`]?\s*\+/.test(src) || /`[^`]*%\s*\$\{/.test(src))
+
+  if (hasLeadingPercent) {
+    return fail('A busca por prefixo não pode começar com % (isso impede o uso do índice).')
+  }
+
+  const hasPrefixPattern =
+    allLiterals.some((l) => /\blower\s*\(\s*nome\s*\)\s+like\s+['"`][^'"%]+%/i.test(l.text)) ||
+    ts.some(([, src]) => /\+\s*['"`]%['"`]/.test(src) || /\$\{[^}]*\}%/.test(src) || /\.concat\s*\(\s*['"`]%['"`]\)/.test(src))
+
+  if (!hasPrefixPattern) {
+    return fail('A busca deve usar um padrão de prefixo terminando em % (ex: busca + "%").')
+  }
+
+  return pass('Busca por prefixo com lower(nome) LIKE aproveitando o índice.')
+}
 
 // --- Behaviour: one sequential test per item, judged on what it captured ---
 
@@ -251,6 +303,20 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
     how: 'Num arquivo que escreve em duas tabelas ou mais, procura db.transaction.',
     fix: 'Envolva as escritas: await db.transaction(async (tx) => { await tx.query(…); await tx.query(…) }).',
     static: (files) => verdict(findings(files, writesWithoutTransaction), 'Escritas em várias tabelas ficam numa transação.'),
+  },
+  'saldo-atomico': {
+    title: 'Débito atômico de saldo',
+    why: 'Conferir saldo na memória antes de debitar causa condição de corrida (race condition): dois débitos simultâneos leem o mesmo saldo e deixam a conta negativa.',
+    how: 'Exige que débitos de saldo usem UPDATE condicional (WHERE saldo_centavos >=) ou SELECT ... FOR UPDATE.',
+    fix: 'Faça a verificação no próprio UPDATE com WHERE saldo_centavos >= $1 ou bloqueie a linha com SELECT ... FOR UPDATE.',
+    static: (files) => verdict(findings(files, nonAtomicBalanceUpdate), 'Débitos de saldo são atômicos.'),
+  },
+  'indice-busca': {
+    title: 'Busca aproveitando o índice',
+    why: 'LIKE sem a expressão exata do índice ou com % no início obriga o banco a varrer a tabela toda (Seq Scan).',
+    how: 'Confere se a consulta usa lower(nome) LIKE com padrão de prefixo e sem % no início.',
+    fix: 'Use WHERE lower(nome) LIKE $1 no SQL e monte o prefixo com termo + "%" (sem % no começo).',
+    static: (files) => checkIndiceBusca(files),
   },
   'criado-201-location': {
     title: '201 com Location ao criar',
