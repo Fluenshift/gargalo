@@ -15,7 +15,9 @@ import {
 } from './oficina/projeto/project'
 import { forgetClient } from './oficina/projeto/http'
 import { applyMigrations, dropDev, listTables, prewarm, resetDev, tableRows } from './oficina/projeto/runner'
+import { Etapa } from './Etapa'
 import { HttpClient } from './HttpClient'
+import { COURSE } from './oficina/projeto/courses'
 import type { CodeError, LogLine, RequestOutcome, TableRows } from './oficina/projeto/runtime'
 import { PROJETOS_PATH, followLink, navigate } from './route'
 
@@ -433,7 +435,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
         </div>
       </section>
 
-      {/* The right panel: #109 fills Requisição with the HTTP client, #110/#111 fill Etapa with the stage. */}
+      {/* The right panel: the HTTP client, or the stage of the course. */}
       <aside className="projeto__side" aria-label="Requisição e etapa">
         <div className="segmented segmented--small" role="group" aria-label="Painel da direita">
           <button type="button" aria-pressed={side === 'requisicao'} onClick={() => setSide('requisicao')}>
@@ -446,9 +448,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
         {side === 'requisicao' ? (
           <HttpClient project={project} warming={warming} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
         ) : (
-          <div className="projeto__slot">
-            <p className="oficina__note">Em breve: as etapas do projeto, com testes de aceitação, checklist de boas práticas e dicas.</p>
-          </div>
+          <Etapa project={project} course={COURSE} warming={warming} onGoTo={goTo} />
         )}
       </aside>
     </div>

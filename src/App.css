@@ -3660,6 +3660,42 @@ a.levels__map {
   gap: var(--space-10);
 }
 
+/* Etapa panel: the stage of the course beside the editor. */
+.etapa__title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: var(--title-sm);
+  line-height: 1.15;
+}
+
+.etapa__files {
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.etapa__files span {
+  white-space: nowrap;
+}
+
+.etapa__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.etapa__explain {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-12) var(--space-14);
+  border-left: 1px solid var(--hot);
+}
+
+.etapa__docs summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
 .projeto__get {
   display: flex;
   gap: var(--space-6);
