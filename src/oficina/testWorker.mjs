@@ -7,6 +7,6 @@ import { answer } from './projeto/runtime.ts'
 const db = { query: () => Promise.reject(new Error('sem banco')), transaction: (fn) => fn(db) }
 parentPort.postMessage({ ready: true })
 parentPort.on('message', async (input) => {
-  if ('call' in input) parentPort.postMessage(await answer(input.call, { test: null, dev: async () => ({ syncToFs: async () => {} }) }))
+  if ('call' in input) parentPort.postMessage(await answer(input.call, { test: null, dev: async () => ({ syncToFs: async () => {} }), drop: async () => {} }))
   else executeTests(input, async () => db, (out) => parentPort.postMessage(out))
 })

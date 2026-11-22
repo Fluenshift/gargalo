@@ -88,7 +88,7 @@ Dentro do editor da Oficina e no bloco da solução de referência, o código te
 | Comentário | `.tok-comment` | `--ink-soft` itálico | `--ink-soft` itálico |
 | Operador, pontuação | `.tok-punctuation` | `--ink-soft` | `--ink-soft` |
 
-O resto (variáveis, propriedades) fica em `--ink`. As classes saem de um `tagHighlighter` em `src/Oficina.tsx`, usado pelo editor (`syntaxHighlighting`) e pelo bloco estático (`highlightCode`), então os dois pintam igual e trocam de tema sozinhos.
+O resto (variáveis, propriedades) fica em `--ink`. As classes saem de um `tagHighlighter` em `src/oficina/editor.ts`, usado pelo editor (dos exercícios e dos projetos) (`syntaxHighlighting`) e pelo bloco estático (`highlightCode`), então os dois pintam igual e trocam de tema sozinhos.
 
 ## Modo escuro: grafite
 
@@ -149,7 +149,7 @@ Nunca deixe um título em negrito. Nunca troque o mono por uma sans no corpo: a 
 
 Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (papel → hover).
 
-Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--inspector-width` 380px (o painel da direita), `--piece-width` 184px, `--page-width` 1200px.
+Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--inspector-width` 380px (o painel da direita, e o da direita num projeto da Oficina), `--tree-width` 200px (a árvore de arquivos de um projeto), `--piece-width` 184px, `--page-width` 1200px.
 
 ## Espaço
 
@@ -159,7 +159,7 @@ Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 
 
 Toda tela começa pela barra do topo (`TopBar`, `.topbar`): logo (leva a `/`, a fase atual), os destinos Carreira, Modo livre, Desafio do dia #N, Oficina e Perfil em mono caixa-alta `--text-xs`, a patente e o XP em `--ink-soft` e o seletor de tema. O destino aberto tem `aria-current="page"` e um traço `--ink` embaixo; numa fase, Carreira fica marcada. A barra é `sticky`, papel com linha `--line` embaixo, em `--z-menu`. Até 640px ela mostra só o logo e o botão **Menu**, que abre os destinos em tela cheia num `<dialog>` nativo (foco preso, Esc fecha e devolve o foco ao Menu), com os destinos em serifa `--title-lg`, o XP e o tema.
 
-Cada tela tem endereço, pela History API (`src/route.ts`, sem dependência de roteador): `/` fase atual, `/carreira`, `/perfil`, `/livre`, `/desafio`, `/oficina` e `/design`. Voltar e avançar do navegador trocam de tela; `?fase=&d=` (link compartilhado) continua abrindo o desenho em `/`, e `?oficina`/`?design` continuam valendo. Na Vercel, `vercel.json` reescreve esses caminhos para o `index.html`.
+Cada tela tem endereço, pela History API (`src/route.ts`, sem dependência de roteador): `/` fase atual, `/carreira`, `/perfil`, `/livre`, `/desafio`, `/oficina` (com `/oficina/projetos` e `/oficina/projetos/<id>`) e `/design`. Voltar e avançar do navegador trocam de tela; `?fase=&d=` (link compartilhado) continua abrindo o desenho em `/`, e `?oficina`/`?design` continuam valendo. Na Vercel, `vercel.json` reescreve esses caminhos para o `index.html`.
 
 ### Carreira e Perfil
 
@@ -189,6 +189,15 @@ Página própria, carregada sob demanda com o editor. A barra do topo; abaixo, t
 - **Resultados:** um cartão `--radius-field` por teste, "Passou" em `--ok` ou "Falhou" em `--hot` (é estado, como no selo), a mensagem, um link "Linha N" que leva o cursor à linha do erro, e Esperado/Recebido em blocos `.code`. Teste escondido mostra só a mensagem.
 - **Dicas e referência:** cada envio que falha libera uma dica (lista numerada). A solução de referência e a explicação aparecem só depois de um envio que passa.
 - O código fica salvo por exercício em `gargalo:oficina:code:<id>`.
+
+Abaixo da linha de apoio, duas abas (`.segmented` com links, `aria-current="page"` invertido): **Exercícios** (`/oficina`, tudo acima) e **Projetos** (`/oficina/projetos`). A linha de apoio muda com a aba.
+
+- **Lista de projetos** (`/oficina/projetos`): cartão `--radius-card` "Novo projeto" com nome, framework (rádios Hono e fetch puro) e **Criar projeto** (a pílula cobalto da tela), que abre o projeto novo. Embaixo, um projeto por linha entre hairlines: nome em serifa `--title-xs` (link), selo do framework (pílula `--line`, `--ink-soft`) e Renomear e Apagar (fantasmas pequenos). Renomear troca a linha por um campo (Esc cancela); Apagar pede confirmação e apaga os arquivos e o banco de desenvolvimento (IndexedDB) do projeto.
+- **Projeto aberto** (`/oficina/projetos/<id>`): sem lateral de navegação; uma grade de três colunas: árvore (`--tree-width`), editor e painel da direita (`--inspector-width`). Abaixo de 1100px o painel desce para baixo do editor; até 900px tudo empilha.
+  - **Árvore** (`.projeto__tree`): pastas saem dos caminhos, em `--ink-soft`, recuadas `--space-12` por nível; cada arquivo é um botão, o aberto com borda `--ink` (`aria-current`). Em cima, Novo arquivo, Renomear e Apagar (agem no arquivo aberto; `src/index.ts` não se renomeia nem se apaga). Novo e Renomear abrem um campo com o caminho inteiro (`src/routes/x.ts`), e o motivo de um nome recusado aparece em `--hot` (`role="alert"`).
+  - **Editor**: abas dos arquivos abertos (pílulas `--line`, a ativa com borda `--ink`, × para fechar) e o mesmo CodeMirror dos exercícios; `.sql` e o resto ficam em texto mono, sem cor. Salva sozinho no projeto (`gargalo:oficina:projeto:<id>`) logo depois de parar de digitar.
+  - **Banco e Console** (abaixo do editor, `.segmented--small`): Banco lista as tabelas em pílulas, mostra as linhas da escolhida numa `.sheet` que rola, Aplicar migrações (diz quais aplicou) e Resetar banco (pede confirmação). Console mostra as linhas das requisições com o nível em caixa-alta (`--ink-soft`, aviso em `--warm`, erro em `--hot`); um erro com arquivo e linha tem o link "Ir para arquivo:linha", que abre o arquivo e põe o cursor na linha.
+  - **Painel da direita** (`.projeto__side`, cartão `--radius-card`): abas Requisição e Etapa. Requisição recebe o cliente HTTP (#109; por enquanto um GET de um caminho), Etapa recebe a etapa do projeto (#110/#111).
 
 ## Camadas
 

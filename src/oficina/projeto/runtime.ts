@@ -48,10 +48,13 @@ export interface TableRows {
 export interface Databases {
   test: PGlite
   dev(projectId: string): Promise<PGlite>
+  /** Closes the project's dev database and deletes it from IndexedDB. */
+  drop(projectId: string): Promise<void>
 }
 
 export type ProjectCall =
   | { op: 'open' | 'migrate' | 'reset' | 'tables'; project: Project }
+  | { op: 'drop'; project: Pick<Project, 'id'> }
   | { op: 'request'; project: Project; request: ProjectRequest }
   | { op: 'rows'; project: Project; table: string; limit: number }
 
@@ -149,6 +152,7 @@ async function run(call: ProjectCall, dbs: Databases): Promise<unknown> {
   const pg = await dbs.dev(call.project.id)
   switch (call.op) {
     case 'open':
+    case 'drop':
       return undefined
     case 'request':
       return request(pg, call.project, call.request)
@@ -168,6 +172,8 @@ async function run(call: ProjectCall, dbs: Databases): Promise<unknown> {
 /** Runs one call; a failure becomes its message, so the host can show it. */
 export async function answer(call: ProjectCall, dbs: Databases): Promise<CallOutput> {
   try {
+    // Dropping must not open the database it deletes.
+    if (call.op === 'drop') return { reply: await dbs.drop(call.project.id) }
     const reply = await run(call, dbs)
     // PGlite doesn't write a transaction's COMMIT through to IndexedDB (migrations and measured queries run in one),
     // so the dev database is flushed before answering; otherwise closing the tab right after loses the last writes.
