@@ -41,6 +41,7 @@ describe('loading a project', () => {
       expect(outcome.response).toMatchObject({ status: 200, headers: { 'content-type': expect.stringContaining('application/json') } })
       expect(json(outcome)).toEqual({ status: 'ok' })
       expect(outcome.metrics.queries).toBe(1)
+      expect(outcome.routes).toEqual(framework === 'hono' ? [{ method: 'GET', path: '/health' }] : undefined)
     }
     expect((await send(starter('p', 'fetch'), '/nada')).response?.status).toBe(404)
   })

@@ -37,6 +37,13 @@ export interface RequestOutcome {
   /** Wall time, loading the project's modules included. */
   ms: number
   metrics: RequestMetrics
+  /** A Hono app's registered routes (middleware included), to explain a 404; absent for fetch puro or when the code didn't load. */
+  routes?: Route[]
+}
+
+export interface Route {
+  method: string
+  path: string
 }
 
 export interface TableRows {
@@ -124,13 +131,17 @@ async function request(pg: PGlite, project: Project, spec: ProjectRequest): Prom
   const logs: LogLine[] = []
   const start = performance.now()
   const restore = captureConsole(logs)
+  let routes: Route[] | undefined
   const done = (rest: Pick<RequestOutcome, 'response' | 'error'>): RequestOutcome => {
     const ms = performance.now() - start
     metrics.handlerMs = Math.max(0, metrics.handlerMs + ms)
-    return { ...rest, logs, ms, metrics }
+    return { ...rest, logs, ms, metrics, ...(routes && { routes }) }
   }
   try {
-    const res: unknown = await loadApp(project.files).fetch(buildRequest(spec), { db: measured(toDb(pg), metrics) })
+    const app = loadApp(project.files)
+    const listed = (app as { routes?: unknown }).routes
+    if (Array.isArray(listed)) routes = listed.map(({ method, path }: Route) => ({ method, path }))
+    const res: unknown = await app.fetch(buildRequest(spec), { db: measured(toDb(pg), metrics) })
     if (!(res instanceof Response)) return done({ error: { message: 'fetch(req, env) precisa devolver um Response.' } })
     return done({ response: { status: res.status, headers: Object.fromEntries(res.headers), body: await res.text() } })
   } catch (err) {
