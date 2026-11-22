@@ -34,6 +34,8 @@ export interface ProjectCourse {
   stages: Stage[]
   /** The project a new one of this course starts from; without it, the framework's own starter. */
   starter?: Project
+  /** Files added to the framework's starter, such as helpers the course's hints rely on. */
+  baseFiles?: Record<string, string>
 }
 
 export interface StageResult {

@@ -1,7 +1,7 @@
 // Projeto 2 of the Oficina: Busca e paginação, in three stages.
 // Based on the old exercises paginacao.ts and busca.ts.
 
-import { referencia } from './cursoBuscaRef'
+import { HTTP, referencia } from './cursoBuscaRef'
 import type { ProjectCourse, Stage } from './stage'
 
 const SEED_ESTAGIO_1 = `INSERT INTO produtos (id, nome, preco_centavos) VALUES
@@ -320,6 +320,7 @@ const busca: Stage = {
 }
 
 export const cursoBusca: ProjectCourse = {
+  baseFiles: { 'src/http.ts': HTTP },
   id: 'busca',
   title: 'Busca e paginação',
   stages: [listagem, paginacao, busca],
