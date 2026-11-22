@@ -3152,6 +3152,23 @@ a.levels__map {
   gap: var(--space-8);
 }
 
+.oficina__sheet {
+  margin: var(--space-10) 0;
+}
+
+/* On a phone the goals sheet fills the column, with tighter cells so it fits. */
+@media (max-width: 480px) {
+  .oficina__sheet {
+    width: 100%;
+    padding-inline: var(--space-4);
+  }
+
+  .oficina__sheet th,
+  .oficina__sheet td {
+    padding-inline: var(--space-6);
+  }
+}
+
 .oficina__results,
 .oficina__hints {
   margin: 0;

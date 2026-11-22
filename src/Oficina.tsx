@@ -7,11 +7,16 @@ import { keymap } from '@codemirror/view'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import { BrandMark } from './BrandMark'
+import { GoalRow } from './GoalRow'
+import { Stars } from './Stars'
 import { ThemeToggle } from './ThemeToggle'
-import type { TestResult } from './oficina/exercise'
+import type { RequestMetrics, TestResult } from './oficina/exercise'
 import { EXERCISES, type OficinaExercise } from './oficina/exercises'
-import { allPassed, byCompany, clearCode, loadCode, saveCode, unlockedHints } from './oficina/progress'
+import { MIN_AVAILABILITY, OFICINA_ARCH, loadLevel, requestCost, oficinaStars } from './oficina/load'
+import { allPassed, byCompany, clearCode, loadCode, loadSavedResults, resultId, saveCode, saveResult, unlockedHints } from './oficina/progress'
 import { prewarm, runTests } from './oficina/runner'
+import type { RunSummary } from './sim/engine'
+import { runInBackground } from './sim/runner'
 
 /** Colour means load state only, so the code is told apart by weight, style and ink-soft, never by hue. */
 const highlight = HighlightStyle.define([
@@ -86,7 +91,12 @@ const metrics = (r: TestResult) =>
 interface Run {
   which: 'visible' | 'all'
   results: TestResult[]
+  /** A submission that passed every test, run at the exercise's target load. */
+  load?: { summary: RunSummary; cost: RequestMetrics; stars: number; xp: number }
 }
+
+const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1).replace('.', ',')}%`
+const decimal = (n: number) => (Math.round(n * 10) / 10).toLocaleString('pt-BR')
 
 export default function Oficina() {
   const heading = useRef<HTMLHeadingElement>(null)
@@ -95,9 +105,12 @@ export default function Oficina() {
   const [run, setRun] = useState<Run | null>(null)
   const [running, setRunning] = useState<'visible' | 'all' | null>(null)
   const [announce, setAnnounce] = useState('')
-  // Per exercise, for this visit: failed submissions (one hint each) and whether it passed.
+  // Per exercise: failed submissions this visit (one hint each) and whether it passed (saved with its result).
   const [failed, setFailed] = useState<Record<string, number>>({})
-  const [passed, setPassed] = useState<Record<string, boolean>>({})
+  const [passed, setPassed] = useState<Record<string, boolean>>(() => {
+    const saved = loadSavedResults()
+    return Object.fromEntries(EXERCISES.filter((e) => saved[resultId(e.id)]).map((e) => [e.id, true]))
+  })
   const [resetKey, setResetKey] = useState(0)
   const [warming, setWarming] = useState(true)
   useEffect(() => heading.current?.focus(), [])
@@ -123,8 +136,16 @@ export default function Oficina() {
     const results = await runTests(view.current.state.doc.toString(), exercise, which)
     const ok = allPassed(results)
     const count = `${results.filter((r) => r.passed).length} de ${results.length} testes passaram.`
+    let load: Run['load']
+    if (which === 'all' && ok) {
+      const cost = requestCost(results)
+      const { summary } = await runInBackground(OFICINA_ARCH, loadLevel(exercise, cost), 1)
+      const stars = oficinaStars(true, summary, exercise.load, cost)
+      const { xp } = saveResult(exercise.id, { stars, cost: summary.cost, p99Ms: summary.p99Ms, availability: summary.availability })
+      load = { summary, cost, stars, xp }
+    }
     setRunning(null)
-    setRun({ which, results })
+    setRun({ which, results, load })
     if (which === 'all') {
       if (ok) setPassed((p) => ({ ...p, [exercise.id]: true }))
       else setFailed((f) => ({ ...f, [exercise.id]: (f[exercise.id] ?? 0) + 1 }))
@@ -132,7 +153,7 @@ export default function Oficina() {
     const unlocked = which === 'all' && !ok && (failed[exercise.id] ?? 0) < exercise.hints.length
     setAnnounce(
       which === 'all' && ok
-        ? `${count} Enviado: a solução de referência está liberada.`
+        ? `${count} ${load!.stars} de 3 estrelas. Enviado: a solução de referência está liberada.`
         : `${count}${unlocked ? ' Uma dica nova foi liberada.' : ''}`,
     )
   }
@@ -223,6 +244,46 @@ export default function Oficina() {
           {run && (
             <section aria-labelledby="oficina-results">
               <h3 id="oficina-results">{run.which === 'all' ? 'Resultado do envio' : 'Testes visíveis'}</h3>
+              {run.load && (
+                <>
+                  <div className="stars-line">
+                    <Stars count={run.load.stars} />
+                    {run.load.xp > 0 && <span className="stars-line__xp">+{run.load.xp} XP</span>}
+                  </div>
+                  <table className="sheet oficina__sheet">
+                    <caption>
+                      <span className="sheet__title">Na carga de {current.load.rps} req/s</span>
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Meta</th>
+                        <th scope="col">Exigido</th>
+                        <th scope="col">Medido</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <GoalRow
+                        name="Latência p99"
+                        required={`≤ ${current.load.p99Ms} ms`}
+                        value={`${Math.round(run.load.summary.p99Ms)} ms`}
+                        ok={run.load.summary.passed.p99}
+                      />
+                      <GoalRow
+                        name="Disponibilidade"
+                        required={`≥ ${pct(MIN_AVAILABILITY)}`}
+                        value={pct(run.load.summary.availability)}
+                        ok={run.load.summary.passed.availability}
+                      />
+                      <GoalRow
+                        name="Consultas por requisição"
+                        required={`≤ ${current.load.queriesPerRequest}`}
+                        value={decimal(run.load.cost.queries)}
+                        ok={run.load.cost.queries <= current.load.queriesPerRequest}
+                      />
+                    </tbody>
+                  </table>
+                </>
+              )}
               <ol className="oficina__results">
                 {run.results.map((r, i) => {
                   const extra = metrics(r)

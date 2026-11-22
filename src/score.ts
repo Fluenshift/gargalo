@@ -87,12 +87,21 @@ export function loadResults(raw: string | null, passed: Passed): Results {
   return results
 }
 
-/** XP from every level passed: a base per level (more for a boss) and a bonus per star. */
+/** Results of Oficina exercises are kept beside the career's under this prefix. */
+export const OFICINA_PREFIX = 'oficina:'
+
+/** XP from every level and Oficina exercise passed: a base per level (more for a boss) and a bonus per star. */
 export function totalXp(results: Results, companies: Company[] = COMPANIES): number {
-  return stages(companies).reduce((sum, s) => {
+  const career = stages(companies).reduce((sum, s) => {
     const r = results[s.level.id]
     return r ? sum + (s.isBoss ? XP_PER_BOSS : XP_PER_LEVEL) + XP_PER_STAR * r.stars : sum
   }, 0)
+  return career + oficinaXp(results)
+}
+
+/** XP from the Oficina exercises alone: a base per exercise and a bonus per star, like a level. */
+export function oficinaXp(results: Results): number {
+  return Object.entries(results).reduce((sum, [id, r]) => (id.startsWith(OFICINA_PREFIX) ? sum + XP_PER_LEVEL + XP_PER_STAR * r.stars : sum), 0)
 }
 
 /** The rank this much XP reaches, and the next one with how much XP is still missing. */

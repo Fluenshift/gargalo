@@ -46,6 +46,7 @@ import { TrafficEditor } from './TrafficEditor'
 import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
 import type { FreeSystem, SavedDesign } from './freeMode'
 import { Stars } from './Stars'
+import { GoalRow } from './GoalRow'
 import { FAST_SHARE, RESULTS_KEY, THRIFTY_SHARE, loadResults, record, resultOf, starGaps, xpGain } from './score'
 import type { LevelResult, Results } from './score'
 import { NodeCard } from './NodeCard'
@@ -1810,20 +1811,6 @@ function TrashIcon() {
         strokeLinejoin="round"
       />
     </svg>
-  )
-}
-
-function GoalRow({ name, required, value, ok }: { name: string; required?: string; value?: string; ok?: boolean }) {
-  const state = value === undefined || ok === undefined ? '' : ok ? 'is-ok' : 'is-fail'
-  return (
-    <tr className={state}>
-      <th scope="row">{name}</th>
-      {required !== undefined && <td>{required}</td>}
-      <td>
-        {value ?? '—'}
-        {value !== undefined && ok !== undefined && <span className="sheet__mark">{ok ? ' ✓' : ' ✗'}</span>}
-      </td>
-    </tr>
   )
 }
 

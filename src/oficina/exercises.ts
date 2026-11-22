@@ -47,7 +47,8 @@ const ola: OficinaExercise = {
 `,
   explanation:
     'Um handler recebe um Request e devolve um Response, a API padrão da web. Response.json monta o corpo e o content-type; a URL já chega decodificada por searchParams, então "Ana%20Clara" vira "Ana Clara" sem trabalho extra.',
-  load: { rps: 100, p99Ms: 50, queriesPerRequest: 0 },
+  // The engine's server alone answers in ~75 ms p99 at 100 req/s (30 ms base plus queueing).
+  load: { rps: 100, p99Ms: 100, queriesPerRequest: 0 },
 }
 
 export const EXERCISES: OficinaExercise[] = [ola]

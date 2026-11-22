@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { COMPANIES } from './career'
-import { RANKS, XP_PER_BOSS, XP_PER_LEVEL, XP_PER_STAR, achievements, loadResults, rankFor, record, starGaps, starsFor, totalXp, xpGain } from './score'
+import { RANKS, XP_PER_BOSS, XP_PER_LEVEL, XP_PER_STAR, achievements, loadResults, oficinaXp, rankFor, record, starGaps, starsFor, totalXp, xpGain } from './score'
 import type { LevelResult } from './score'
 import type { RunSummary } from './sim/engine'
 import type { Level } from './sim/model'
@@ -62,6 +62,15 @@ describe('XP and ranks', () => {
     const everything = Object.fromEntries(COMPANIES.flatMap((c) => [...c.levels, c.boss]).map((l) => [l.id, result(3)]))
     expect(rankFor(totalXp(everything)).title).toBe('Staff')
     expect(rankFor(totalXp(everything)).next).toBeUndefined()
+  })
+  it('adds the Oficina exercises, which count for XP but are no career level', () => {
+    const first = startup.levels[0].id
+    const both = { [first]: result(2), 'oficina:ola': result(3, 0, 1) }
+    expect(totalXp(both)).toBe(2 * XP_PER_LEVEL + 5 * XP_PER_STAR)
+    expect(oficinaXp(both)).toBe(XP_PER_LEVEL + 3 * XP_PER_STAR)
+    expect(xpGain({}, 'oficina:ola', result(1))).toBe(XP_PER_LEVEL + XP_PER_STAR)
+    expect(achievements({ 'oficina:ola': result(3, 0, 1) })).toEqual([])
+    expect(loadResults(JSON.stringify(both), [])).toEqual(both)
   })
 })
 
