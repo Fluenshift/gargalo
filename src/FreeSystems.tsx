@@ -1,6 +1,4 @@
-import { ThemeToggle } from './ThemeToggle'
 import { useEffect, useRef, useState } from 'react'
-import { BrandMark } from './BrandMark'
 import { TEMPLATES, exportFileName, exportSystem } from './freeMode'
 import type { FreeSystem } from './freeMode'
 
@@ -64,10 +62,6 @@ export function FreeSystems({
   return (
     <div className="career free">
       <header className="career__head">
-        <p className="career__brand">
-          <BrandMark size={28} />
-          gargalo
-        </p>
         <h1 ref={heading} tabIndex={-1}>
           Modo livre
         </h1>
@@ -87,7 +81,6 @@ export function FreeSystems({
             Voltar para a fase
           </button>
         </div>
-        <ThemeToggle />
       </header>
 
       <p className={`free__message${message ? ` is-${message.tone}` : ''}`} role="status" aria-live="polite">

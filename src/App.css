@@ -3327,3 +3327,444 @@ a.levels__map {
     gap: var(--space-20);
   }
 }
+
+/* ==========================================================================
+   Top bar and pages (#96): the bar on every screen, career and profile as pages.
+   Uses only existing tokens, so palette changes apply here too.
+   ========================================================================== */
+
+/* The game screens: bar on top, the board fills the rest of the window. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.shell > .app {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-menu);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10) var(--space-28);
+  padding: var(--space-12) var(--space-24);
+  background: var(--paper);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-10);
+  font-family: var(--serif);
+  font-size: var(--title-md);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.topbar__nav {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-24);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+
+.topbar__nav a {
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid transparent;
+}
+
+.topbar__nav a:hover {
+  border-bottom-color: var(--line);
+}
+
+.topbar__nav a[aria-current] {
+  border-bottom-color: var(--ink);
+}
+
+.topbar__xp {
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.topbar__menu {
+  display: none;
+}
+
+/* Phone menu: a full-screen native dialog over the page. */
+.topbar__sheet {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: var(--space-16);
+  border: none;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.topbar__sheet[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.topbar__sheet::backdrop {
+  background: var(--paper);
+}
+
+.topbar__sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-12);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar__sheet-nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar__sheet-nav a {
+  padding: var(--space-6) 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--serif);
+  font-size: var(--title-lg);
+  line-height: 1.2;
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.topbar__sheet-nav a[aria-current] {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 6px;
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    padding: var(--space-10) var(--space-16);
+  }
+
+  .topbar > .topbar__nav,
+  .topbar > .topbar__xp,
+  .topbar > .theme-toggle {
+    display: none;
+  }
+
+  .topbar__menu {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 860px) {
+  .shell {
+    height: auto;
+  }
+}
+
+/* A page under the bar: career, profile. */
+.page {
+  max-width: var(--page-width);
+  margin: 0 auto;
+  padding: var(--space-48) var(--space-32) var(--space-56);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-40);
+  color: var(--ink);
+}
+
+.page__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-24);
+}
+
+.page h1 {
+  margin-top: var(--space-8);
+  font-family: var(--serif);
+  font-size: var(--title-4xl);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+}
+
+.page h1:focus {
+  outline: none;
+}
+
+.page h2 {
+  font-family: var(--serif);
+  font-size: var(--title-lg);
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+}
+
+.page__eyebrow {
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-soft);
+}
+
+.page__lede {
+  max-width: 62ch;
+  margin-top: var(--space-12);
+  color: var(--ink-soft);
+}
+
+/* Career: a company per section, a card per phase. */
+.career-co {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-14);
+  padding-top: var(--space-20);
+  border-top: 1px solid var(--line);
+}
+
+.career-co__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-4) var(--space-16);
+}
+
+.career-co__state,
+.career-co__budget {
+  color: var(--ink-soft);
+}
+
+.career-co__budget {
+  max-width: 72ch;
+}
+
+.career-co.is-locked h2 {
+  color: var(--ink-soft);
+}
+
+/* Company line colour (#101): a thick rule and the eyebrow in the company colour; the phase you are on sits on its tint. */
+.career-co[data-company] {
+  border-top: 4px solid var(--company, var(--line));
+}
+
+.career-co[data-company] .page__eyebrow {
+  color: var(--company, var(--ink-soft));
+}
+
+.career-co[data-company] .phase-card.is-now,
+.career-co[data-company] .phase-card.is-now:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--company-wash, var(--wash));
+  border-color: var(--company, var(--ink));
+}
+
+.career-co[data-company] .phase-card.is-now .phase-card__tag {
+  color: var(--ink-soft);
+}
+
+.career-co__cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-12);
+}
+
+.phase-card {
+  width: 100%;
+  height: 100%;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-14) var(--space-16);
+  text-align: left;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-piece);
+}
+
+.phase-card:hover:not(:disabled) {
+  background: var(--sunk);
+}
+
+.phase-card.is-boss {
+  border-color: var(--ink);
+}
+
+/* The current phase is the inverted surface, like the current step in the panel. */
+.phase-card.is-now,
+.phase-card.is-now:hover:not(:disabled) {
+  color: var(--on-ink);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* Locked phases do not fade: soft ink, a dashed edge and the lock. */
+.phase-card:disabled {
+  opacity: 1;
+  color: var(--ink-soft);
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+.phase-card__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-soft);
+}
+
+.phase-card.is-now .phase-card__tag {
+  color: var(--on-ink-soft);
+}
+
+.phase-card__title {
+  font-family: var(--serif);
+  font-size: var(--title-xs);
+  line-height: 1.1;
+  letter-spacing: var(--tracking-tight);
+}
+
+.phase-card__mark {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
+  font-size: var(--text-xs);
+}
+
+.career-co__pieces h3 {
+  margin-bottom: var(--space-8);
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-soft);
+}
+
+.career-co__pieces ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-20);
+  font-size: var(--text-sm);
+}
+
+.career-co__pieces li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+/* Profile: rank and XP, three blocks, achievements. */
+.profile-page__xp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-24);
+  margin-top: var(--space-14);
+}
+
+.profile-page__xp .profile__bar {
+  flex: 1 1 240px;
+  max-width: 520px;
+  margin: 0;
+}
+
+.profile-page__soft {
+  color: var(--ink-soft);
+}
+
+.profile-page__blocks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-32);
+}
+
+.profile-page__block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--line);
+}
+
+.profile-page__big {
+  font-family: var(--serif);
+  font-size: var(--title-2xl);
+  line-height: 1;
+  letter-spacing: var(--tracking-tight);
+}
+
+.profile-page__achievements {
+  padding-top: var(--space-16);
+  border-top: 1px solid var(--line);
+}
+
+.profile-page__achievements h2 {
+  margin-bottom: var(--space-8);
+}
+
+.profile-page__achievements h2 .profile-page__soft {
+  font-family: var(--mono);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-none);
+}
+
+.profile-page .profile__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-32);
+}
+
+@media (max-width: 860px) {
+  .page {
+    padding: var(--space-32) var(--space-16) var(--space-48);
+    gap: var(--space-32);
+  }
+
+  .page h1 {
+    font-size: var(--title-2xl);
+  }
+
+  .profile-page__blocks,
+  .profile-page .profile__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
