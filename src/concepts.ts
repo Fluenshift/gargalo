@@ -683,6 +683,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     definition:
       'Estrutura que leva o banco direto às linhas de uma chave, já ordenadas, em vez de varrer a tabela inteira. Acelera a leitura, e cada escrita fica um pouco mais cara porque também atualiza o índice. LIMIT sozinho não ajuda: sem índice ele ainda acha e ordena tudo.',
   },
+  {
+    id: 'condicao-de-corrida',
+    term: 'condição de corrida',
+    forms: ['condições de corrida'],
+    definition:
+      'Quando o resultado depende de quem chega primeiro: duas requisições leem o mesmo saldo antes de qualquer uma gravar, e as duas passam. Resolve-se deixando o banco conferir e gravar num passo só (UPDATE ... WHERE saldo >= valor, UNIQUE, ON CONFLICT) ou travando a linha numa transação (SELECT ... FOR UPDATE).',
+  },
 ]
 
 export type Segment = string | { text: string; entry: GlossaryEntry }

@@ -7,6 +7,7 @@ import { ola } from './exercises/ola'
 import { paginacao } from './exercises/paginacao'
 import { pagamento } from './exercises/pagamento'
 import { pedido } from './exercises/pedido'
+import { transferencia } from './exercises/transferencia'
 
 /** An exercise plus what the screen shows around it. */
 export interface OficinaExercise extends Exercise {
@@ -21,4 +22,4 @@ export interface OficinaExercise extends Exercise {
   explanation: string
 }
 
-export const EXERCISES: OficinaExercise[] = [ola, cadastro, paginacao, pedido, busca, pagamento]
+export const EXERCISES: OficinaExercise[] = [ola, cadastro, paginacao, pedido, busca, pagamento, transferencia]
