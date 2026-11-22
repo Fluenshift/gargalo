@@ -186,6 +186,8 @@ describe('course base files', () => {
       for (const name of ['ErroHttp', 'problema', 'idDe', 'achado'].filter((n) => hints.some((h) => h.includes(n))))
         expect(http, `${course.id}: ${name}`).toMatch(new RegExp(`export (class|function|const) ${name}[^\\w]`))
     }
+  })
+})
 
 describe('statementSteps', () => {
   it('splits numbered steps, keeping sub-lines with their step', () => {
