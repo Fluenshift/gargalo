@@ -57,14 +57,17 @@ export function loadSavedResults(): Results {
 }
 
 /** Keeps the exercise's result when it beats the saved one; returns what is saved now and the XP it added. */
-export function saveResult(id: string, result: LevelResult): { results: Results; xp: number } {
+export const saveResult = (id: string, result: LevelResult) => keepResult(resultId(id), result)
+
+/** Keeps a result under its full id (`oficina:…`, `projeto:…`) when it beats the saved one; returns what is saved now and the XP it added. */
+export function keepResult(id: string, result: LevelResult): { results: Results; xp: number } {
   const saved = loadSavedResults()
-  const results = record(saved, resultId(id), result)
+  const results = record(saved, id, result)
   if (results !== saved)
     try {
       localStorage.setItem(RESULTS_KEY, JSON.stringify(results))
     } catch {
       // Storage off: the result holds for this visit only.
     }
-  return { results, xp: xpGain(saved, resultId(id), result) }
+  return { results, xp: xpGain(saved, id, result) }
 }

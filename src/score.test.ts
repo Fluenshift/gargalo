@@ -72,6 +72,15 @@ describe('XP and ranks', () => {
     expect(achievements({ 'oficina:ola': result(3, 0, 1) })).toEqual([])
     expect(loadResults(JSON.stringify(both), [])).toEqual(both)
   })
+  it('adds the project stages the same way, and keeps them out of the career', () => {
+    const first = startup.levels[0].id
+    const all = { [first]: result(2), 'oficina:ola': result(3, 0, 1), 'projeto:ecommerce:health': result(2, 0, 1) }
+    expect(oficinaXp(all)).toBe(2 * XP_PER_LEVEL + 5 * XP_PER_STAR)
+    expect(totalXp(all)).toBe(3 * XP_PER_LEVEL + 7 * XP_PER_STAR)
+    expect(xpGain({}, 'projeto:ecommerce:health', result(3))).toBe(XP_PER_LEVEL + 3 * XP_PER_STAR)
+    expect(achievements({ 'projeto:ecommerce:health': result(3, 0, 1) })).toEqual([])
+    expect(loadResults(JSON.stringify(all), [])).toEqual(all)
+  })
 })
 
 describe('achievements', () => {
