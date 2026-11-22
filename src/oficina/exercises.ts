@@ -1,6 +1,7 @@
 // The Oficina's exercises, in play order; each lives in its own file under exercises/. New ones are appended to EXERCISES.
 
 import type { Exercise } from './exercise'
+import { busca } from './exercises/busca'
 import { cadastro } from './exercises/cadastro'
 import { ola } from './exercises/ola'
 import { paginacao } from './exercises/paginacao'
@@ -19,4 +20,4 @@ export interface OficinaExercise extends Exercise {
   explanation: string
 }
 
-export const EXERCISES: OficinaExercise[] = [ola, cadastro, paginacao, pedido]
+export const EXERCISES: OficinaExercise[] = [ola, cadastro, paginacao, pedido, busca]
