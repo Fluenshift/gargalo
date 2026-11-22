@@ -32,6 +32,8 @@ export interface ProjectCourse {
   id: string
   title: string
   stages: Stage[]
+  /** The project a new one of this course starts from; without it, the framework's own starter. */
+  starter?: Project
 }
 
 export interface StageResult {

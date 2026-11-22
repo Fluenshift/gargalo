@@ -24,12 +24,12 @@ describe('followLink', () => {
 })
 
 describe('oficinaPlace', () => {
-  it('opens the exercises, the projects list or one project', () => {
+  it('opens the projects list (also for the old exercise paths) or one project', () => {
     expect(screenOf('/oficina/projetos/abc', '')).toBe('oficina')
-    expect(oficinaPlace('/oficina')).toEqual({ tab: 'exercicios' })
-    expect(oficinaPlace('/oficina/outra')).toEqual({ tab: 'exercicios' })
-    expect(oficinaPlace('/oficina/projetos/')).toEqual({ tab: 'projetos' })
-    expect(oficinaPlace('/oficina/projetos/a%20b')).toEqual({ tab: 'projetos', project: 'a b' })
+    expect(oficinaPlace('/oficina')).toEqual({})
+    expect(oficinaPlace('/oficina/outra')).toEqual({})
+    expect(oficinaPlace('/oficina/projetos/')).toEqual({})
+    expect(oficinaPlace('/oficina/projetos/a%20b')).toEqual({ project: 'a b' })
   })
 })
 

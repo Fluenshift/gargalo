@@ -139,6 +139,8 @@ export interface ProjectEntry {
   id: string
   name: string
   framework: Framework
+  /** Id of the course it follows; missing in projects saved before the choice (they follow `ecommerce`). */
+  course?: string
 }
 
 export const PROJECTS_KEY = 'gargalo:oficina:projetos'

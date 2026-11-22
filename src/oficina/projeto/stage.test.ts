@@ -5,7 +5,7 @@ import type { TestResult } from '../exercise'
 import { loadSavedResults } from '../progress'
 import { prewarm, type StartWorker, type WorkerMessage } from '../runner'
 import { checkTests } from './checklist'
-import { COURSE } from './courses'
+import { COURSES, courseOf } from './courses'
 import type { Project } from './project'
 import { executeProjectTests, type ProjectTestsInput } from './runtime'
 import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, type Stage } from './stage'
@@ -158,9 +158,14 @@ describe('resumeStage', () => {
   })
 })
 
-describe('COURSE', () => {
-  it.each(['hono', 'fetch'] as const)('passes every stage with 3 stars from its %s reference', async (framework) => {
-    for (const s of COURSE.stages) {
+describe('COURSES', () => {
+  it('have distinct ids', () => {
+    expect(new Set(COURSES.map((c) => c.id)).size).toBe(COURSES.length)
+    expect(courseOf('nada')).toBe(COURSES[0])
+    expect(courseOf(undefined).id).toBe('ecommerce')
+  })
+  it.each(['hono', 'fetch'] as const)('pass every orders stage with 3 stars from its %s reference', async (framework) => {
+    for (const s of courseOf('ecommerce').stages) { // revisao has its own harness (revisao.test.ts)
       const p: Project = { id: 'ref', framework, files: s.reference[framework] }
       expect(evaluateStage(p, s, await results(p, s)), s.id).toMatchObject({ passed: true, stars: 3 })
     }

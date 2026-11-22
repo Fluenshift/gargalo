@@ -149,14 +149,14 @@ export const revisaoStage: Stage = {
   seed: SEED,
 }
 
-export const revisaoCourse: ProjectCourse = { id: 'revisao', title: 'Revisão de código', stages: [revisaoStage] }
-
-/** The buggy project the player starts from; register it in the Projetos screen as the starter of `revisaoCourse`. */
+/** The buggy project the player starts from. */
 export const revisaoStarter: Project = {
   id: 'revisao',
   framework: 'fetch',
   files: { 'src/index.ts': revisaoRoutes(...BUGGY_BLOCKS), 'migrations/001_init.sql': MIGRATION },
 }
+
+export const revisaoCourse: ProjectCourse = { id: 'revisao', title: 'Revisão de código', stages: [revisaoStage], starter: revisaoStarter }
 
 export interface BugVerdict {
   id: RevisaoBugId

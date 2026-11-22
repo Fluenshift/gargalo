@@ -34,11 +34,10 @@ export function navigate(path: string) {
 
 export const PROJETOS_PATH = '/oficina/projetos'
 
-/** The Oficina's tab and open project: `/oficina` (exercises), `/oficina/projetos` (the list), `/oficina/projetos/<id>`. */
-export function oficinaPlace(pathname: string): { tab: 'exercicios' | 'projetos'; project?: string } {
+/** The project `/oficina/projetos/<id>` opens; every other Oficina path (the old exercises included) shows the list. */
+export function oficinaPlace(pathname: string): { project?: string } {
   const [, , tab, id] = pathname.replace(/\/+$/, '').split('/')
-  if (tab !== 'projetos') return { tab: 'exercicios' }
-  return id ? { tab: 'projetos', project: decodeURIComponent(id) } : { tab: 'projetos' }
+  return tab === 'projetos' && id ? { project: decodeURIComponent(id) } : {}
 }
 
 /** A link's click handler: plain clicks go to its href in place; ctrl/middle click still opens a new tab. */
