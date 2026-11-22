@@ -3,6 +3,7 @@
 import type { Exercise } from './exercise'
 import { cadastro } from './exercises/cadastro'
 import { ola } from './exercises/ola'
+import { paginacao } from './exercises/paginacao'
 
 /** An exercise plus what the screen shows around it. */
 export interface OficinaExercise extends Exercise {
@@ -17,4 +18,4 @@ export interface OficinaExercise extends Exercise {
   explanation: string
 }
 
-export const EXERCISES: OficinaExercise[] = [ola, cadastro]
+export const EXERCISES: OficinaExercise[] = [ola, cadastro, paginacao]
