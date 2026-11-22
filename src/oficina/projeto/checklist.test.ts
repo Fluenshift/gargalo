@@ -82,6 +82,58 @@ describe('static items', () => {
     expect(await check({ id: 'transacao' }, repo("await db.query('INSERT INTO pedidos DEFAULT VALUES')"))).toMatchObject({ passed: true })
     expect(await check({ id: 'transacao' }, repo(writes.replaceAll('tx.', 'db.')))).toMatchObject({ passed: false, message: 'src/db/repo.ts: escreve em pedidos, estoque sem db.transaction.' })
   })
+
+  it('saldo-atomico: requires conditional UPDATE ... WHERE saldo_centavos >= or SELECT ... FOR UPDATE', async () => {
+    const conditional = repo("await tx.query('UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2 AND saldo_centavos >= $1', [v, id])")
+    expect(await check({ id: 'saldo-atomico' }, conditional)).toMatchObject({ passed: true, kind: 'static' })
+
+    const locked = repo("await tx.query('SELECT id FROM contas WHERE id = $1 FOR UPDATE', [id]); await tx.query('UPDATE contas SET saldo_centavos = $1 WHERE id = $2', [s, id])")
+    expect(await check({ id: 'saldo-atomico' }, locked)).toMatchObject({ passed: true })
+
+    const naiveAbsolute = repo("const [c] = await tx.query('SELECT saldo_centavos FROM contas WHERE id = $1', [id]); await tx.query('UPDATE contas SET saldo_centavos = $1 WHERE id = $2', [novo, id])")
+    expect(await check({ id: 'saldo-atomico' }, naiveAbsolute)).toMatchObject({ passed: false, message: 'src/db/repo.ts: débito de saldo sem UPDATE condicional (WHERE saldo_centavos >=) nem SELECT ... FOR UPDATE.' })
+
+    const missingGuard = repo("await tx.query('UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2', [v, id])")
+    expect(await check({ id: 'saldo-atomico' }, missingGuard)).toMatchObject({ passed: false })
+  })
+
+  it('indice-busca: requires lower(nome) LIKE with prefix pattern and rejects leading %', async () => {
+    const valid = repo(`
+      export const buscar = (db, termo) => {
+        const prefixo = termo + '%'
+        return db.query('SELECT id, nome, preco_centavos FROM produtos WHERE lower(nome) LIKE $1 ORDER BY lower(nome) LIMIT 20', [prefixo])
+      }
+    `)
+    expect(await check({ id: 'indice-busca' }, valid)).toMatchObject({ passed: true, kind: 'static' })
+
+    const noLower = repo(`
+      export const buscar = (db, termo) => {
+        return db.query("SELECT id, nome FROM produtos WHERE nome ILIKE $1", [termo + '%'])
+      }
+    `)
+    expect(await check({ id: 'indice-busca' }, noLower)).toMatchObject({ passed: false })
+
+    const leadingPercent = repo(`
+      export const buscar = (db, termo) => {
+        return db.query("SELECT id, nome FROM produtos WHERE lower(nome) LIKE $1", ['%' + termo + '%'])
+      }
+    `)
+    expect(await check({ id: 'indice-busca' }, leadingPercent)).toMatchObject({ passed: false })
+
+    const leadingSql = repo(`
+      export const buscar = (db, termo) => {
+        return db.query("SELECT id, nome FROM produtos WHERE lower(nome) LIKE '%' || $1", [termo])
+      }
+    `)
+    expect(await check({ id: 'indice-busca' }, leadingSql)).toMatchObject({ passed: false })
+
+    const noPrefix = repo(`
+      export const buscar = (db, termo) => {
+        return db.query("SELECT id, nome FROM produtos WHERE lower(nome) LIKE $1", [termo])
+      }
+    `)
+    expect(await check({ id: 'indice-busca' }, noPrefix)).toMatchObject({ passed: false })
+  })
 })
 
 describe('behaviour items', () => {
@@ -220,6 +272,8 @@ describe('the catalogue', () => {
       ['camadas', 'static'],
       ['sem-select-estrela', 'static'],
       ['transacao', 'static'],
+      ['saldo-atomico', 'static'],
+      ['indice-busca', 'static'],
       ['criado-201-location', 'behaviour'],
       ['problem-json', 'behaviour'],
       ['validacao-400', 'behaviour'],

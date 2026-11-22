@@ -39,8 +39,9 @@ export function deErro(err: unknown): Response {
 }
 
 export function idDe(texto: string): number {
+  if (!/^\d+$/.test(texto)) throw new ErroHttp(400, 'Identificador inválido')
   const id = Number(texto)
-  if (!Number.isInteger(id)) throw new ErroHttp(404, 'Recurso não encontrado')
+  if (!Number.isSafeInteger(id) || id > 2147483647) throw new ErroHttp(400, 'Identificador inválido')
   return id
 }
 
@@ -55,14 +56,14 @@ import { ErroHttp } from './http'
 
 export const contaSchema = z.object({
   titular: z.string().trim().min(1),
-  saldo_centavos: z.number().int().min(0),
+  saldo_centavos: z.number().int().min(0).max(2147483647),
 })
 
 export const transferenciaSchema = z
   .object({
-    de: z.number().int().min(1),
-    para: z.number().int().min(1),
-    valor_centavos: z.number().int().min(1),
+    de: z.number().int().min(1).max(2147483647),
+    para: z.number().int().min(1).max(2147483647),
+    valor_centavos: z.number().int().min(1).max(2147483647),
   })
   .refine((d) => d.de !== d.para, {
     message: 'As contas de origem e destino devem ser diferentes.',
@@ -70,7 +71,7 @@ export const transferenciaSchema = z
   })
 
 export const pagamentoSchema = z.object({
-  valor_centavos: z.number().int().min(1),
+  valor_centavos: z.number().int().min(1).max(2147483647),
 })
 
 function validar<S extends z.ZodType>(dados: unknown, schema: S): z.output<S> {
@@ -153,6 +154,7 @@ export interface TransferenciaResultado {
 
 export async function transferir(db: Db, de: number, para: number, valor: number): Promise<TransferenciaResultado> {
   return db.transaction(async (tx) => {
+    await tx.query('SELECT id FROM contas WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[de, para]])
     const [origem] = await tx.query<{ saldo_centavos: number }>(
       'UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2 AND saldo_centavos >= $1 RETURNING saldo_centavos',
       [valor, de],
@@ -179,6 +181,7 @@ export async function transferir(db: Db, de: number, para: number, valor: number
 `
 
 const DB_PAGAMENTOS = String.raw`import type { Env } from '../env'
+import { ErroHttp } from '../http'
 
 type Db = Env['db']
 
@@ -198,6 +201,9 @@ export async function processarPagamento(db: Db, chave: string, valorCentavos: n
     'SELECT id, valor_centavos FROM pagamentos WHERE chave = $1',
     [chave],
   )
+  if (existente && existente.valor_centavos !== valorCentavos) {
+    throw new ErroHttp(422, 'Chave de idempotência reutilizada', 'A chave já foi utilizada com outro valor.')
+  }
   return existente
 }
 `

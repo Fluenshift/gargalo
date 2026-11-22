@@ -30,7 +30,7 @@ export function deErro(err: unknown): Response {
 }
 `
 
-const INDICE_SQL = `CREATE INDEX produtos_nome_idx ON produtos (lower(nome));
+const INDICE_SQL = `CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);
 `
 
 const VALIDACAO = String.raw`import { z } from 'zod'
@@ -161,7 +161,7 @@ produtos.get('/', async (c) => {
     const busca = url.searchParams.get('busca') ?? ''
     if (!busca.trim()) throw new ErroHttp(400, 'Busca inválida', 'Informe o que buscar em ?busca=.')
     const encontrados = await buscarProdutos(c.env.db, busca)
-    return c.json({ produtos: encontrados, itens: encontrados })
+    return c.json({ produtos: encontrados })
   }
   return c.json(await listarProdutos(c.env.db, lerConsulta(c.req.raw, listaSchema)))
 })
@@ -206,7 +206,7 @@ export async function produtos(req: Request, env: Env): Promise<Response> {
     const busca = url.searchParams.get('busca') ?? ''
     if (!busca.trim()) throw new ErroHttp(400, 'Busca inválida', 'Informe o que buscar em ?busca=.')
     const encontrados = await buscarProdutos(env.db, busca)
-    return Response.json({ produtos: encontrados, itens: encontrados })
+    return Response.json({ produtos: encontrados })
   }
   return Response.json(await listarProdutos(env.db, lerConsulta(req, listaSchema)))
 }

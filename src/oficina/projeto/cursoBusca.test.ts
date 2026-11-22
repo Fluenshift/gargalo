@@ -29,7 +29,7 @@ const failures = (r: StageResult) => [
 const NAIVE: [file: string, from: string, to: string, breaks: 'tests' | 'checklist'][] = [
   ['src/db/produtos.ts', "'SELECT id, nome, preco_centavos FROM produtos ORDER BY id'", "'SELECT * FROM produtos ORDER BY id'", 'checklist'],
   ['src/db/produtos.ts', 'Math.min(filtro.limite, LIMITE_MAX)', 'filtro.limite', 'checklist'],
-  ['migrations/002_indice_busca.sql', 'CREATE INDEX produtos_nome_idx ON produtos (lower(nome));', '-- sem indice', 'tests'],
+  ['migrations/002_indice_busca.sql', 'CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);', '-- sem indice', 'tests'],
 ]
 
 describe('curso de busca e paginação', () => {
@@ -44,8 +44,8 @@ describe('curso de busca e paginação', () => {
 
   for (const framework of ['hono', 'fetch'] as Framework[]) {
     describe(framework, () => {
+      const project = (files: Record<string, string>): Project => ({ id: 'curso-busca', framework, files })
       for (const [i, stage] of cursoBusca.stages.entries()) {
-        const project = (files: Record<string, string>): Project => ({ id: 'curso-busca', framework, files })
 
         it('etapa ' + (i + 1) + ' ' + stage.id + ': a referência passa com o checklist completo', async () => {
           const r = await run(project(stage.reference[framework]), stage)
@@ -62,6 +62,28 @@ describe('curso de busca e paginação', () => {
           expect(breaks === 'tests' ? r.passed : r.checklist.every((c) => c.passed)).toBe(false)
         }, 60_000)
       }
+
+      it('etapa 2 paginacao: uma solução ingênua com OFFSET falha', async () => {
+        const stage = cursoBusca.stages[1]
+        const files = { ...stage.reference[framework] }
+        const from = 'WHERE id > $1 ORDER BY id LIMIT $2'
+        const to = 'ORDER BY id LIMIT $2 OFFSET $1'
+        expect(files['src/db/produtos.ts']).toContain(from)
+        files['src/db/produtos.ts'] = files['src/db/produtos.ts'].replace(from, to)
+        const r = await run(project(files), stage)
+        expect(r.passed).toBe(false)
+      }, 60_000)
+
+      it('etapa 3 busca: uma solução ingênua com ILIKE e % no início falha', async () => {
+        const stage = cursoBusca.stages[2]
+        const files = { ...stage.reference[framework] }
+        const from = 'WHERE lower(nome) LIKE $1 ORDER BY lower(nome) LIMIT 20'
+        const to = "WHERE nome ILIKE '%' || $1 || '%' ORDER BY id LIMIT 20"
+        expect(files['src/db/produtos.ts']).toContain(from)
+        files['src/db/produtos.ts'] = files['src/db/produtos.ts'].replace(from, to)
+        const r = await run(project(files), stage)
+        expect(r.passed && r.checklist.every((c) => c.passed)).toBe(false)
+      }, 60_000)
     })
   }
 

@@ -22,18 +22,35 @@ const PRODUTOS_1 = [
 
 const TOTAL_PAGINACAO = 60
 const SEED_PAGINACAO = `INSERT INTO produtos (id, nome, preco_centavos)
-  SELECT i, 'Produto ' || i, i * 100
+  SELECT i * 3, 'Produto ' || (i * 3), i * 3 * 100
   FROM generate_series(1, ${TOTAL_PAGINACAO}) i
   ORDER BY (i * 37) % ${TOTAL_PAGINACAO};
-SELECT setval('produtos_id_seq', ${TOTAL_PAGINACAO});`
+SELECT setval('produtos_id_seq', ${TOTAL_PAGINACAO * 3});`
 
 const produtoPaginado = (id: number) => ({ id, nome: 'Produto ' + id, preco_centavos: id * 100 })
-const produtosPaginados = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => produtoPaginado(from + i))
+const produtosPaginados = (fromIndex: number, toIndex: number) =>
+  Array.from({ length: toIndex - fromIndex + 1 }, (_, i) => produtoPaginado((fromIndex + i) * 3))
 
-const TOTAL_BUSCA = 20_000
+const TOTAL_BUSCA = 2000
 const WORDS = ['Camiseta', 'Caneca', 'Livro', 'Mochila', 'Garrafa', 'Caderno', 'Cabo', 'Capa', 'Tapete', 'Vela']
 const COLORS = ['azul', 'verde', 'preta', 'branca', 'vermelha']
 const sqlArray = (xs: string[]) => `ARRAY[${xs.map((x) => `'${x}'`).join(', ')}]`
+
+const buscaNome = (i: number) => `${WORDS[i % 10]} ${COLORS[Math.floor(i / 10) % 5]} ${i}`
+const buscaPreco = (i: number) => 990 + (i % 50) * 100
+const buscaProduto = (i: number) => ({ id: i, nome: buscaNome(i), preco_centavos: buscaPreco(i) })
+
+export const PRODUTOS_BUSCA_CA = (() => {
+  const items: { id: number; nome: string; preco_centavos: number }[] = []
+  for (let i = 6; i <= TOTAL_BUSCA; i++) {
+    const nome = buscaNome(i)
+    if (nome.toLowerCase().startsWith('ca')) {
+      items.push(buscaProduto(i))
+    }
+  }
+  items.sort((a, b) => (a.nome.toLowerCase() < b.nome.toLowerCase() ? -1 : a.nome.toLowerCase() > b.nome.toLowerCase() ? 1 : 0))
+  return items.slice(0, 20)
+})()
 
 const SEED_BUSCA = `INSERT INTO produtos (id, nome, preco_centavos) VALUES
   (1, 'Teclado mecânico', 34990),
@@ -72,7 +89,7 @@ const listagem: Stage = {
     { id: 'problem-json', request: { path: '/nada' } },
   ],
   hints: [
-    'Abra src/db/produtos.ts para criar a função de consulta e src/routes/produtos.ts para registrar a rota GET /produtos.',
+    'Consulte src/routes/health.ts e src/index.ts para ver como estruturar rotas: copie o padrão new Hono + app.route; o banco chega em c.env.db. Para responder erros como 404 no formato problem+json, use o helper problema (ou ErroHttp) de src/http.ts.',
     'No banco, monte SELECT id, nome, preco_centavos FROM produtos ORDER BY id. Na rota Hono, use c.json(await listarProdutos(c.env.db)) (ou Response.json(await listarProdutos(env.db)) no fetch puro).',
     'Em src/db/produtos.ts, exporte export async function listarProdutos(db: Db): Promise<Produto[]> { return db.query<Produto>("SELECT id, nome, preco_centavos FROM produtos ORDER BY id") } e chame-o em produtos.get("/", ...).',
   ],
@@ -88,7 +105,7 @@ const paginacao: Stage = {
     'Conforme o volume de dados cresce, devolver todos os registros de uma só vez satura a memória do servidor e a rede do cliente. A paginação por OFFSET é problemática: o banco precisa varrer e descartar todas as linhas anteriores, tornando páginas fundas lentas e suscetíveis a pular ou repetir itens caso ocorram inserções simultâneas. ' +
     'Com paginação por cursor (chave), a consulta busca diretamente WHERE id > $1 ORDER BY id LIMIT $2, aproveitando o índice da chave primária. ' +
     'Em GET /produtos?limite=&cursor=, devolva 200 com { "itens": [{ id, nome, preco_centavos }], "proximoCursor": number | null }. ' +
-    'O parâmetro cursor define a partir de qual id buscar (padrão 0). O parâmetro limite define a quantidade máxima de itens na página (padrão 20, com teto máximo de 50: se o cliente pedir mais de 50, devolva 50; se for menor que 1 ou inválido, responda 400 problem+json). ' +
+    'O parâmetro cursor define a partir de qual id buscar (padrão 0; se for menor que 0 ou inválido, responda 400 problem+json). O parâmetro limite define a quantidade máxima de itens na página (padrão 20, com teto máximo de 50: se o cliente pedir mais de 50, devolva 50; se for menor que 1 ou inválido, responda 400 problem+json). ' +
     'proximoCursor é o id do último item da página atual, ou null caso seja a última página.',
   files: [...listagem.files, 'src/validacao.ts'],
   seed: SEED_PAGINACAO,
@@ -99,12 +116,12 @@ const paginacao: Stage = {
       requests: [
         {
           request: { path: '/produtos?limite=3' },
-          expect: { status: 200, body: { itens: produtosPaginados(1, 3), proximoCursor: 3 } },
+          expect: { status: 200, body: { itens: produtosPaginados(1, 3), proximoCursor: 9 } },
           save: { c: 'body.proximoCursor' },
         },
         {
           request: { path: '/produtos?limite=3&cursor={{c}}' },
-          expect: { status: 200, body: { itens: produtosPaginados(4, 6), proximoCursor: 6 } },
+          expect: { status: 200, body: { itens: produtosPaginados(4, 6), proximoCursor: 18 } },
         },
       ],
     },
@@ -112,7 +129,7 @@ const paginacao: Stage = {
       name: 'a última página tem proximoCursor null',
       requests: [
         {
-          request: { path: '/produtos?limite=5&cursor=58' },
+          request: { path: '/produtos?limite=5&cursor=174' },
           expect: { status: 200, body: { itens: produtosPaginados(59, 60), proximoCursor: null } },
         },
       ],
@@ -122,7 +139,7 @@ const paginacao: Stage = {
       requests: [
         {
           request: { path: '/produtos' },
-          expect: { status: 200, body: { itens: produtosPaginados(1, 20), proximoCursor: 20 } },
+          expect: { status: 200, body: { itens: produtosPaginados(1, 20), proximoCursor: 60 } },
         },
       ],
     },
@@ -132,6 +149,24 @@ const paginacao: Stage = {
         {
           request: { path: '/produtos?limite=0' },
           expect: { status: 400, body: { status: 400 } },
+        },
+      ],
+    },
+    {
+      name: 'cursor inválido responde 400',
+      requests: [
+        {
+          request: { path: '/produtos?cursor=-1' },
+          expect: { status: 400, body: { status: 400 } },
+        },
+      ],
+    },
+    {
+      name: 'limite acima do teto é limitado a 50',
+      requests: [
+        {
+          request: { path: '/produtos?limite=1000' },
+          expect: { status: 200, body: { itens: produtosPaginados(1, 50), proximoCursor: 150 } },
         },
       ],
     },
@@ -149,7 +184,7 @@ const paginacao: Stage = {
     'No banco: SELECT id, nome, preco_centavos FROM produtos WHERE id > $1 ORDER BY id LIMIT $2 passando [filtro.cursor, limite + 1]. Aplique Math.min(filtro.limite, LIMITE_MAX) e limite o retorno com linhas.slice(0, limite).',
   ],
   explanation:
-    'A paginação por cursor oferece custo constante (O(1)) independente da profundidade da página, pois desce diretamente pelo índice da chave primária. Além disso, buscar uma linha extra (limite + 1) descobre se existe uma próxima página em uma única consulta, eliminando COUNT(*) redundantes.',
+    'A paginação por cursor oferece custo O(log n + limite) independente da profundidade da página, pois desce diretamente pelo índice da chave primária (B-Tree) e varre apenas o número de itens solicitado. Além disso, buscar uma linha extra (limite + 1) descobre se existe uma próxima página em uma única consulta, eliminando COUNT(*) redundantes.',
   reference: { hono: referencia('hono', 2), fetch: referencia('fetch', 2) },
 }
 
@@ -157,10 +192,10 @@ const busca: Stage = {
   id: 'busca',
   title: 'Busca por texto com índice',
   statement:
-    'Fazer buscas textuais com WHERE lower(nome) LIKE $1 em tabelas com milhares de linhas obriga o banco a realizar uma varredura sequencial (Seq Scan), inspecionando cada linha e causando gargalos de latência. Criar um índice funcional sobre a expressão (CREATE INDEX ... ON produtos (lower(nome))) permite que o banco faça uma busca por intervalo no índice (Index Scan), respondendo em poucos milissegundos. ' +
-    'Crie a migração migrations/002_indice_busca.sql com o comando CREATE INDEX produtos_nome_idx ON produtos (lower(nome));. ' +
+    'Fazer buscas textuais com WHERE lower(nome) LIKE $1 em tabelas com milhares de linhas obriga o banco a realizar uma varredura sequencial (Seq Scan), inspecionando cada linha e causando gargalos de latência. Criar um índice funcional sobre a expressão (CREATE INDEX ... ON produtos (lower(nome) text_pattern_ops)) permite que o banco faça uma busca por intervalo no índice (Index Scan), respondendo em poucos milissegundos. ' +
+    'Crie a migração migrations/002_indice_busca.sql com o comando CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);. ' +
     'Em GET /produtos?busca=, responda 200 com até 20 produtos cujo nome comece com o termo pesquisado, sem diferenciar maiúsculas de minúsculas, ordenados pelo nome em minúsculas: { "produtos": [{ id, nome, preco_centavos }] }. ' +
-    'Caracteres curinga do SQL (% e _) devem ser tratados como texto literal. Se o parâmetro busca for vazio ou ausente, responda 400 no formato problem+json.',
+    'Caracteres curinga do SQL (% e _) devem ser tratados como texto literal. Se busca vier vazio (?busca=), responda 400 no formato problem+json; sem o parâmetro, a rota continua listando como na etapa anterior.',
   files: [...paginacao.files, 'migrations/002_indice_busca.sql'],
   seed: SEED_BUSCA,
   tests: [
@@ -214,6 +249,42 @@ const busca: Stage = {
           request: { path: '/produtos?busca=%25' },
           expect: { status: 200, body: { produtos: [] } },
         },
+        {
+          request: { path: '/produtos?busca=_' },
+          expect: { status: 200, body: { produtos: [] } },
+        },
+      ],
+    },
+    {
+      name: 'termo no meio da palavra retorna vazio',
+      requests: [
+        {
+          request: { path: '/produtos?busca=sem' },
+          expect: { status: 200, body: { produtos: [] } },
+        },
+      ],
+    },
+    {
+      name: 'busca por prefixo retorna exatamente 20 resultados ordenados',
+      requests: [
+        {
+          request: { path: '/produtos?busca=ca' },
+          expect: {
+            status: 200,
+            body: {
+              produtos: PRODUTOS_BUSCA_CA,
+            },
+          },
+        },
+      ],
+    },
+    {
+      name: 'sem o parâmetro busca lista os produtos como na etapa anterior',
+      requests: [
+        {
+          request: { path: '/produtos?limite=3' },
+          expect: { status: 200, body: { itens: [{ id: 1, nome: 'Teclado mecânico', preco_centavos: 34990 }, { id: 2, nome: 'Teclado sem fio', preco_centavos: 19990 }, { id: 3, nome: 'Tela 24 polegadas', preco_centavos: 89990 }], proximoCursor: 3 } },
+        },
       ],
     },
     {
@@ -236,14 +307,15 @@ const busca: Stage = {
     { id: 'sem-select-estrela' },
     { id: 'sql-parametrizado' },
     { id: 'paginacao-cursor', path: '/produtos?limite=1000', max: 50 },
+    { id: 'indice-busca' },
   ],
   hints: [
     'Crie o arquivo migrations/002_indice_busca.sql com o CREATE INDEX e adicione a função de busca em src/db/produtos.ts.',
     'O índice em lower(nome) só é aproveitado se a consulta usar exatamente a mesma expressão: WHERE lower(nome) LIKE $1 ORDER BY lower(nome) LIMIT 20. Lembre-se de escapar % e _ no prefixo.',
-    'Na migração: CREATE INDEX produtos_nome_idx ON produtos (lower(nome));. Na busca: escape curingas com busca.trim().toLowerCase().replace(/[\\\\%_]/g, "\\\\$&") + "%" e lance ErroHttp(400, ...) se a busca estiver vazia.',
+    'Na migração: CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);. Na busca: escape curingas com busca.trim().toLowerCase().replace(/[\\\\%_]/g, "\\\\$&") + "%" e lance ErroHttp(400, ...) se a busca estiver vazia.',
   ],
   explanation:
-    'Índices em expressões como lower(nome) mantêm uma árvore ordenada dos valores calculados, permitindo que buscas por prefixo (LIKE "abc%") encontrem rapidamente o intervalo desejado. Sem o índice, toda busca percorreria todas as páginas da tabela no disco. A ordem ORDER BY lower(nome) aproveita a própria ordenação do índice B-Tree, dispensando um passo extra de ordenação em memória.',
+    'Índices em expressões como lower(nome) mantêm uma árvore ordenada dos valores calculados, permitindo que buscas por prefixo (LIKE "abc%") encontrem rapidamente o intervalo desejado. Em collations como pt_BR ou en_US, o índice B-Tree padrão não atende a buscas LIKE por prefixo; a classe de operadores text_pattern_ops faz a ordenação caractere por caractere (C locale), permitindo a busca por intervalo no índice. Sem o índice, toda busca percorreria todas as páginas da tabela no disco. A ordem ORDER BY lower(nome) aproveita a própria ordenação do índice B-Tree, dispensando um passo extra de ordenação em memória.',
   reference: { hono: referencia('hono', 3), fetch: referencia('fetch', 3) },
 }
 

@@ -15,9 +15,9 @@ const contas: Stage = {
   statement:
     'Em sistemas financeiros, dinheiro nunca é armazenado em ponto flutuante (float) devido a imprecisões de arredondamento; valores monetários devem ser inteiros representando centavos. Além disso, validar entradas na borda com Zod e padronizar erros em problem+json (RFC 9457) evita que dados corrompidos cheguem ao banco e garante previsibilidade aos clientes da API.\n\n' +
     'Crie as rotas de contas em src/routes/contas.ts e o acesso ao banco em src/db/contas.ts (tabela contas em migrations/001_contas.sql, com id serial, titular text e saldo_centavos int não negativo).\n' +
-    '- POST /contas: recebe { titular, saldo_centavos }, valida com Zod (titular não vazio e saldo_centavos inteiro >= 0), grava a conta e responde 201 com cabeçalho Location (/contas/:id) e o corpo { id, titular, saldo_centavos }.\n' +
+    '- POST /contas: recebe { titular, saldo_centavos }, valida com Zod (titular não vazio e saldo_centavos inteiro entre 0 e 2147483647), grava a conta e responde 201 com cabeçalho Location (/contas/:id) e o corpo { id, titular, saldo_centavos }.\n' +
     '- GET /contas: lista todas as contas cadastradas ordenadas por id.\n' +
-    '- GET /contas/:id: busca a conta pelo id (200 com a conta ou 404 problem+json se não existir).\n' +
+    '- GET /contas/:id: busca a conta pelo id (200 com a conta, 404 se não existir; id não numérico ou fora da faixa int4 responde 400 problem+json).\n' +
     '- Dados inválidos ou rotas inexistentes respondem 400 ou 404 em application/problem+json com type, title e status.',
   files: ['src/index.ts', 'src/env.ts', 'src/http.ts', 'src/validacao.ts', 'src/db/contas.ts', 'src/routes/contas.ts', 'migrations/001_contas.sql'],
   seed: CONTAS_SEED,
@@ -60,6 +60,8 @@ const contas: Stage = {
       requests: [
         { request: { path: '/contas/1' }, expect: { status: 200, body: { id: 1, titular: 'Ana', saldo_centavos: 10000 } } },
         { request: { path: '/contas/999' }, expect: { status: 404, body: { status: 404 } } },
+        { request: { path: '/contas/abc' }, expect: { status: 400, body: { status: 400 } } },
+        { request: { path: '/contas/9999999999' }, expect: { status: 400, body: { status: 400 } } },
         { request: { path: '/inexistente' }, expect: { status: 404, body: { status: 404 } } },
       ],
     },
@@ -69,6 +71,7 @@ const contas: Stage = {
       requests: [
         { request: post('/contas', { titular: '', saldo_centavos: -100 }), expect: { status: 400, body: { status: 400 } } },
         { request: post('/contas', { titular: 'Eduardo', saldo_centavos: 10.5 }), expect: { status: 400, body: { status: 400 } } },
+        { request: post('/contas', { titular: 'Eduardo', saldo_centavos: 3000000000 }), expect: { status: 400, body: { status: 400 } } },
       ],
       db: { sql: 'SELECT count(*)::int AS n FROM contas', rows: [{ n: 3 }] },
     },
@@ -82,9 +85,9 @@ const contas: Stage = {
     { id: 'validacao-400', request: post('/contas', { titular: '', saldo_centavos: -100 }), fields: ['titular', 'saldo_centavos'] },
   ],
   hints: [
-    'Comece pela migração migrations/001_contas.sql e pelas consultas em src/db/contas.ts, mantendo o SQL fora das rotas.',
-    'Em src/validacao.ts, defina o schema com z.object({ titular: z.string().trim().min(1), saldo_centavos: z.number().int().min(0) }) e capture os erros em safeParse.',
-    'No Hono, responda c.header("Location", "/contas/" + criada.id) e c.json(criada, 201). Para erros, c.json({ type: "about:blank", title, status, ... }, status, { "Content-Type": "application/problem+json" }).',
+    'Veja como src/routes/health.ts e src/index.ts já estão organizados no projeto: copie o padrão new Hono + app.route; o banco chega em c.env.db. Para padronizar os erros no formato problem+json, use ErroHttp e problema de src/http.ts.',
+    'Em src/validacao.ts, defina o schema com z.object({ titular: z.string().trim().min(1), saldo_centavos: z.number().int().min(0).max(2147483647) }) e capture os erros em safeParse (limitar a 2147483647 evita estouro do tipo int no banco).',
+    'No Hono, responda c.header("Location", "/contas/" + criada.id) e c.json(criada, 201). Para erros ou rotas de busca, use idDe(c.req.param("id")) e achado(...) importados de src/http.ts.',
   ],
   explanation:
     'Guardar saldo em centavos inteiros elimina erros de arredondamento inerentes a números decimais de ponto flutuante. Validar na borda com Zod impede dados inválidos antes que toquem o banco de dados, e a RFC 9457 (problem+json) oferece uma estrutura consistente de erro para qualquer consumidor da API.',
@@ -97,7 +100,7 @@ const transferencias: Stage = {
   statement:
     'Quando duas transferências ocorrem simultaneamente a partir da mesma conta, ler o saldo na memória e depois atualizar gera uma condição de corrida (race condition): ambas leem o saldo antigo e debitam, deixando a conta com saldo negativo. Para garantir consistência financeira, débito e crédito precisam ocorrer dentro de uma transação, e a conferência de saldo deve ser atômica usando um UPDATE condicional ou SELECT ... FOR UPDATE.\n\n' +
     'Crie migrations/002_transferencias.sql com a tabela transferencias (id serial, de int, para int, valor_centavos int, criado_em timestamptz) e a rota POST /transferencias.\n' +
-    '- POST /transferencias: recebe { de, para, valor_centavos }, valida com Zod (de e para inteiros positivos diferentes, valor_centavos inteiro positivo).\n' +
+    '- POST /transferencias: recebe { de, para, valor_centavos }, valida com Zod (de e para inteiros positivos diferentes até 2147483647, valor_centavos inteiro positivo até 2147483647).\n' +
     '- Dentro de db.transaction, confira o saldo e debite na conta de origem, credite na conta de destino e grave a transferência.\n' +
     '- Se a conta de origem não tiver saldo suficiente, responda 409 (Conflict) no formato problem+json.\n' +
     '- Se a conta de origem ou de destino não existir, responda 404 problem+json e desfaça qualquer alteração.\n' +
@@ -132,7 +135,7 @@ const transferencias: Stage = {
       },
     },
     {
-      name: 'duas transferências concorrentes nunca deixam saldo negativo',
+      name: 'gasto duplo sequencial não deixa saldo negativo',
       requests: [
         { request: post('/transferencias', { de: 1, para: 2, valor_centavos: 6000 }), expect: { status: 200, body: { saldo_centavos: 4000 } } },
         { request: post('/transferencias', { de: 1, para: 3, valor_centavos: 6000 }), expect: { status: 409, body: { status: 409 } } },
@@ -161,6 +164,7 @@ const transferencias: Stage = {
         { request: post('/transferencias', { de: 1, para: 1, valor_centavos: 500 }), expect: { status: 400, body: { status: 400 } } },
         { request: post('/transferencias', { de: 1, para: 2, valor_centavos: -500 }), expect: { status: 400, body: { status: 400 } } },
         { request: post('/transferencias', { de: -1, para: 2, valor_centavos: 500 }), expect: { status: 400, body: { status: 400 } } },
+        { request: post('/transferencias', { de: 1, para: 2, valor_centavos: 3000000000 }), expect: { status: 400, body: { status: 400 } } },
       ],
       db: {
         sql: 'SELECT saldo_centavos FROM contas ORDER BY id',
@@ -170,6 +174,7 @@ const transferencias: Stage = {
   ],
   checklist: [
     { id: 'transacao' },
+    { id: 'saldo-atomico' },
     { id: 'sql-parametrizado' },
     { id: 'camadas' },
     { id: 'sem-select-estrela' },
@@ -182,7 +187,9 @@ const transferencias: Stage = {
     'Dentro de db.transaction(async (tx) => { ... }), se a conta de destino não existir lance um ErroHttp(404, "Conta não encontrada") para abortar a transação e desfazer o débito.',
   ],
   explanation:
-    'O UPDATE com condição (WHERE saldo_centavos >= $1) bloqueia a linha no PostgreSQL durante a execução e garante atomicidade: duas requisições simultâneas nunca leem o mesmo saldo desatualizado. Envolver as operações em db.transaction assegura atomicidade ACID: se o crédito ou o registro falharem, o débito é revertido imediatamente.',
+    'O banco de dados no navegador (PGlite) executa uma transação por vez na mesma sessão, por isso a condição de corrida é ensinada e validada de forma estática no checklist. ' +
+    'Em um PostgreSQL real no nível de isolamento padrão (READ COMMITTED), quando duas transações tentam alterar a mesma linha, a segunda aguarda o lock; quando a primeira conclui (COMMIT), a segunda reavalia a cláusula WHERE sobre a versão mais recente da linha (re-evaluation), fazendo o WHERE saldo_centavos >= $1 falhar se o saldo não for mais suficiente. ' +
+    'Além disso, transferências simultâneas em sentidos opostos (A->B e B->A) podem causar deadlock; travar ambas as contas na mesma ordem (por exemplo, ordenando por id com SELECT id FROM contas WHERE id = ANY($1) ORDER BY id FOR UPDATE) elimina o risco de impasse.',
   reference: { hono: referencia('hono', 2), fetch: referencia('fetch', 2) },
 }
 
@@ -192,9 +199,10 @@ const pagamentos: Stage = {
   statement:
     'Instabilidades de rede em operações de pagamento frequentemente levam clientes a repetir requisições. Sem proteção de idempotência, uma cobrança repetida cobra o cliente duas vezes. Com o cabeçalho Idempotency-Key, o servidor reconhece requisições idênticas já processadas e devolve a resposta original sem executar uma nova cobrança.\n\n' +
     'Crie migrations/003_pagamentos.sql com pagamentos (id serial, chave text UNIQUE, valor_centavos int, criado_em timestamptz) e a rota POST /pagamentos.\n' +
-    '- POST /pagamentos: exige o cabeçalho Idempotency-Key e corpo { valor_centavos } (inteiro positivo). Sem o cabeçalho ou com valor inválido, responda 400 problem+json.\n' +
+    '- POST /pagamentos: exige o cabeçalho Idempotency-Key e corpo { valor_centavos } (inteiro positivo até 2147483647). Sem o cabeçalho ou com valor inválido, responda 400 problem+json.\n' +
     '- Se for uma chave nova, grave o pagamento e responda 201 com { id, valor_centavos }.\n' +
-    '- Se a chave já existir, devolva o pagamento existente com status 201 e o mesmo corpo, sem inserir um novo registro.\n' +
+    '- Se a chave já existir com o mesmo valor, devolva o pagamento existente com status 201 e o mesmo corpo, sem inserir um novo registro.\n' +
+    '- Se a chave já existir com valor diferente, responda 422 problem+json ("Chave de idempotência reutilizada") e não crie nenhum registro.\n' +
     '- Duas requisições simultâneas com a mesma chave devem inserir apenas um pagamento e ambas receberem a mesma resposta 201.',
   files: [...transferencias.files, 'src/db/pagamentos.ts', 'src/routes/pagamentos.ts', 'migrations/003_pagamentos.sql'],
   seed: FINTECH_SEED,
@@ -220,7 +228,17 @@ const pagamentos: Stage = {
       db: { sql: 'SELECT count(*)::int AS n FROM pagamentos', rows: [{ n: 1 }] },
     },
     {
-      name: 'duas requisições simultâneas com a mesma chave cobram apenas uma vez',
+      name: 'mesma chave de idempotência com valor diferente responde 422',
+      requests: [
+        {
+          request: post('/pagamentos', { valor_centavos: 9999 }, { 'Idempotency-Key': 'pedido-41' }),
+          expect: { status: 422, body: { status: 422, title: 'Chave de idempotência reutilizada' } },
+        },
+      ],
+      db: { sql: 'SELECT count(*)::int AS n FROM pagamentos', rows: [{ n: 1 }] },
+    },
+    {
+      name: 'replay com a mesma chave cobra apenas uma vez',
       requests: [
         { request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }), expect: { status: 201, body: { id: 2, valor_centavos: 990 } } },
         { request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }), expect: { status: 201, body: { id: 2, valor_centavos: 990 } } },
@@ -233,6 +251,7 @@ const pagamentos: Stage = {
       requests: [
         { request: post('/pagamentos', { valor_centavos: 1000 }), expect: { status: 400, body: { status: 400 } } },
         { request: post('/pagamentos', { valor_centavos: -50 }, { 'Idempotency-Key': 'pedido-44' }), expect: { status: 400, body: { status: 400 } } },
+        { request: post('/pagamentos', { valor_centavos: 3000000000 }, { 'Idempotency-Key': 'pedido-45' }), expect: { status: 400, body: { status: 400 } } },
       ],
       db: { sql: 'SELECT count(*)::int AS n FROM pagamentos', rows: [{ n: 1 }] },
     },
@@ -248,10 +267,11 @@ const pagamentos: Stage = {
   hints: [
     'Obtenha a chave pelo cabeçalho (c.req.header("idempotency-key") no Hono ou req.headers.get("idempotency-key") no fetch puro) em src/routes/pagamentos.ts.',
     'Para evitar concorrência entre requisições simultâneas, use INSERT INTO pagamentos (chave, valor_centavos) VALUES ($1, $2) ON CONFLICT (chave) DO NOTHING RETURNING id, valor_centavos.',
-    'Se o INSERT com ON CONFLICT não retornar linhas, significa que a chave já existia: busque o registro existente com SELECT id, valor_centavos FROM pagamentos WHERE chave = $1 e retorne 201.',
+    'Se o INSERT com ON CONFLICT não retornar linhas, a chave já existia: busque o registro com SELECT id, valor_centavos FROM pagamentos WHERE chave = $1. Se o valor_centavos for diferente do recebido, lance ErroHttp(422, "Chave de idempotência reutilizada"); se for igual, devolva o registro existente com 201.',
   ],
   explanation:
-    'A restrição UNIQUE no banco aliada ao comando INSERT ... ON CONFLICT DO NOTHING resolve a concorrência na gravação: apenas uma requisição consegue inserir, enquanto a outra simplesmente consulta o registro criado. Isso torna a operação segura contra retentativas de rede de forma idempotente.',
+    'A restrição UNIQUE no banco aliada ao comando INSERT ... ON CONFLICT DO NOTHING resolve a concorrência na gravação: apenas uma requisição consegue inserir, enquanto a outra consulta o registro existente. ' +
+    'Em caso de repetição (replay com a mesma chave e o mesmo valor), a API responde o mesmo status 201 com os dados originais. Isso é o comportamento correto de idempotência: a operação já ocorreu com sucesso e repetir a mesma resposta original tranquiliza o cliente sem cobrar duas vezes.',
   reference: { hono: referencia('hono', 3), fetch: referencia('fetch', 3) },
 }
 

@@ -27,7 +27,25 @@ const failures = (r: StageResult) => [
 /** The mistake a beginner makes at each stage, applied to a file the two frameworks share. */
 const NAIVE: [file: string, from: string, to: string, breaks: 'tests' | 'checklist'][] = [
   ['src/http.ts', "'application/problem+json'", "'application/json'", 'checklist'],
-  ['src/db/transferencias.ts', 'AND saldo_centavos >= $1 ', '', 'tests'],
+  [
+    'src/db/transferencias.ts',
+    `    await tx.query('SELECT id FROM contas WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[de, para]])
+    const [origem] = await tx.query<{ saldo_centavos: number }>(
+      'UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2 AND saldo_centavos >= $1 RETURNING saldo_centavos',
+      [valor, de],
+    )
+    if (!origem) {
+      const existe = await tx.query('SELECT 1 FROM contas WHERE id = $1', [de])
+      if (!existe.length) throw new ErroHttp(404, 'Conta não encontrada', 'Conta de origem não encontrada.')
+      throw new ErroHttp(409, 'Saldo insuficiente', 'Saldo insuficiente para realizar a transferência.')
+    }`,
+    `    const [origem] = await tx.query<{ saldo_centavos: number }>('SELECT saldo_centavos FROM contas WHERE id = $1', [de])
+    if (!origem) throw new ErroHttp(404, 'Conta não encontrada', 'Conta de origem não encontrada.')
+    if (origem.saldo_centavos < valor) throw new ErroHttp(409, 'Saldo insuficiente', 'Saldo insuficiente para realizar a transferência.')
+    origem.saldo_centavos -= valor
+    await tx.query('UPDATE contas SET saldo_centavos = $1 WHERE id = $2', [origem.saldo_centavos, de])`,
+    'checklist',
+  ],
   ['src/db/pagamentos.ts', 'ON CONFLICT (chave) DO NOTHING ', '', 'tests'],
 ]
 
