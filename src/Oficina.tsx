@@ -113,6 +113,9 @@ interface Run {
   load?: { summary: RunSummary; cost: RequestMetrics; stars: number; xp: number }
 }
 
+/** Exercise company name to its career company's id (the line colour); the warm-up has none. */
+const COMPANY_ID: Record<string, string> = { Startup: 'startup', 'E-commerce': 'ecommerce', Fintech: 'fintech' }
+
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1).replace('.', ',')}%`
 const decimal = (n: number) => (Math.round(n * 10) / 10).toLocaleString('pt-BR')
 
@@ -125,9 +128,9 @@ export default function Oficina() {
   const [announce, setAnnounce] = useState('')
   // Per exercise: failed submissions this visit (one hint each) and whether it passed (saved with its result).
   const [failed, setFailed] = useState<Record<string, number>>({})
-  const [passed, setPassed] = useState<Record<string, boolean>>(() => {
+  const [passed, setPassed] = useState<Record<string, number>>(() => {
     const saved = loadSavedResults()
-    return Object.fromEntries(EXERCISES.filter((e) => saved[resultId(e.id)]).map((e) => [e.id, true]))
+    return Object.fromEntries(EXERCISES.filter((e) => saved[resultId(e.id)]).map((e) => [e.id, saved[resultId(e.id)].stars]))
   })
   const [resetKey, setResetKey] = useState(0)
   const [warming, setWarming] = useState(true)
@@ -165,7 +168,7 @@ export default function Oficina() {
     setRunning(null)
     setRun({ which, results, load })
     if (which === 'all') {
-      if (ok) setPassed((p) => ({ ...p, [exercise.id]: true }))
+      if (ok) setPassed((p) => ({ ...p, [exercise.id]: Math.max(p[exercise.id] ?? 0, load!.stars) }))
       else setFailed((f) => ({ ...f, [exercise.id]: (f[exercise.id] ?? 0) + 1 }))
     }
     const unlocked = which === 'all' && !ok && (failed[exercise.id] ?? 0) < exercise.hints.length
@@ -191,6 +194,18 @@ export default function Oficina() {
     v.focus()
   }
 
+  // Arrow keys move between the strip's buttons (they stay tabbable too).
+  const arrows = (e: React.KeyboardEvent<HTMLElement>) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key]
+    if (!step) return
+    const pills = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('.oficina__pill:not(:disabled)')]
+    const next = pills[pills.indexOf(document.activeElement as HTMLButtonElement) + step]
+    if (next) {
+      e.preventDefault()
+      next.focus()
+    }
+  }
+
   const hints = unlockedHints(current.hints, failed[current.id] ?? 0)
 
   return (
@@ -207,26 +222,35 @@ export default function Oficina() {
         </p>
       </header>
 
-      <div className="oficina__layout">
-        <nav className="oficina__list" aria-label="Exercícios">
-          {byCompany(EXERCISES).map(([company, items]) => (
-            <section key={company}>
-              <h2>{company}</h2>
-              <ul>
-                {items.map((e) => (
-                  <li key={e.id}>
-                    <button type="button" aria-current={e.id === current.id ? 'true' : undefined} disabled={running !== null} onClick={() => open(e)}>
-                      {e.title}
-                      {passed[e.id] && <span className="oficina__done"> · passou</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </nav>
+      <nav className="oficina__strip" aria-label="Exercícios" onKeyDown={arrows}>
+        {byCompany(EXERCISES).map(([company, items]) => (
+          <div key={company} className="oficina__group" role="group" aria-label={company} data-company={COMPANY_ID[company]}>
+            <span className="oficina__co">{company}</span>
+            {items.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                className="oficina__pill"
+                aria-pressed={e.id === current.id}
+                disabled={running !== null}
+                onClick={() => open(e)}
+              >
+                {e.title}
+                {passed[e.id] !== undefined && (
+                  <span className="oficina__done">
+                    {' '}
+                    <Stars count={passed[e.id]} />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
 
-        <section className="oficina__work" aria-labelledby="oficina-title">
+      <div className="oficina__layout">
+        <div className="oficina__left">
+          <section className="oficina__work" aria-labelledby="oficina-title">
           <p className="phase__where">{current.company}</p>
           <h2 id="oficina-title" className="oficina__title">
             {current.title}
@@ -251,6 +275,10 @@ export default function Oficina() {
             {announce || (warming ? 'Carregando o Postgres do navegador…' : '')}
           </p>
 
+          </section>
+        </div>
+
+        <div className="oficina__right">
           {run && (
             <section aria-labelledby="oficina-results">
               <h3 id="oficina-results">{run.which === 'all' ? 'Resultado do envio' : 'Testes visíveis'}</h3>
@@ -349,14 +377,14 @@ export default function Oficina() {
             </section>
           )}
 
-          {passed[current.id] && (
+          {passed[current.id] !== undefined && (
             <section aria-labelledby="oficina-reference">
               <h3 id="oficina-reference">Solução de referência</h3>
               <p className="oficina__statement">{current.explanation}</p>
               <Code code={current.reference} />
             </section>
           )}
-        </section>
+        </div>
       </div>
     </div>
     </>
