@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react'
 import { Stars } from './Stars'
-import { loadSavedResults, unlockedHints } from './oficina/progress'
+import { loadSavedResults, revealedHints } from './oficina/progress'
 import { info, type CheckInfo, type Verdict } from './oficina/projeto/checklist'
 import { buildContext } from './oficina/projeto/context'
 import { docsFor } from './oficina/projeto/docs'
@@ -18,13 +18,15 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
   const [running, setRunning] = useState(false)
   // Failed runs per stage this visit: one hint each.
   const [failed, setFailed] = useState<Record<string, number>>({})
+  // Hints per stage the player asked for with "Ver próxima dica", on top of hint 1 and one per failed run.
+  const [revealed, setRevealed] = useState<Record<string, number>>({})
   const [status, setStatus] = useState('')
 
   const stage = course.stages[index]
   const passed = stagePassed(saved, course.id, stage.id)
   const failure = run?.result.tests.find((t) => !t.passed)
   const explanation = failure && explain(failure)
-  const hints = unlockedHints(stage.hints, failed[stage.id] ?? 0)
+  const visibleHints = revealedHints(stage.hints, failed[stage.id] ?? 0, revealed[stage.id] ?? 0)
   // Before a run, what the checklist asks; after, how the code did.
   const checks: (CheckInfo & Partial<Verdict>)[] = run?.result.checklist ?? stage.checklist.map((c) => info(c.id))
 
@@ -47,8 +49,8 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
       } else setFailed((f) => ({ ...f, [stage.id]: (f[stage.id] ?? 0) + 1 }))
       setRun({ result, xp })
       const count = `${result.tests.filter((t) => t.passed).length} de ${stage.tests.length} testes passaram.`
-      const unlocked = !result.passed && (failed[stage.id] ?? 0) < stage.hints.length
-      setStatus(result.passed ? `${count} ${result.stars} de 3 estrelas.` : `${count}${unlocked ? ' Uma dica nova foi liberada.' : ''}`)
+      const newHint = !result.passed && (failed[stage.id] ?? 0) < stage.hints.length
+      setStatus(result.passed ? `${count} ${result.stars} de 3 estrelas.` : `${count}${newHint ? ' Uma dica nova foi liberada.' : ''}`)
     } catch (err) {
       setStatus(`Os testes não rodaram: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -178,16 +180,25 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
         </section>
       )}
 
-      {hints.length > 0 && (
+      {visibleHints.length > 0 && (
         <section aria-labelledby="etapa-hints" className="projeto__slot">
           <h4 id="etapa-hints" className="projeto__label">
-            Dicas
+            Dica {visibleHints.length} de {stage.hints.length}
           </h4>
           <ol className="oficina__hints">
-            {hints.map((h) => (
+            {visibleHints.map((h) => (
               <li key={h}>{h}</li>
             ))}
           </ol>
+          {visibleHints.length < stage.hints.length && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}
+            >
+              Ver próxima dica
+            </button>
+          )}
         </section>
       )}
 

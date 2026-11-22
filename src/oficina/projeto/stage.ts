@@ -83,8 +83,8 @@ export function saveStageResult(course: string, stage: string, result: Pick<Stag
 /** Whether the stage has a saved result that passed its tests. */
 export const stagePassed = (results: Results, course: string, stage: string) => (results[stageResultId(course, stage)]?.stars ?? 0) > 0
 
-/** Where the player resumes: the first stage not passed yet, or the last when all are. A stage opens only once the one before it passed. */
+/** Where the player resumes: right after the last stage passed (so a stage added before saved ones is not forced on old players), or the last when all are. */
 export function resumeStage(course: ProjectCourse, results: Results): number {
-  const i = course.stages.findIndex((s) => !stagePassed(results, course.id, s.id))
-  return i === -1 ? course.stages.length - 1 : i
+  const last = course.stages.findLastIndex((s) => stagePassed(results, course.id, s.id))
+  return Math.min(last + 1, course.stages.length - 1)
 }

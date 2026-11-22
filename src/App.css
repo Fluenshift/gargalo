@@ -3181,6 +3181,8 @@ a.levels__map {
 
 .oficina__statement {
   max-width: 72ch;
+  /* Stage texts are written with line breaks: numbered steps, lists and code examples. */
+  white-space: pre-line;
 }
 
 .oficina__editor {

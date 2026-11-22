@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RESULTS_KEY, XP_PER_LEVEL, XP_PER_STAR, totalXp } from '../score'
-import { allPassed, byCompany, clearCode, codeKey, loadCode, loadSavedResults, resultId, saveCode, saveResult, unlockedHints } from './progress'
+import { allPassed, byCompany, clearCode, codeKey, loadCode, loadSavedResults, resultId, revealedHints, saveCode, saveResult, unlockedHints } from './progress'
 
 function memoryStorage() {
   const data = new Map<string, string>()
@@ -41,6 +41,16 @@ describe('hints and results', () => {
     expect(unlockedHints(hints, 0)).toEqual([])
     expect(unlockedHints(hints, 1)).toEqual(['a'])
     expect(unlockedHints(hints, 5)).toEqual(['a', 'b'])
+  })
+
+  it('revealedHints shows hint 1 at once, then one more per failed run or request', () => {
+    const hints = ['a', 'b', 'c']
+    expect(revealedHints([], 0, 0)).toEqual([])
+    expect(revealedHints(hints, 0, 0)).toEqual(['a'])
+    expect(revealedHints(hints, 1, 0)).toEqual(['a', 'b'])
+    expect(revealedHints(hints, 0, 1)).toEqual(['a', 'b'])
+    expect(revealedHints(hints, 1, 1)).toEqual(['a', 'b', 'c'])
+    expect(revealedHints(hints, 9, 9)).toEqual(hints)
   })
 
   it('passes only when there are results and all of them passed', () => {

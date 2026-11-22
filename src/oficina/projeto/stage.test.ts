@@ -151,6 +151,10 @@ describe('resumeStage', () => {
     expect(resumeStage(course, won('criar-produto', 'b', 'z'))).toBe(2)
   })
 
+  it('skips a new first stage the player never saw when later ones are saved', () => {
+    expect(resumeStage(course, won('b'))).toBe(2)
+  })
+
   it('counts a stage as passed only with a starred result of the same course', () => {
     expect(stagePassed(won('b'), 'c', 'b')).toBe(true)
     expect(stagePassed(won('b'), 'outro', 'b')).toBe(false)

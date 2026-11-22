@@ -30,11 +30,55 @@ const USUARIOS: TestStep[] = [
 
 const itensDe = (...ids: number[]) => ids.map((id) => ({ id, nome: 'Produto ' + id, preco_centavos: id * 100 }))
 
+const primeirosPassos: Stage = {
+  id: 'primeiros-passos',
+  title: 'Primeiros passos',
+  statement: [
+    '1. Como esta tela funciona. À esquerda ficam os Arquivos do projeto: clique num nome para abrir no editor. Embaixo, Banco mostra as tabelas e as migrações SQL (arquivos que criam ou alteram tabelas) e Console mostra o que sua API registrou. Aqui à direita, a aba Requisição chama sua API como um navegador faria, e o botão Rodar testes confere a etapa: ele dá de 0 a 3 estrelas, e as dicas desta aba ajudam quando travar.',
+    '2. O que é o Hono. É uma biblioteca para escrever APIs em TypeScript; este projeto usa ela, ou o fetch puro (a função padrão da web, sem biblioteca). Cinco coisas aparecem o tempo todo:\n' +
+      '   - new Hono() cria o app, que recebe as requisições. Ex.: const app = new Hono()\n' +
+      '   - app.get(caminho, (c) => ...) diz o que responder a um GET naquele caminho; c é o contexto da requisição. Ex.: app.get("/ping", (c) => c.text("pong"))\n' +
+      '   - c.json(objeto, status) responde com JSON; o status é opcional (padrão 200). Ex.: c.json({ erro: "x" }, 404)\n' +
+      '   - app.route("/x", sub) monta um grupo de rotas (sub, outro Hono) sob o prefixo /x. Ex.: app.route("/health", health)\n' +
+      '   - c.env.db.query(sql, params) fala com o banco; os $1, $2 do SQL recebem os valores de params. Ex.: c.env.db.query("SELECT * FROM produtos WHERE id = $1", [id])',
+    '3. No fetch puro, o app é um objeto: export default { fetch(req, env) { ... } }. Leia o caminho com new URL(req.url).pathname, o método com req.method, e responda com Response.json(objeto, { status }). O banco é env.db.query(sql, params).',
+    '4. O que cada arquivo do projeto faz:\n' +
+      '   - src/index.ts: a porta de entrada; registra as rotas.\n' +
+      '   - src/routes/health.ts: a rota GET /health, que mostra o formato de uma rota.\n' +
+      '   - src/db/saude.ts: o SQL de que a rota precisa. Rotas cuidam de HTTP; o SQL fica em src/db/.\n' +
+      '   - src/env.ts: o tipo do env, ou seja, o que o Workers entrega ao app (aqui, o banco).\n' +
+      '   - migrations/001_init.sql: cria a tabela produtos.',
+    'Sua tarefa: criar GET /ola, que responde 200 com { "mensagem": "olá" }.',
+    '5. No Hono: abra src/routes/health.ts e use-o de modelo; crie src/routes/ola.ts com um new Hono() exportado como ola e, nele, ola.get("/", (c) => c.json({ mensagem: "olá" })).',
+    '6. Registre em src/index.ts: importe ola e escreva app.route("/ola", ola) junto do app.route("/health", health). No fetch puro: crie src/routes/ola.ts com export function ola() que devolve Response.json({ mensagem: "olá" }) e, em src/index.ts, adicione if (req.method === "GET" && pathname === "/ola") return ola().',
+    '7. Teste na aba Requisição: método GET, caminho /ola, Enviar. Deve vir 200 e o JSON esperado.',
+    '8. Clique em Rodar testes.',
+  ].join('\n'),
+  files: ['src/index.ts', 'src/routes/ola.ts', 'src/env.ts', 'migrations/001_init.sql'],
+  tests: [
+    { name: 'GET /ola responde 200 com a mensagem', requests: [{ request: { path: '/ola' }, expect: { status: 200, body: { mensagem: 'olá' } } }] },
+    { name: 'GET /health continua respondendo ok', requests: [{ request: { path: '/health' }, expect: { status: 200, body: { status: 'ok' } } }] },
+  ],
+  checklist: [{ id: 'camadas' }],
+  hints: [
+    'Abra src/routes/health.ts: sua rota nova é parecida. Crie src/routes/ola.ts e registre-a em src/index.ts.',
+    'Em src/routes/ola.ts exporte um roteador com uma rota GET na raiz que responde JSON; em src/index.ts, app.route("/ola", ola). No fetch puro, um if para o caminho /ola.',
+    'Hono: export const ola = new Hono<{ Bindings: Env }>() e ola.get("/", (c) => c.json({ mensagem: "olá" })). Fetch puro: Response.json({ mensagem: "olá" }).',
+  ],
+  explanation:
+    'GET /ola é a menor rota possível: sem banco, sem validação. Serve para ver o ciclo completo (criar a rota, registrar, chamar, testar) antes das etapas seguintes, que usam o mesmo caminho com mais regras.',
+  reference: { hono: referencia('hono', 0), fetch: referencia('fetch', 0) },
+}
+
 const health: Stage = {
   id: 'health',
   title: 'Health check',
   statement:
-    'GET /health responde 200 com { "status": "ok" } depois de falar com o banco (SELECT 1). Qualquer rota que não existe responde 404 no formato problem+json (RFC 9457): Content-Type application/problem+json, com type, title e status.',
+    '1. Abra src/routes/health.ts: a rota GET / já existe no starter, mas confirme que ela faz await bancoResponde(c.env.db) antes de responder { "status": "ok" }.\n' +
+    '2. Crie src/http.ts, onde ficam os erros da API. problem+json (RFC 9457) é o formato padrão de erro de API: Content-Type application/problem+json, com type, title e status. Escreva: (a) class ErroHttp extends Error, com status, title e extra, para lançar um erro de qualquer lugar; (b) problema(status, title, detail?, extra?), que devolve Response.json({ type: "about:blank", title, status, detail, ...extra }, { status, headers: { "Content-Type": "application/problem+json" } }); (c) deErro(err), que transforma um ErroHttp em problema(...) e qualquer outro erro em problema(500, ...); (d) idDe(texto), que converte o :id da URL em número ou lança ErroHttp 404; (e) achado(valor, nome), que lança ErroHttp 404 quando valor é undefined.\n' +
+    '3. Abra src/index.ts e adicione o 404: no Hono, app.notFound(() => problema(404, "Rota não encontrada")) e app.onError(deErro) para os erros lançados; no fetch puro, devolva problema(404, "Rota não encontrada") no lugar do retorno final e envolva o roteamento em try/catch que devolve deErro(err).\n' +
+    '4. Teste na aba Requisição: GET /health deve responder 200 { "status": "ok" }; GET /nada deve responder 404 com Content-Type application/problem+json.\n' +
+    '5. Clique em Rodar testes.',
   files: ['src/index.ts', 'src/routes/health.ts', 'src/db/saude.ts', 'src/env.ts', 'src/http.ts', 'migrations/001_init.sql'],
   tests: [
     { name: 'GET /health responde ok', requests: [{ request: { path: '/health' }, expect: { status: 200, body: { status: 'ok' } } }] },
@@ -55,7 +99,12 @@ const produtos: Stage = {
   id: 'produtos',
   title: 'CRUD de produtos',
   statement:
-    'Rotas de produtos, com o SQL num módulo em src/db/ e as rotas só cuidando de HTTP: POST /produtos cria (201, Location e o produto no corpo), GET /produtos lista por id, GET /produtos/:id lê, PUT /produtos/:id troca nome e preço (200) e DELETE /produtos/:id remove (204). Produto que não existe responde 404 problem+json. Colunas: id, nome, preco_centavos.',
+    'As rotas ficam em src/routes/produtos.ts e o SQL em src/db/produtos.ts (uma função por operação). As rotas só cuidam de HTTP; o banco fica em src/db/.\n' +
+    '1. Crie src/db/produtos.ts com funções criarProduto, buscarProduto, listarProdutos, atualizarProduto e removerProduto. Use INSERT … RETURNING, SELECT com colunas explícitas (id, nome, preco_centavos) e DELETE/UPDATE … RETURNING para saber se a linha existia.\n' +
+    '2. Crie src/routes/produtos.ts com as rotas: POST /produtos cria e responde 201 com o cabeçalho Location (/produtos/:id) e o produto no corpo; GET /produtos lista em ordem de id; GET /produtos/:id lê; PUT /produtos/:id atualiza (200); DELETE /produtos/:id remove (204). Produto inexistente responde 404 problem+json.\n' +
+    '3. Registre em src/index.ts: no Hono, app.route("/produtos", produtos); no fetch puro, desvie pelo pathname e passe o id como parâmetro.\n' +
+    '4. Teste na aba Requisição: POST /produtos com { "nome": "Lápis", "preco_centavos": 150 } deve responder 201 com Location.\n' +
+    '5. Clique em Rodar testes.',
   files: [...health.files, 'src/routes/produtos.ts', 'src/db/produtos.ts'],
   seed: PRODUTOS_SEED,
   tests: [
@@ -116,7 +165,11 @@ const pedidos: Stage = {
   id: 'pedidos',
   title: 'Pedidos com transação',
   statement:
-    'Crie as tabelas em migrations/002_pedidos.sql: pedidos (id, total_centavos, criado_em) e itens_pedido (id, pedido_id, produto_id, quantidade, preco_centavos). POST /pedidos recebe { itens: [{ produtoId, quantidade }] }, grava o pedido e os itens copiando o preço atual de cada produto, calcula o total e responde 201 com Location. Se algum produto não existe, responde 422 e nada fica gravado. GET /pedidos/:id devolve o pedido com { id, total_centavos, itens: [{ produto_id, quantidade, preco_centavos }] }.',
+    '1. Crie migrations/002_pedidos.sql com duas tabelas: pedidos (id serial PRIMARY KEY, total_centavos int, criado_em timestamptz DEFAULT now()) e itens_pedido (id serial, pedido_id int REFERENCES pedidos(id), produto_id int, quantidade int, preco_centavos int). Aplique na aba Banco.\n' +
+    '2. Crie src/db/pedidos.ts com criarPedido e buscarPedido. criarPedido usa uma transação (db.transaction(async (tx) => { … })) para: inserir o pedido, buscar o preço de cada produto (SELECT preco_centavos), inserir cada item e calcular o total. Transação significa que todas as escritas acontecem juntas ou nenhuma acontece; se um produto não existir, lance um erro dentro da transação — ela desfaz tudo.\n' +
+    '3. Crie src/routes/pedidos.ts: POST /pedidos recebe { itens: [{ produtoId, quantidade }] }, chama criarPedido e responde 201 com Location (/pedidos/:id). Se algum produto não existe, responde 422. GET /pedidos/:id devolve { id, total_centavos, itens }.\n' +
+    '4. Registre em src/index.ts: app.route("/pedidos", pedidos) no Hono, ou adicione os casos no fetch puro.\n' +
+    '5. Teste na aba Requisição e clique em Rodar testes.',
   files: [...produtos.files, 'src/routes/pedidos.ts', 'src/db/pedidos.ts', 'migrations/002_pedidos.sql'],
   seed: PRODUTOS_SEED,
   tests: [
@@ -164,7 +217,11 @@ const validacao: Stage = {
   id: 'validacao',
   title: 'Validação com zod e problem+json',
   statement:
-    'Valide a entrada na borda com zod, em src/validacao.ts. POST e PUT de produto exigem nome não vazio e preco_centavos inteiro maior ou igual a zero; POST /pedidos exige ao menos um item com produtoId e quantidade inteiros maiores que zero. Entrada inválida responde 400 problem+json, com a lista de campos inválidos em erros: [{ campo, mensagem }], sem chegar ao banco. Todo erro da API sai em problem+json.',
+    '1. Crie src/validacao.ts com zod (já é uma dependência do projeto). Descreva a entrada de cada rota com z.object: produtoSchema exige nome: z.string().min(1) e preco_centavos: z.number().int().min(0); pedidoSchema exige itens: z.array(…).min(1) com produtoId e quantidade inteiros maiores que zero. zod é uma biblioteca de validação de tipos em tempo de execução.\n' +
+    '2. Escreva lerCorpo(req, schema): lê o corpo JSON com req.json(), passa pelo schema.safeParse(dados) — que não lança, mas devolve { success, data } ou { success: false, error } — e lança new ErroHttp(400, "Dados inválidos", "Corrija os campos indicados.", { erros }), onde erros é a lista { campo, mensagem } montada de error.issues.\n' +
+    '3. Substitua await c.req.json() (ou await req.json()) por await lerCorpo(c.req.raw, produtoSchema) nas rotas de produto e por lerCorpo para pedidos. Entrada inválida responde 400 problem+json com erros: [{ campo, mensagem }] sem chegar ao banco.\n' +
+    '4. Confirme que todo erro da API já sai em problem+json (via app.onError/deErro no Hono ou try/catch no fetch puro).\n' +
+    '5. Teste na aba Requisição: POST /produtos com { "nome": "", "preco_centavos": -1 } deve responder 400 citando nome e preco_centavos. Clique em Rodar testes.',
   files: [...pedidos.files, 'src/validacao.ts'],
   seed: PRODUTOS_SEED,
   tests: [
@@ -212,7 +269,11 @@ const paginacao: Stage = {
   id: 'paginacao',
   title: 'Paginação e filtros',
   statement:
-    'GET /produtos passa a devolver { itens, proximoCursor }: paginado por cursor (id), parâmetros cursor (padrão 0) e limite (padrão 20, no máximo 50: um limite maior vira 50; limite menor que 1 é 400). proximoCursor é o id do último item da página, ou null na última. Filtros: q (parte do nome, sem diferenciar maiúsculas), preco_min e preco_max (em centavos, inclusive). Valide os parâmetros com zod.',
+    '1. Abra src/db/produtos.ts e substitua listarProdutos: a nova assinatura recebe um objeto filtro com cursor (padrão 0), limite (padrão 20), q (texto), preco_min e preco_max. A consulta usa WHERE id > $cursor ORDER BY id LIMIT $n — cursor é a paginação por cursor (não OFFSET): não pula itens se alguém criar ou apagar no meio. Leia uma linha a mais que o limite; se ela existir, há próxima página. Limite máximo: Math.min(limite, 50).\n' +
+    '2. Em src/validacao.ts, adicione listaSchema com z.coerce.number() para cursor, limite, preco_min e preco_max (z.coerce converte strings de query string para número). Adicione também lerConsulta(req, schema) que lê new URL(req.url).searchParams.\n' +
+    '3. Abra src/routes/produtos.ts e passe lerConsulta(req, listaSchema) para listarProdutos. GET /produtos agora devolve { itens, proximoCursor } (null na última página). Limite menor que 1 responde 400.\n' +
+    '4. Registre os filtros opcionais: q (ILIKE), preco_min e preco_max são opcionais; use ($2::text IS NULL OR nome ILIKE $2) para filtrar sem mudar a consulta quando o filtro não veio.\n' +
+    '5. Teste na aba Requisição: GET /produtos?limite=3 deve devolver 3 itens com proximoCursor. Clique em Rodar testes.',
   files: [...validacao.files],
   seed: CATALOGO_SEED,
   tests: [
@@ -324,5 +385,5 @@ const auth: Stage = {
 export const cursoPedidos: ProjectCourse = {
   id: 'ecommerce',
   title: 'API de pedidos do E-commerce',
-  stages: [health, produtos, pedidos, validacao, paginacao, auth],
+  stages: [primeirosPassos, health, produtos, pedidos, validacao, paginacao, auth],
 }

@@ -18,6 +18,21 @@ interface Flags {
 
 const lines = (...parts: (string | false)[]) => parts.filter((p) => p !== false).join('\n') + '\n'
 
+// --- Stage 0 (primeiros-passos): the starter plus GET /ola ---
+
+const OLA_HONO_ROUTE = String.raw`import { Hono } from 'hono'
+import type { Env } from '../env'
+
+export const ola = new Hono<{ Bindings: Env }>()
+
+ola.get('/', (c) => c.json({ mensagem: 'olá' }))
+`
+
+const OLA_FETCH_ROUTE = String.raw`export function ola(): Response {
+  return Response.json({ mensagem: 'olá' })
+}
+`
+
 const HTTP = String.raw`/** An error with the status it should answer; deErro turns it into problem+json. */
 export class ErroHttp extends Error {
   status: number
@@ -579,8 +594,19 @@ export default app
   )
 }
 
-/** The whole project after `stage` (1 to 6). */
+/** The whole project after `stage` (0 to 6). Stage 0 is "primeiros-passos": starter + GET /ola. */
 export function referencia(framework: Framework, stage: number): Record<string, string> {
+  if (stage === 0) {
+    const hono = framework === 'hono'
+    const files = starter('referencia', framework).files
+    files['src/routes/ola.ts'] = hono ? OLA_HONO_ROUTE : OLA_FETCH_ROUTE
+    const ligar = hono ? "app.route('/health', health)" : 'return health(env)'
+    const registro = hono ? "app.route('/ola', ola)" : "if (req.method === 'GET' && pathname === '/ola') return ola()"
+    files['src/index.ts'] = files['src/index.ts']
+      .replace("import { health } from './routes/health'", (m) => [m, "import { ola } from './routes/ola'"].join('\n'))
+      .replace(ligar, (m) => [m, registro].join(hono ? '\n' : '\n' + '    '))
+    return files
+  }
   const f: Flags = { stage, validar: stage >= 4, lista: stage >= 5, auth: stage >= 6 }
   const hono = framework === 'hono'
   const base = starter('referencia', framework).files
