@@ -3336,6 +3336,7 @@ a.levels__map {
 }
 
 .projetos__framework {
+  flex-basis: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

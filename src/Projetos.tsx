@@ -17,7 +17,7 @@ import { forgetClient } from './oficina/projeto/http'
 import { applyMigrations, dropDev, listTables, prewarm, resetDev, tableRows } from './oficina/projeto/runner'
 import { Etapa } from './Etapa'
 import { HttpClient } from './HttpClient'
-import { COURSE } from './oficina/projeto/courses'
+import { COURSES, courseOf } from './oficina/projeto/courses'
 import { OpenApi } from './OpenApi'
 import type { CodeError, LogLine, RequestOutcome, Route, TableRows } from './oficina/projeto/runtime'
 import { PROJETOS_PATH, followLink, navigate } from './route'
@@ -456,7 +456,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
         ) : side === 'openapi' ? (
           <OpenApi project={project} name={entry.name} routes={routes} />
         ) : (
-          <Etapa project={project} course={COURSE} warming={warming} onGoTo={goTo} />
+          <Etapa project={project} course={courseOf(entry.course)} warming={warming} onGoTo={goTo} />
         )}
       </aside>
     </div>
@@ -468,6 +468,7 @@ export function Projetos({ open }: { open?: string }) {
   const [list, setList] = useState(loadProjectList)
   const [name, setName] = useState('')
   const [framework, setFramework] = useState<Framework>('hono')
+  const [courseId, setCourseId] = useState(COURSES[0].id)
   const [renaming, setRenaming] = useState<string>()
   const [status, setStatus] = useState('')
   const update = (next: ProjectEntry[]) => {
@@ -491,8 +492,10 @@ export function Projetos({ open }: { open?: string }) {
   const create = (e: FormEvent) => {
     e.preventDefault()
     const id = crypto.randomUUID().slice(0, 8)
-    saveProject(starter(id, framework))
-    update([...list, { id, name: name.trim() || `Projeto ${list.length + 1}`, framework }])
+    const first = courseOf(courseId).starter
+    const created = first ? { ...first, id } : starter(id, framework)
+    saveProject(created)
+    update([...list, { id, name: name.trim() || `Projeto ${list.length + 1}`, framework: created.framework, course: courseId }])
     setName('')
     navigate(projectPath(id))
   }
@@ -519,13 +522,24 @@ export function Projetos({ open }: { open?: string }) {
         <label htmlFor="projetos-name">Nome</label>
         <input id="projetos-name" type="text" value={name} placeholder={`Projeto ${list.length + 1}`} onChange={(e) => setName(e.target.value)} />
         <fieldset className="projetos__framework">
-          <legend>Framework</legend>
-          {FRAMEWORKS.map(([f, label]) => (
-            <label key={f}>
-              <input type="radio" name="framework" value={f} checked={framework === f} onChange={() => setFramework(f)} /> {label}
+          <legend>Curso</legend>
+          {COURSES.map((c) => (
+            <label key={c.id}>
+              <input type="radio" name="course" value={c.id} checked={courseId === c.id} onChange={() => setCourseId(c.id)} /> {c.title}
             </label>
           ))}
         </fieldset>
+        {/* A course with its own starter (the code review) fixes the framework. */}
+        {!courseOf(courseId).starter && (
+          <fieldset className="projetos__framework">
+            <legend>Framework</legend>
+            {FRAMEWORKS.map(([f, label]) => (
+              <label key={f}>
+                <input type="radio" name="framework" value={f} checked={framework === f} onChange={() => setFramework(f)} /> {label}
+              </label>
+            ))}
+          </fieldset>
+        )}
         <button type="submit" className="btn btn--primary">
           Criar projeto
         </button>

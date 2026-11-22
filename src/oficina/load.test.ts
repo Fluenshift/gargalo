@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { runLevel } from '../sim/engine'
 import type { RunSummary } from '../sim/engine'
 import type { RequestMetrics, TestResult } from './exercise'
-import { EXERCISES } from './exercises'
 import { OFICINA_ARCH, loadLevel, requestCost, oficinaStars } from './load'
 
 // A list of 20 orders with their customers: one JOIN, or one query for the list plus one per order.
@@ -50,8 +49,8 @@ describe('the synthetic level', () => {
     expect(oficinaStars(true, slow, load, nPlusOne)).toBe(1)
   })
 
-  it('the placeholder exercise meets its goals with a quick handler and misses p99 with a slow loop', () => {
-    const ola = EXERCISES.find((e) => e.id === 'ola')!
+  it('a light endpoint meets its goals with a quick handler and misses p99 with a slow loop', () => {
+    const ola = { load: { rps: 100, p99Ms: 100, queriesPerRequest: 0 } }
     const quick = { queries: 0, rowsRead: 0, handlerMs: 0.1 }
     const slow = { queries: 0, rowsRead: 0, handlerMs: 100 }
     expect(oficinaStars(true, run(quick, ola.load), ola.load, quick)).toBe(3)
