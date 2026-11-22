@@ -46,7 +46,7 @@ export function pathProblem(path: string, files: Record<string, string>, from?: 
   if (path.split('/').some((part) => part === '.' || part === '..')) return 'O caminho não pode ter . ou .. como pasta.'
   if (!/\.[a-z]+$/i.test(path)) return 'Dê uma extensão ao arquivo, como .ts ou .sql.'
   if (from === ENTRY) return `${ENTRY} é a entrada do projeto e não muda de nome.`
-  if (path !== from && path in files) return `Já existe ${path}.`
+  if (path !== from && Object.hasOwn(files, path)) return `Já existe ${path}.`
   if (Object.keys(files).some((p) => p.startsWith(`${path}/`))) return `${path} é uma pasta.`
   if (Object.keys(files).some((p) => path.startsWith(`${p}/`))) return 'Uma pasta do caminho já é um arquivo.'
   return undefined

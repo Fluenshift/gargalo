@@ -71,8 +71,9 @@ return c.json(produto, 201)` },
 throw new HTTPException(404, { message: 'Produto não encontrado.' })
 
 app.onError((err, c) => {
-  if (err instanceof HTTPException) return c.json({ title: err.message, status: err.status }, err.status)
-  return c.json({ title: 'Erro interno', status: 500 }, 500)
+  const problem = { 'Content-Type': 'application/problem+json' }
+  if (err instanceof HTTPException) return c.json({ type: 'about:blank', title: err.message, status: err.status }, err.status, problem)
+  return c.json({ type: 'about:blank', title: 'Erro interno', status: 500 }, 500, problem)
 })`,
       },
       { title: 'Rota não encontrada', text: 'Sem rota, o Hono responde 404 "404 Not Found"; app.notFound troca essa resposta.', code: `app.notFound((c) => c.json({ title: 'Rota não encontrada', status: 404 }, 404))` },

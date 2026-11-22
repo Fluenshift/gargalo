@@ -12,10 +12,30 @@ export interface Project {
 export const projectKey = (id: string) => `gargalo:oficina:projeto:${id}`
 
 /** The saved project, or undefined when there is none, it is unreadable or storage is off. */
+const isFramework = (f: unknown): f is Framework => f === 'hono' || f === 'fetch'
+
+export const isProject = (v: unknown): v is Project => {
+  const p = v as Project
+  return !!p && typeof p.id === 'string' && isFramework(p.framework) && !!p.files && typeof p.files === 'object' && Object.values(p.files).every((c) => typeof c === 'string')
+}
+
+/**
+ * The saved project, or undefined when there is none or it can't be read. An unreadable one is first copied to
+ * `<key>:bak` (once), so the starter that replaces it never destroys the only copy.
+ */
 export function loadProject(id: string): Project | undefined {
   try {
     const saved = localStorage.getItem(projectKey(id))
-    return saved ? (JSON.parse(saved) as Project) : undefined
+    if (!saved) return undefined
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(saved)
+    } catch {
+      parsed = undefined
+    }
+    if (isProject(parsed)) return parsed
+    if (localStorage.getItem(`${projectKey(id)}:bak`) === null) localStorage.setItem(`${projectKey(id)}:bak`, saved)
+    return undefined
   } catch {
     return undefined
   }
@@ -59,14 +79,22 @@ app.route('/health', health)
 export default app
 `,
     'src/routes/health.ts': `import { Hono } from 'hono'
+import { bancoResponde } from '../db/saude'
 import type { Env } from '../env'
 
 export const health = new Hono<{ Bindings: Env }>()
 
 health.get('/', async (c) => {
-  await c.env.db.query('SELECT 1')
+  await bancoResponde(c.env.db)
   return c.json({ status: 'ok' })
 })
+`,
+    'src/db/saude.ts': `import type { Env } from '../env'
+
+/** The route never talks SQL itself: database access lives under src/db/. */
+export async function bancoResponde(db: Env['db']): Promise<void> {
+  await db.query('SELECT 1')
+}
 `,
     'src/env.ts': ENV,
     'migrations/001_init.sql': INIT,
@@ -83,11 +111,19 @@ export default {
   },
 }
 `,
-    'src/routes/health.ts': `import type { Env } from '../env'
+    'src/routes/health.ts': `import { bancoResponde } from '../db/saude'
+import type { Env } from '../env'
 
 export async function health(env: Env): Promise<Response> {
-  await env.db.query('SELECT 1')
+  await bancoResponde(env.db)
   return Response.json({ status: 'ok' })
+}
+`,
+    'src/db/saude.ts': `import type { Env } from '../env'
+
+/** The route never talks SQL itself: database access lives under src/db/. */
+export async function bancoResponde(db: Env['db']): Promise<void> {
+  await db.query('SELECT 1')
 }
 `,
     'src/env.ts': ENV,
@@ -111,7 +147,8 @@ export const PROJECTS_KEY = 'gargalo:oficina:projetos'
 export function loadProjectList(): ProjectEntry[] {
   try {
     const saved = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as unknown
-    return Array.isArray(saved) ? (saved as ProjectEntry[]) : []
+    // A broken entry is dropped, not allowed to take the whole list down.
+    return Array.isArray(saved) ? saved.filter((e): e is ProjectEntry => !!e && typeof e.id === 'string' && typeof e.name === 'string' && isFramework(e.framework)) : []
   } catch {
     return []
   }

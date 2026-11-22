@@ -222,6 +222,11 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
   const [tabs, setTabs] = useState<string[]>([ENTRY])
   const [active, setActive] = useState(ENTRY)
   const [form, setForm] = useState<'new' | 'rename' | null>(null)
+  // When the name form closes (done, cancelled or Esc), focus goes back to the button that opened it, not to the page.
+  const formOpener = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    if (form === null) formOpener.current?.focus()
+  }, [form])
   const [panel, setPanel] = useState<'banco' | 'console'>('banco')
   const [side, setSide] = useState<'requisicao' | 'etapa'>('requisicao')
   const [logs, setLogs] = useState<ConsoleLine[]>([])
@@ -242,7 +247,15 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     const timer = setTimeout(() => setSaveFailed(!saveProject(project)), 400)
     return () => clearTimeout(timer)
   }, [project])
-  useEffect(() => () => void saveProject(latest.current), [])
+  useEffect(() => {
+    // Closing the tab skips React's unmount: save on pagehide too, so the last keystrokes are kept.
+    const flush = () => void saveProject(latest.current)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
 
   const files = project.files
   const setFiles = (next: (f: Record<string, string>) => Record<string, string>) => setProject((p) => ({ ...p, files: next(p.files) }))
@@ -267,7 +280,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
   }
   /** Opens the file an error points at and puts the cursor on its line. */
   const goTo = (file: string, line = 1) => {
-    if (!(file in files)) return
+    if (!Object.hasOwn(files, file)) return
     if (file === active && view.current) return moveTo(view.current, line)
     pendingLine.current = line
     open(file)
@@ -333,10 +346,10 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           Arquivos
         </h3>
         <div className="projeto__file-actions">
-          <button type="button" className="btn btn--ghost btn--small" onClick={() => setForm('new')}>
+          <button type="button" className="btn btn--ghost btn--small" onClick={(e) => { formOpener.current = e.currentTarget; setForm('new') }}>
             Novo arquivo
           </button>
-          <button type="button" className="btn btn--ghost btn--small" onClick={() => setForm('rename')} disabled={active === ENTRY} title={active === ENTRY ? `${ENTRY} é a entrada do projeto` : undefined}>
+          <button type="button" className="btn btn--ghost btn--small" onClick={(e) => { formOpener.current = e.currentTarget; setForm('rename') }} disabled={active === ENTRY} title={active === ENTRY ? `${ENTRY} é a entrada do projeto` : undefined}>
             Renomear
           </button>
           <button type="button" className="btn btn--ghost btn--small" onClick={remove} disabled={active === ENTRY} title={active === ENTRY ? `${ENTRY} não pode ser apagado` : undefined}>
@@ -405,7 +418,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
                       return (
                         <li key={i} className={`projeto__log is-${l.level}`}>
                           <span className="projeto__level">{l.level}</span> {l.text}
-                          {at && at.file in files && (
+                          {at && Object.hasOwn(files, at.file) && (
                             <>
                               {' '}
                               <button type="button" className="levels__map" onClick={() => goTo(at.file, at.line)}>

@@ -10,6 +10,8 @@ describe('file tree', () => {
       'migrations/',
       '  001_init.sql',
       'src/',
+      '  db/',
+      '    saude.ts',
       '  routes/',
       '    health.ts',
       '  env.ts',
@@ -59,5 +61,12 @@ describe('log locations', () => {
   it('finds the file and line a logged error ends with', () => {
     expect(logLocation('Error: boom (src/index.ts:11)')).toEqual({ file: 'src/index.ts', line: 11 })
     expect(logLocation('oi (tchau)')).toBeUndefined()
+  })
+})
+
+describe('pathProblem and prototype keys', () => {
+  it('does not mistake constructor or __proto__ for an existing file', async () => {
+    const { pathProblem } = await import('./files')
+    expect(pathProblem('src/constructor.ts', {})).toBeUndefined()
   })
 })
