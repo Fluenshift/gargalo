@@ -41,7 +41,7 @@ function Code({ code }: { code: string }) {
     )
     return out
   }, [code])
-  return <pre className="code">{parts}</pre>
+  return <pre className="code code--wrap">{parts}</pre>
 }
 
 const editorTheme = EditorView.theme({
@@ -118,6 +118,9 @@ const COMPANY_ID: Record<string, string> = { Startup: 'startup', 'E-commerce': '
 
 const pct = (n: number) => `${(n * 100).toFixed(n >= 0.9995 ? 0 : 1).replace('.', ',')}%`
 const decimal = (n: number) => (Math.round(n * 10) / 10).toLocaleString('pt-BR')
+
+/** The pill shows only the route ("GET /ola"); the rest of the title is for screen readers. */
+const route = (title: string) => title.split(': ')[0]
 
 export default function Oficina() {
   const heading = useRef<HTMLHeadingElement>(null)
@@ -235,7 +238,8 @@ export default function Oficina() {
                 disabled={running !== null}
                 onClick={() => open(e)}
               >
-                {e.title}
+                {route(e.title)}
+                <span className="sr-only">{e.title.slice(route(e.title).length)}</span>
                 {passed[e.id] !== undefined && (
                   <span className="oficina__done">
                     {' '}

@@ -3163,6 +3163,15 @@ a.levels__map {
   border-bottom: 1px solid var(--line);
 }
 
+/* On a wide screen the strip wraps instead of hiding exercises off to the side. */
+@media (min-width: 900px) {
+  .oficina__strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: var(--space-10);
+  }
+}
+
 .oficina__group {
   display: flex;
   align-items: center;
@@ -3226,6 +3235,7 @@ a.levels__map {
   flex: 1 1 380px;
   min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-14);
 }
 
@@ -3786,4 +3796,9 @@ a.levels__map {
   .profile-page .profile__list {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The goal numbers never wrap. */
+.oficina__sheet td:not(:first-child) {
+  white-space: nowrap;
 }
