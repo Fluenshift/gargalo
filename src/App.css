@@ -1,11 +1,11 @@
 /*
-  Visual idea: a gallery wall label on warm putty paper (see DESIGN.md).
-  Serif headings at weight 400 announce; mono instructs everywhere else.
-  Hairline putty borders, pill controls, no shadows. A black ink pill marks the
-  one primary action. Colour means load state only: ok, warm, hot.
+  Visual idea: a transit map on cool paper (see DESIGN.md). Blue-black ink,
+  serif headings at weight 400, mono for everything else, hairline borders,
+  pill controls, no shadows. A cobalt pill marks the one primary action. Each
+  company has a line colour (identity); load state keeps its own: ok, warm, hot.
 
   Every colour, type size, space, radius, shadow and layer lives in this block
-  as a token. The dark theme (a black room: chalk ink on near-black paper) only
+  as a token. The dark theme (graphite, lighter colours) only
   redefines the palette, further down. src/contrast.test.ts checks AA on both.
 */
 
@@ -110,27 +110,33 @@
   line-height: var(--leading);
 }
 
-/* Palette: light, the parchment sheet. Also on [data-theme='light'] so a part of a page can be shown in it (/design). */
+/* Palette: light, cool paper and blue-black ink. Also on [data-theme='light'] so a part of a page can be shown in it (/design). */
 :root,
 [data-theme='light'] {
   color-scheme: light;
 
-  --paper: #e7e5e4; /* Bone: canvas and every panel */
-  --sunk: #dfdcd5; /* Vellum: hover and pressed rows */
-  --wash: #c4c3b6; /* Putty: the one elevated card, the level brief */
-  --ink: #0f0f0e; /* Ink: text, dark surfaces, the primary action */
-  --ink-soft: #4d4c49; /* Graphite: secondary text */
-  --line: #c4c3b6; /* Putty: every border and divider */
-  --grid: #c4c3b6; /* dots on the canvas */
-  --track: #c4c3b6; /* the empty part of a load bar */
-  --accent: #0f0f0e; /* Ink pill: the single primary action per screen */
-  --accent-hover: #3a3936;
-  --focus: #0f0f0e;
-  --on-accent: #e7e5e4; /* text on the primary action */
-  --on-ink: #e7e5e4; /* text on inverted (ink) surfaces */
-  --on-ink-soft: #c4c3b6; /* secondary text on inverted surfaces */
+  --paper: #f3f4f1; /* cool near-white: canvas and every panel */
+  --sunk: #e6e8e3; /* hover and pressed rows */
+  --wash: #dde0da; /* the level brief when no company tints it (daily, free mode) */
+  --ink: #121417; /* blue-black: text and inverted surfaces */
+  --ink-soft: #4a5058; /* secondary text */
+  --line: #c9ccc4; /* every border and divider */
+  --grid: #c9ccc4; /* dots on the canvas */
+  --track: #c9ccc4; /* the empty part of a load bar */
+  --accent: #2747d8; /* cobalt pill: the single primary action per screen */
+  --accent-hover: #1d37b0;
+  --focus: #121417;
+  --on-accent: #ffffff; /* text on the primary action */
+  --on-ink: #f3f4f1; /* text on inverted (ink) surfaces */
+  --on-ink-soft: #c9ccc4; /* secondary text on inverted surfaces */
 
-  /* Load state. Pastel washes fill pieces; the darker inks carry text and bars (AA on parchment). */
+  /* Company line colours, like metro lines: identity only, set through data-company (DESIGN.md). */
+  --company-startup: #2747d8;
+  --company-ecommerce: #b8265f;
+  --company-fintech: #0a6a73;
+  --company-streaming: #6c3ad1;
+
+  /* Load state. Pastel washes fill pieces; the darker inks carry text and bars (AA on paper). */
   --ok: #1f6e47;
   --ok-wash: #a7fccd;
   --warm: #8a5a00;
@@ -138,84 +144,136 @@
   --hot: #b4380c;
   --hot-wash: #ff9473;
 
+  /* Code in the Oficina editor and reference (the one other place hue is allowed). */
+  --code-keyword: #6c3ad1;
+  --code-string: #0a6a73;
+  --code-number: #b8265f;
+  --code-type: #2747d8;
+  --code-function: #8a5a00;
+
   /* Translucent layers */
-  --backdrop: rgb(15 15 14 / 0.45); /* behind the modal */
-  --veil: rgb(231 229 228 / 0.6); /* the idle trash, see-through */
+  --backdrop: rgb(18 20 23 / 0.45); /* behind the modal */
+  --veil: rgb(243 244 241 / 0.6); /* the idle trash, see-through */
   --hatch: rgb(255 148 115 / 0.35); /* stripes over a region that is down */
-  /* The career map's blurred wash: decoration only. */
-  --glow-1: rgb(196 195 182 / 0.8);
-  --glow-2: rgb(223 220 213 / 0.8);
-  --glow-3: rgb(89 88 85 / 0.25);
+  /* The career map's blurred wash, in the company line colours: decoration only. */
+  --glow-1: rgb(39 71 216 / 0.22);
+  --glow-2: rgb(184 38 95 / 0.14);
+  --glow-3: rgb(10 106 115 / 0.18);
 }
 
 /*
-  Dark: the gallery's black room. Near-black paper, chalk ink and warm grey
-  lines. Washes turn dark so light ink still reads on a loaded piece; the state
-  inks turn light so they read on the black. Follows the system unless
-  the player picked a theme (data-theme on <html>, set by public/theme.js).
-  [data-theme] on any other element scopes a theme to that part (/design).
-  The two blocks below must stay identical; the contrast test checks it.
+  Dark: graphite. Near-black blue-grey paper, light ink and lighter versions of
+  the company and code colours. Washes turn dark so light ink still reads on a
+  loaded piece; the state inks turn light so they read on the graphite. Follows
+  the system unless the player picked a theme (data-theme on <html>, set by
+  public/theme.js). [data-theme] on any other element scopes a theme to that
+  part (/design). The two blocks below must stay identical; the contrast test
+  checks it.
 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --paper: #0f0f0e;
-    --sunk: #1c1b1a;
-    --wash: #2a2927;
-    --ink: #ebebeb;
-    --ink-soft: #aeaca5;
-    --line: #3d3c39;
-    --grid: #34332f;
-    --track: #2a2927;
-    --accent: #e7e5e4;
-    --accent-hover: #ffffff;
-    --focus: #e7e5e4;
-    --on-accent: #0f0f0e;
-    --on-ink: #0f0f0e;
-    --on-ink-soft: #595855;
+    --paper: #0f1114;
+    --sunk: #191c21;
+    --wash: #22262c;
+    --ink: #eef0f2;
+    --ink-soft: #a3a9b2;
+    --line: #2c3139;
+    --grid: #2c3139;
+    --track: #2c3139;
+    --accent: #7d95ff;
+    --accent-hover: #9aadff;
+    --focus: #eef0f2;
+    --on-accent: #0f1114;
+    --on-ink: #0f1114;
+    --on-ink-soft: #5a606a;
+    --company-startup: #7d95ff;
+    --company-ecommerce: #ff6fa8;
+    --company-fintech: #3cc4c9;
+    --company-streaming: #a98bff;
     --ok: #86e6b0;
     --ok-wash: #1c5a4a;
     --warm: #f3cc72;
     --warm-wash: #5c4a17;
     --hot: #ffa285;
     --hot-wash: #7a2c22;
+    --code-keyword: #a98bff;
+    --code-string: #3cc4c9;
+    --code-number: #ff6fa8;
+    --code-type: #7d95ff;
+    --code-function: #e5b85c;
     --backdrop: rgb(0 0 0 / 0.6);
-    --veil: rgb(15 15 14 / 0.6);
+    --veil: rgb(15 17 20 / 0.6);
     --hatch: rgb(255 162 133 / 0.3);
-    --glow-1: rgb(196 195 182 / 0.14);
-    --glow-2: rgb(235 235 235 / 0.08);
-    --glow-3: rgb(89 88 85 / 0.25);
+    --glow-1: rgb(125 149 255 / 0.16);
+    --glow-2: rgb(255 111 168 / 0.08);
+    --glow-3: rgb(60 196 201 / 0.1);
   }
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --paper: #0f0f0e;
-  --sunk: #1c1b1a;
-  --wash: #2a2927;
-  --ink: #ebebeb;
-  --ink-soft: #aeaca5;
-  --line: #3d3c39;
-  --grid: #34332f;
-  --track: #2a2927;
-  --accent: #e7e5e4;
-  --accent-hover: #ffffff;
-  --focus: #e7e5e4;
-  --on-accent: #0f0f0e;
-  --on-ink: #0f0f0e;
-  --on-ink-soft: #595855;
+  --paper: #0f1114;
+  --sunk: #191c21;
+  --wash: #22262c;
+  --ink: #eef0f2;
+  --ink-soft: #a3a9b2;
+  --line: #2c3139;
+  --grid: #2c3139;
+  --track: #2c3139;
+  --accent: #7d95ff;
+  --accent-hover: #9aadff;
+  --focus: #eef0f2;
+  --on-accent: #0f1114;
+  --on-ink: #0f1114;
+  --on-ink-soft: #5a606a;
+  --company-startup: #7d95ff;
+  --company-ecommerce: #ff6fa8;
+  --company-fintech: #3cc4c9;
+  --company-streaming: #a98bff;
   --ok: #86e6b0;
   --ok-wash: #1c5a4a;
   --warm: #f3cc72;
   --warm-wash: #5c4a17;
   --hot: #ffa285;
   --hot-wash: #7a2c22;
+  --code-keyword: #a98bff;
+  --code-string: #3cc4c9;
+  --code-number: #ff6fa8;
+  --code-type: #7d95ff;
+  --code-function: #e5b85c;
   --backdrop: rgb(0 0 0 / 0.6);
-  --veil: rgb(15 15 14 / 0.6);
+  --veil: rgb(15 17 20 / 0.6);
   --hatch: rgb(255 162 133 / 0.3);
-  --glow-1: rgb(196 195 182 / 0.14);
-  --glow-2: rgb(235 235 235 / 0.08);
-  --glow-3: rgb(89 88 85 / 0.25);
+  --glow-1: rgb(125 149 255 / 0.16);
+  --glow-2: rgb(255 111 168 / 0.08);
+  --glow-3: rgb(60 196 201 / 0.1);
+}
+
+/*
+  Company line colour: data-company="<company id>" on any container gives its
+  children --company (the line colour, AA as text on paper and sunk) and
+  --company-wash (a light tint of it for a card). Use with a fallback,
+  var(--company, var(--ink-soft)), so screens without a company keep working.
+*/
+[data-company='startup'] {
+  --company: var(--company-startup);
+}
+
+[data-company='ecommerce'] {
+  --company: var(--company-ecommerce);
+}
+
+[data-company='fintech'] {
+  --company: var(--company-fintech);
+}
+
+[data-company='streaming'] {
+  --company: var(--company-streaming);
+}
+
+[data-company] {
+  --company-wash: color-mix(in srgb, var(--company) 12%, var(--paper));
 }
 
 * {
@@ -414,7 +472,19 @@ ul {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--tracking-caps);
-  color: var(--ink-soft);
+  color: var(--company, var(--ink-soft));
+}
+
+/* The company's line, like a metro map key, before where the phase sits. */
+[data-company] .phase__where::before {
+  content: '';
+  display: inline-block;
+  width: var(--space-24);
+  height: var(--space-4);
+  margin-right: var(--space-8);
+  vertical-align: middle;
+  border-radius: var(--radius-pill);
+  background: var(--company);
 }
 
 .phase__title {
@@ -642,7 +712,7 @@ ul {
   max-width: 60ch;
   padding: var(--space-20);
   border-radius: var(--radius-card);
-  background: var(--wash);
+  background: var(--company-wash, var(--wash));
 }
 
 .parts h2 {
@@ -1639,6 +1709,8 @@ ul {
   gap: var(--space-12);
   padding: var(--space-20) var(--space-24) var(--space-14);
   border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: var(--company-wash, none);
 }
 
 .company.is-future .company__head {
@@ -1656,6 +1728,7 @@ ul {
 }
 
 .company__name {
+  color: var(--company, var(--ink));
   font-size: var(--title-lg);
   line-height: 1.1;
   font-family: var(--serif);
@@ -1716,7 +1789,7 @@ ul {
 }
 
 .step.is-current {
-  border-left-color: var(--accent);
+  border-left-color: var(--company, var(--accent));
 }
 
 .step__n {
@@ -2350,6 +2423,36 @@ ul {
   font-size: var(--text-xs);
   color: var(--ink-soft);
   overflow-wrap: anywhere;
+}
+
+/* Syntax colours in the Oficina editor and its reference code: the --code-* tokens, AA on paper and sunk. */
+.tok-keyword {
+  color: var(--code-keyword);
+}
+
+.tok-string {
+  color: var(--code-string);
+}
+
+.tok-number {
+  color: var(--code-number);
+}
+
+.tok-type {
+  color: var(--code-type);
+}
+
+.tok-function {
+  color: var(--code-function);
+}
+
+.tok-comment {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+.tok-punctuation {
+  color: var(--ink-soft);
 }
 
 .code {

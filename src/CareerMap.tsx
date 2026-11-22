@@ -89,7 +89,7 @@ export function CareerMap({
           const beaten = bossBeaten(company, passed)
           const stages = [...company.levels, company.boss]
           return (
-            <li key={company.id} className={`company${open ? '' : ' is-locked'}`}>
+            <li key={company.id} className={`company${open ? '' : ' is-locked'}`} data-company={company.id}>
               <section aria-labelledby={`company-${company.id}`}>
                 <header className="company__head">
                   <h2 id={`company-${company.id}`}>

@@ -42,6 +42,21 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+const COMPANIES = ['startup', 'ecommerce', 'fintech', 'streaming']
+const TINT = Number(/color-mix\(in srgb, var\(--company\) (\d+)%, var\(--paper\)\)/.exec(css)?.[1]) / 100
+
+/** color-mix(in srgb, a p, b): a straight mix of the 8-bit channels. */
+function mix(a: string, b: string, p: number): string {
+  const ch = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16)
+  return `#${[1, 3, 5].map((i) => Math.round(ch(a, i) * p + ch(b, i) * (1 - p)).toString(16).padStart(2, '0')).join('')}`
+}
+
+/** Adds each company's --company-<id>-wash, the tint [data-company] puts behind the brief and the career card head. */
+const withWashes = (palette: Record<string, string>) => ({
+  ...palette,
+  ...Object.fromEntries(COMPANIES.map((c) => [`--company-${c}-wash`, mix(palette[`--company-${c}`], palette['--paper'], TINT)])),
+})
+
 /** [foreground, background, minimum ratio, where it shows]. */
 const PAIRS: [string, string, number, string][] = [
   // Body text (4.5:1).
@@ -70,11 +85,25 @@ const PAIRS: [string, string, number, string][] = [
   ['--ok', '--track', 3, 'load bar on its track'],
   ['--warm', '--track', 3, 'near-limit bar on its track'],
   ['--hot', '--track', 3, 'overload bar on its track'],
+  // Company line colours: the eyebrow on paper, the career name and current step on paper or a hovered row.
+  ...COMPANIES.flatMap((c): [string, string, number, string][] => [
+    [`--company-${c}`, '--paper', 4.5, `${c} eyebrow, career name`],
+    [`--company-${c}`, '--sunk', 4.5, `${c} colour in a hovered row`],
+    ['--ink', `--company-${c}-wash`, 4.5, `brief tinted by ${c}`],
+    ['--ink-soft', `--company-${c}-wash`, 4.5, `secondary text on the ${c} tint`],
+  ]),
+  // Code tokens in the Oficina editor (paper) and on its current line (sunk).
+  ...['--code-keyword', '--code-string', '--code-number', '--code-type', '--code-function', '--ink-soft'].flatMap(
+    (t): [string, string, number, string][] => [
+      [t, '--paper', 4.5, 'code token'],
+      [t, '--sunk', 4.5, 'code token on the current line'],
+    ],
+  ),
 ]
 
 describe.each([
-  ['light', light],
-  ['dark', dark],
+  ['light', withWashes(light)],
+  ['dark', withWashes(dark)],
 ])('%s theme contrast', (_, palette) => {
   it.each(PAIRS)('%s on %s ≥ %s:1 (%s)', (fg, bg, min) => {
     expect(contrast(palette[fg], palette[bg])).toBeGreaterThanOrEqual(min)
@@ -82,6 +111,11 @@ describe.each([
 })
 
 describe('theme tokens', () => {
+  it('reads the company tint from App.css', () => {
+    expect(TINT).toBeGreaterThan(0)
+  })
+
+
   it('the system dark block matches the picked dark block', () => {
     expect(darkBySystem).toEqual(dark)
   })
