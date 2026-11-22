@@ -62,6 +62,7 @@ async function dropDev(id: string): Promise<void> {
     const req = indexedDB.deleteDatabase(`/pglite/gargalo-projeto-${id}`)
     req.onsuccess = () => resolve()
     req.onerror = () => reject(req.error ?? new Error('Não foi possível apagar o banco do projeto.'))
+    req.onblocked = () => reject(new Error('Outra aba está com o banco deste projeto aberto. Feche-a e apague de novo.'))
   })
 }
 

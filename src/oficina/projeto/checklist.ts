@@ -136,19 +136,35 @@ function findings(files: Files, find: (src: string, path: string) => string[]): 
 
 const verdict = (problems: string[], ok: string): Verdict => (problems.length ? { passed: false, message: problems.join('\n') } : { passed: true, message: ok })
 
+/** `${COLUNAS}` style interpolations of constants only: safe, nothing comes from the request. */
+const constantsOnly = (raw: string) => [...raw.matchAll(/\$\{([^}]*)\}/g)].every((m) => /^\s*[A-Z][A-Z0-9_]*\s*$/.test(m[1]))
+
+/** `'SELECT id FROM t ' + 'WHERE id = $1'`: a literal split across lines, glued only to other literals. */
+function gluedToLiteralOnly(src: string, l: Literal): boolean {
+  const rest = src.slice(l.end)
+  const head = src.slice(0, l.start)
+  const after = /^\s*\+/.test(rest) ? /^\s*\+\s*['"`]/.test(rest) : true
+  const before = /\+\s*$/.test(head) ? /['"`]\s*\+\s*$/.test(head) : true
+  return after && before
+}
+
 function concatenatedSql(src: string, path: string): string[] {
   const { literals, code } = scan(src)
   const next = (i: number) => /^\s*(\S)/.exec(code.slice(i))?.[1]
   const prev = (i: number) => /(\S)\s*$/.exec(code.slice(0, i))?.[1]
   return literals
-    .filter((l) => (l.interpolated ? SQL.test(l.text) || SQL_PIECE.test(l.text) : SQL.test(l.text) && (next(l.end) === '+' || prev(l.start) === '+')))
+    .filter((l) => {
+      const glued = next(l.end) === '+' || prev(l.start) === '+'
+      if (l.interpolated) return (SQL.test(l.text) || SQL_PIECE.test(l.text)) && !constantsOnly(src.slice(l.start, l.end))
+      return (SQL.test(l.text) || SQL_PIECE.test(l.text)) && glued && !gluedToLiteralOnly(src, l)
+    })
     .map((l) => `${path}:${lineOf(src, l.start)}: SQL montado com ${l.interpolated ? '${…}' : '+'}.`)
 }
 
 function directSql(src: string, path: string): string[] {
   if (!path.startsWith('src/routes/') && path !== 'src/index.ts') return []
   const { code } = scan(src)
-  return [...code.matchAll(/\b(?:db|tx)\s*\.\s*(?:query|transaction)\s*\(/g)].map((m) => `${path}:${lineOf(src, m.index)}: a rota chama o banco direto.`)
+  return [...code.matchAll(/\b(?:db|tx)\s*\.\s*(?:query|transaction)\s*(?:<[^>()]*>)?\s*\(/g)].map((m) => `${path}:${lineOf(src, m.index)}: a rota chama o banco direto.`)
 }
 
 function selectStar(src: string, path: string): string[] {
@@ -157,13 +173,19 @@ function selectStar(src: string, path: string): string[] {
     .map((l) => `${path}:${lineOf(src, l.start)}: SELECT *.`)
 }
 
+/** Words the write regex can catch that are not tables: `DO UPDATE SET`, `FOR UPDATE SKIP LOCKED`, `NOWAIT`, `OF`. */
+const NOT_TABLES = ['set', 'skip', 'nowait', 'of']
+
 function writesWithoutTransaction(src: string, path: string): string[] {
   const { literals, code } = scan(src)
   const tables = new Set(
     literals.filter((l) => SQL.test(l.text)).flatMap((l) => [...l.text.matchAll(/\b(?:insert\s+into|update|delete\s+from)\s+"?(\w+)/gi)].map((m) => m[1].toLowerCase())),
   )
   // shortcut: per file, not per function; a write split across files goes unseen. Track calls between modules if stages need it.
-  return tables.size >= 2 && !/\.\s*transaction\s*\(/.test(code) ? [`${path}: escreve em ${[...tables].join(', ')} sem db.transaction.`] : []
+  for (const word of NOT_TABLES) tables.delete(word)
+  // A file that receives the transaction (`tx`) from its caller writes inside it.
+  const inTransaction = /\.\s*transaction\s*(?:<[^>()]*>)?\s*\(/.test(code) || /\btx\b/.test(code)
+  return tables.size >= 2 && !inTransaction ? [`${path}: escreve em ${[...tables].join(', ')} sem db.transaction.`] : []
 }
 
 const HASHING = /crypto\s*\.\s*subtle\s*\.\s*(digest|deriveBits|deriveKey)|pbkdf2|scrypt|bcrypt|argon2/i

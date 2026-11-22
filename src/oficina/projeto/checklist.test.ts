@@ -236,3 +236,36 @@ describe('the catalogue', () => {
     ])
   })
 })
+
+describe('review fixes: no false alarms on reasonable code, no misses on real problems', () => {
+  const statik = (id: 'sql-parametrizado' | 'camadas' | 'transacao', files: Files) => evaluateChecklist([{ id }], files, [])[0]
+
+  it('the starters keep their own routes free of SQL, so a new project passes "camadas"', async () => {
+    const { starter } = await import('./project')
+    expect(statik('camadas', starter('p', 'hono').files).passed).toBe(true)
+    expect(statik('camadas', starter('p', 'fetch').files).passed).toBe(true)
+  })
+
+  it('"camadas" sees a typed query in a route', () => {
+    const files = { 'src/index.ts': 'export default {}', 'src/routes/p.ts': "const r = await c.env.db.query<Produto>('SELECT id FROM produtos')" }
+    expect(statik('camadas', files).passed).toBe(false)
+  })
+
+  it('"transacao" ignores upserts and SKIP LOCKED, and accepts a file that writes with the caller\'s tx', () => {
+    const upsert = repo("await db.query('INSERT INTO estoque (id, n) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET n = $2', [id, n])")
+    expect(statik('transacao', upsert).passed).toBe(true)
+    const skip = repo("await db.query('SELECT id FROM jobs FOR UPDATE SKIP LOCKED'); await db.query('UPDATE jobs SET feito = true WHERE id = $1', [id])")
+    expect(statik('transacao', skip).passed).toBe(true)
+    const withTx = repo("export async function criar(tx: Db) { await tx.query('INSERT INTO pedidos (id) VALUES ($1)', [1]); await tx.query('INSERT INTO itens (pedido_id) VALUES ($1)', [1]) }")
+    expect(statik('transacao', withTx).passed).toBe(true)
+    const loose = repo("await db.query('INSERT INTO pedidos (id) VALUES ($1)', [1]); await db.query('INSERT INTO itens (pedido_id) VALUES ($1)', [1])")
+    expect(statik('transacao', loose).passed).toBe(false)
+  })
+
+  it('"sql-parametrizado" catches a WHERE glued to input and lets constants and split literals through', () => {
+    expect(statik('sql-parametrizado', repo("const where = 'WHERE id = ' + id\nawait db.query(base + where)")).passed).toBe(false)
+    expect(statik('sql-parametrizado', repo("await db.query(`SELECT ${COLUNAS} FROM produtos WHERE id = $1`, [id])")).passed).toBe(true)
+    expect(statik('sql-parametrizado', repo("await db.query('SELECT id FROM produtos ' +\n  'WHERE id = $1', [id])")).passed).toBe(true)
+    expect(statik('sql-parametrizado', repo("await db.query(`SELECT id FROM produtos WHERE id = ${id}`)")).passed).toBe(false)
+  })
+})

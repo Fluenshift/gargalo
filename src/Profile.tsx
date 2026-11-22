@@ -3,7 +3,7 @@ import { COMPANIES, bossBeaten, stages } from './career'
 import type { Passed } from './career'
 import { dailyXp, streak } from './daily'
 import type { DailyRecord } from './daily'
-import { ACHIEVEMENTS, OFICINA_PREFIX, RANKS, achievements, oficinaXp, rankFor, totalXp } from './score'
+import { ACHIEVEMENTS, OFICINA_PREFIX, PROJETO_PREFIX, RANKS, achievements, oficinaXp, rankFor, totalXp } from './score'
 import type { Results } from './score'
 
 const xp = (n: number) => `${n.toLocaleString('pt-BR')} XP`
@@ -19,7 +19,7 @@ export function Profile({ passed, results, daily, today }: { passed: Passed; res
   const run = streak(daily, today)
   const rank = rankFor(total)
   const earned = new Set(achievements(results))
-  const oficina = Object.entries(results).filter(([id]) => id.startsWith(OFICINA_PREFIX))
+  const oficina = Object.entries(results).filter(([id]) => id.startsWith(OFICINA_PREFIX) || id.startsWith(PROJETO_PREFIX))
   const oficinaStars = oficina.reduce((sum, [, r]) => sum + r.stars, 0)
   const all = stages()
   const done = all.filter((s) => results[s.level.id])
@@ -58,7 +58,7 @@ export function Profile({ passed, results, daily, today }: { passed: Passed; res
           <h2>Oficina</h2>
           <p className="profile-page__big">{oficina.length}</p>
           <p className="profile-page__soft">
-            {oficina.length === 1 ? 'exercício' : 'exercícios'} · {plural(oficinaStars, 'estrela', 'estrelas')} · {xp(oficinaXp(results))}
+            {oficina.length === 1 ? 'exercício ou etapa' : 'exercícios e etapas'} · {plural(oficinaStars, 'estrela', 'estrelas')} · {xp(oficinaXp(results))}
           </p>
         </section>
         <section className="profile-page__block">
