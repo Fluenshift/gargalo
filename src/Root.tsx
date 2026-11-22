@@ -3,13 +3,16 @@ import App from './App.tsx'
 
 // The internal design reference: /design or ?design. Loaded on demand, so the game never pays for it.
 const DesignPage = lazy(() => import('./DesignPage.tsx'))
+// The Oficina (/oficina or ?oficina) brings its editor and executor only when opened.
+const Oficina = lazy(() => import('./Oficina.tsx'))
 
-const isDesign = () => location.pathname.replace(/\/$/, '') === '/design' || new URLSearchParams(location.search).has('design')
+const isPage = (name: string) => location.pathname.replace(/\/$/, '') === `/${name}` || new URLSearchParams(location.search).has(name)
 
 export function Root() {
-  return isDesign() ? (
+  const Page = isPage('design') ? DesignPage : isPage('oficina') ? Oficina : null
+  return Page ? (
     <Suspense fallback={null}>
-      <DesignPage />
+      <Page />
     </Suspense>
   ) : (
     <App />

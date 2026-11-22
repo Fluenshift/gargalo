@@ -12,7 +12,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@codemirror/lang-javascript": "6.2.5",
     "@xyflow/react": "^12.12.1",
+    "codemirror": "6.0.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sucrase": "3.35.1"
