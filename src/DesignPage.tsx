@@ -13,12 +13,12 @@ import { ThemeToggle } from './ThemeToggle'
 const COLORS: { name: string; use: string }[] = [
   { name: '--paper', use: 'fundo de tudo' },
   { name: '--sunk', use: 'hover, linha pressionada' },
-  { name: '--wash', use: 'o briefing da fase' },
+  { name: '--wash', use: 'briefing sem empresa' },
   { name: '--ink', use: 'texto, superfície invertida' },
   { name: '--ink-soft', use: 'texto secundário' },
   { name: '--line', use: 'bordas de 1px' },
   { name: '--grid', use: 'pontos do canvas' },
-  { name: '--accent', use: 'a ação primária, foco' },
+  { name: '--accent', use: 'a ação primária (cobalto)' },
   { name: '--accent-hover', use: 'hover da ação primária' },
   { name: '--on-accent', use: 'texto na ação primária' },
   { name: '--on-ink', use: 'texto na superfície invertida' },
@@ -29,6 +29,15 @@ const COLORS: { name: string; use: string }[] = [
   { name: '--warm-wash', use: 'peça perto do limite' },
   { name: '--hot', use: 'tinta: sobrecarga' },
   { name: '--hot-wash', use: 'peça sobrecarregada' },
+  { name: '--company-startup', use: 'linha: Startup' },
+  { name: '--company-ecommerce', use: 'linha: E-commerce' },
+  { name: '--company-fintech', use: 'linha: Fintech' },
+  { name: '--company-streaming', use: 'linha: Streaming' },
+  { name: '--code-keyword', use: 'código: palavra-chave' },
+  { name: '--code-string', use: 'código: texto' },
+  { name: '--code-number', use: 'código: número' },
+  { name: '--code-type', use: 'código: tipo' },
+  { name: '--code-function', use: 'código: função' },
 ]
 
 const TEXT = ['--text-label', '--text-xs', '--text-sm', '--text-base', '--text-glyph', '--text-glyph-lg']
@@ -169,7 +178,7 @@ function Sheet({ theme }: { theme: 'light' | 'dark' }) {
         </div>
 
         <h3>Painel e briefing</h3>
-        <p className="brief">Briefing da fase: o único cartão elevado da tela, em --wash.</p>
+        <p className="brief">Briefing da fase: o único cartão elevado da tela, em --company-wash (ou --wash sem empresa).</p>
         <div className="ds-panel">
           <header className="inspector__head">
             <KindIcon kind="cache" size={30} />

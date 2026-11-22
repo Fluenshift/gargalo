@@ -1,35 +1,68 @@
 # gargalo — Design
 
-> Etiqueta de galeria sobre papel massa. À noite, a sala preta.
+> Mapa de metrô sobre papel frio. À noite, grafite.
 
-O jogo inteiro roda sobre papel osso (`#e7e5e4`), nunca branco puro. Neutros quentes e tinta preta fazem todo o trabalho: sem gradiente, sem sombra e quase sem cor. Títulos são serifados em peso 400 e falam pelo contraste do traço, não pelo negrito. Todo o resto — texto, botões, rótulos, números, peças no canvas — é monoespaçado, e isso dá a cara de manual técnico. Bordas são linhas finas de 1px em massa (`#c4c3b6`), controles são pílulas, cartões são retângulos de canto macio e nada tem sombra.
+O jogo roda sobre papel frio quase branco (`#f3f4f1`), nunca branco puro, com tinta azul-preta (`#121417`). Cada empresa da carreira tem uma **cor de linha**, como as linhas de um mapa de metrô; a carga das peças tem as suas três cores de estado; a única ação primária é uma pílula cobalto. Fora isso, neutros frios fazem o trabalho: sem gradiente e sem sombra. Títulos são serifados em peso 400 e falam pelo contraste do traço, não pelo negrito. Todo o resto — texto, botões, rótulos, números, peças no canvas — é monoespaçado, e isso dá a cara de manual técnico. Bordas são linhas finas de 1px (`--line`), controles são pílulas, cartões são retângulos de canto macio e nada tem sombra.
 
 Os tokens vivem no topo de `src/App.css`: `:root` guarda tipo, espaço, forma e camadas; `:root, [data-theme='light']` guarda a paleta clara; `[data-theme='dark']` (e o mesmo bloco dentro de `@media (prefers-color-scheme: dark)`) guarda a escura. Nenhuma cor, tamanho de fonte, espaço, raio, sombra ou camada fica solta no CSS ou nos `.tsx`; ficam de fora só `0`, linhas de 1px, porcentagens e a geometria própria de um componente (largura do sparkline, setas do mapa, breakpoints). Este arquivo explica **quando** usar cada um. A página interna `/design` (ou `?design`) mostra todos os tokens e componentes nos dois temas.
 
 ## Cor
 
+Cada cor tem um significado, e só um:
+
+| Família | Significa | Tokens |
+|---|---|---|
+| Neutros frios | Superfície, texto, bordas | `--paper`, `--sunk`, `--wash`, `--ink`, `--ink-soft`, `--line` |
+| Cobalto | A ação primária da tela e a seleção | `--accent` |
+| Cor de linha | Qual empresa (identidade) | `--company-*`, lida por `--company` |
+| Verde / âmbar / vermelho | Estado de carga | `--ok`, `--warm`, `--hot` e preenchimentos |
+| Código | Partes do código na Oficina | `--code-*` |
+
 | Token | Claro | Escuro | Uso |
 |---|---|---|---|
-| `--paper` | `#e7e5e4` | `#0f0f0e` | Fundo do app, painéis, peças, cartões. É a superfície de quase tudo. |
-| `--sunk` | `#dfdcd5` | `#1c1b1a` | Hover e linha pressionada. |
-| `--wash` | `#c4c3b6` | `#2a2927` | O único cartão elevado da tela: o briefing da fase. Não use em outro lugar. |
-| `--ink` | `#0f0f0e` | `#ebebeb` | Texto principal, superfícies invertidas (peça Usuários, fase atual, toasts, menu). |
-| `--ink-soft` | `#4d4c49` | `#aeaca5` | Texto secundário, ligações entre peças. |
-| `--line` | `#c4c3b6` | `#3d3c39` | Toda borda e divisória. Sempre 1px. |
-| `--grid` | `#c4c3b6` | `#34332f` | Pontos do canvas. |
-| `--track` | `#c4c3b6` | `#2a2927` | Parte vazia da barra de carga. |
-| `--accent` | `#0f0f0e` | `#e7e5e4` | A **única** ação primária por tela (Rodar simulação), seleção no canvas e passo atual. |
-| `--accent-hover` | `#3a3936` | `#ffffff` | Hover da ação primária. |
-| `--focus` | `#0f0f0e` | `#e7e5e4` | Anel de foco do teclado. |
-| `--on-accent` | `#e7e5e4` | `#0f0f0e` | Texto sobre a ação primária. |
-| `--on-ink` | `#e7e5e4` | `#0f0f0e` | Texto, bordas e foco sobre superfície invertida. |
-| `--on-ink-soft` | `#c4c3b6` | `#595855` | Texto secundário sobre superfície invertida. |
+| `--paper` | `#f3f4f1` | `#0f1114` | Fundo do app, painéis, peças, cartões. É a superfície de quase tudo. |
+| `--sunk` | `#e6e8e3` | `#191c21` | Hover e linha pressionada; linha atual do editor. |
+| `--wash` | `#dde0da` | `#22262c` | O briefing quando não há empresa (desafio do dia, modo livre). Com empresa, o briefing usa `--company-wash`. |
+| `--ink` | `#121417` | `#eef0f2` | Texto principal, superfícies invertidas (peça Usuários, fase atual, toasts, menu). |
+| `--ink-soft` | `#4a5058` | `#a3a9b2` | Texto secundário, ligações entre peças, comentários e pontuação no código. |
+| `--line` | `#c9ccc4` | `#2c3139` | Toda borda e divisória. Sempre 1px. |
+| `--grid` | `#c9ccc4` | `#2c3139` | Pontos do canvas. |
+| `--track` | `#c9ccc4` | `#2c3139` | Parte vazia da barra de carga. |
+| `--accent` | `#2747d8` | `#7d95ff` | Cobalto: a **única** ação primária por tela (Rodar simulação, Enviar), seleção no canvas e passo atual fora da carreira. |
+| `--accent-hover` | `#1d37b0` | `#9aadff` | Hover da ação primária. |
+| `--on-accent` | `#ffffff` | `#0f1114` | Texto sobre a ação primária. |
+| `--focus` | `#121417` | `#eef0f2` | Anel de foco do teclado. |
+| `--on-ink` | `#f3f4f1` | `#0f1114` | Texto, bordas e foco sobre superfície invertida. |
+| `--on-ink-soft` | `#c9ccc4` | `#5a606a` | Texto secundário sobre superfície invertida. |
 
-Camadas translúcidas (também por tema): `--backdrop` atrás do modal, `--veil` na lixeira ociosa, `--hatch` nas listras de uma região fora do ar e `--glow-1..3` na mancha desfocada do mapa da carreira.
+Camadas translúcidas (também por tema): `--backdrop` atrás do modal, `--veil` na lixeira ociosa, `--hatch` nas listras de uma região fora do ar e `--glow-1..3` na mancha desfocada do mapa da carreira (cobalto, magenta e petróleo bem fracos; decoração, sem informação).
 
-### Cor de carga: a exceção
+### Cor de linha: a empresa
 
-Cor tem um só significado no jogo: **estado de carga**. Os preenchimentos pintam as peças; as tintas carregam texto e barras.
+Como num mapa de metrô, cada empresa tem uma linha. A cor diz **onde você está na carreira**, nunca estado.
+
+| Empresa | Token | Claro | Escuro |
+|---|---|---|---|
+| Startup | `--company-startup` | `#2747d8` cobalto | `#7d95ff` |
+| E-commerce | `--company-ecommerce` | `#b8265f` magenta | `#ff6fa8` |
+| Fintech global | `--company-fintech` | `#0a6a73` petróleo | `#3cc4c9` |
+| Streaming de vídeo | `--company-streaming` | `#6c3ad1` violeta | `#a98bff` |
+
+**Como usar (o gancho):** ponha `data-company={company.id}` (o `id` de `COMPANIES` em `src/career.ts`) num contêiner. Dentro dele valem:
+
+- `--company`: a cor de linha. Passa AA como texto sobre `--paper` e `--sunk`, então serve para eyebrow, nome da empresa, faixa e borda de destaque.
+- `--company-wash`: `--company` a 12% sobre `--paper` (`color-mix`). Fundo de cartão; `--ink` e `--ink-soft` passam AA sobre ele.
+
+Use sempre com fallback, para a tela continuar certa sem empresa: `color: var(--company, var(--ink-soft))`, `background: var(--company-wash, var(--wash))`. Hoje aparece em:
+
+- **Fase** (`.app[data-company]`, vindo de `Play.company`): eyebrow `.phase__where` na cor de linha, com a faixa de linha (24 × 4px) antes dele; briefing com fundo `--company-wash`.
+- **Mapa da carreira** (`.company[data-company]`): cabeçalho do cartão em `--company-wash`, nome da empresa em `--company`, passo atual com a borda de 4px em `--company`.
+
+O cobalto da Startup é o mesmo do `--accent`: na Startup a ação primária e a linha coincidem, e tudo bem, porque a pílula é a única coisa cheia de cobalto na tela.
+
+### Cor de carga
+
+Estado de carga tem as suas cores, e elas não se misturam com as de empresa (verde, âmbar e vermelho-laranja; nenhuma empresa usa esses tons). Os preenchimentos pintam as peças; as tintas carregam texto e barras.
 
 | Estado | Preenchimento claro | Tinta clara | Preenchimento escuro | Tinta escura |
 |---|---|---|---|---|
@@ -37,15 +70,29 @@ Cor tem um só significado no jogo: **estado de carga**. Os preenchimentos pinta
 | perto do limite | `--warm-wash` `#ecda98` | `--warm` `#8a5a00` | `#5c4a17` | `#f3cc72` |
 | sobrecarregada ou fora do ar | `--hot-wash` `#ff9473` | `--hot` `#b4380c` | `#7a2c22` | `#ffa285` |
 
-No claro, os pastéis não passam no contraste AA sobre o papel osso, por isso texto e barra usam as tintas escuras. No escuro é o inverso: os preenchimentos ficam escuros para a tinta clara continuar legível dentro da peça, e as tintas ficam claras para ler sobre o preto.
+No claro, os pastéis não passam no contraste AA sobre o papel, por isso texto e barra usam as tintas escuras. No escuro é o inverso: os preenchimentos ficam escuros para a tinta clara continuar legível dentro da peça, e as tintas ficam claras para ler sobre o grafite.
 
-Não use essas cores para enfeite, categoria ou marca. Se uma cor aparece numa peça, ela diz quanto a peça está carregada.
+Se uma dessas cores aparece numa peça, ela diz quanto a peça está carregada. Não use para enfeite nem para empresa.
 
-A mancha desfocada atrás do título do mapa da carreira é neutra (massa → velino → grafite). Ela não carrega informação; no escuro fica mais fraca.
+### Código colorido (Oficina)
 
-## Modo escuro: a sala preta
+Dentro do editor da Oficina e no bloco da solução de referência, o código tem realce de sintaxe com a mesma família de cores. É a única outra exceção.
 
-O escuro é a sala preta da galeria: papel quase preto, tinta giz, linhas cinza-quente. A regra de cor continua igual (cor só para carga); a ação primária vira uma pílula osso com texto preto.
+| Parte | Classe e token | Claro | Escuro |
+|---|---|---|---|
+| Palavra-chave | `.tok-keyword` `--code-keyword` | `#6c3ad1` | `#a98bff` |
+| Texto (string) | `.tok-string` `--code-string` | `#0a6a73` | `#3cc4c9` |
+| Número, booleano, null | `.tok-number` `--code-number` | `#b8265f` | `#ff6fa8` |
+| Tipo, classe | `.tok-type` `--code-type` | `#2747d8` | `#7d95ff` |
+| Função (chamada ou definida) | `.tok-function` `--code-function` | `#8a5a00` | `#e5b85c` |
+| Comentário | `.tok-comment` | `--ink-soft` itálico | `--ink-soft` itálico |
+| Operador, pontuação | `.tok-punctuation` | `--ink-soft` | `--ink-soft` |
+
+O resto (variáveis, propriedades) fica em `--ink`. As classes saem de um `tagHighlighter` em `src/Oficina.tsx`, usado pelo editor (`syntaxHighlighting`) e pelo bloco estático (`highlightCode`), então os dois pintam igual e trocam de tema sozinhos.
+
+## Modo escuro: grafite
+
+O escuro é grafite: papel `#0f1114`, hover `#191c21`, linhas `#2c3139`, tinta `#eef0f2`. As cores de linha, de código e o cobalto viram versões claras para ler sobre o grafite; a ação primária é uma pílula cobalto clara com texto grafite.
 
 - Segue `prefers-color-scheme` por padrão.
 - O seletor Claro / Escuro / Sistema (no pé do painel da fase e no topo do mapa e do modo livre) grava `gargalo:theme` no `localStorage` e põe `data-theme` no `<html>`. "Sistema" apaga a chave.
@@ -55,7 +102,7 @@ O escuro é a sala preta da galeria: papel quase preto, tinta giz, linhas cinza-
 
 ## Contraste
 
-`src/contrast.test.ts` lê os tokens dos dois temas direto do `App.css` e exige ≥ 4,5:1 para todo par texto/fundo que o jogo desenha (texto e secundário sobre papel, hover e briefing; texto sobre superfície invertida; texto da ação primária; tintas de carga sobre o papel; texto sobre os três preenchimentos) e ≥ 3:1 para foco, seleção, borda do botão fantasma, ligações e barras de carga sobre o trilho. Também confere que o bloco escuro do `@media` é igual ao de `[data-theme='dark']`. Mudou uma cor? Rode `npm test`.
+`src/contrast.test.ts` lê os tokens dos dois temas direto do `App.css` e exige ≥ 4,5:1 para todo par texto/fundo que o jogo desenha (texto e secundário sobre papel, hover e briefing; texto sobre superfície invertida; texto da ação primária; tintas de carga sobre o papel; texto sobre os três preenchimentos; cada cor de linha sobre papel e hover; texto e secundário sobre o `--company-wash` de cada empresa, calculado com a mesma porcentagem do `color-mix`; cada cor de código sobre o fundo do editor e a linha atual) e ≥ 3:1 para foco, seleção, borda do botão fantasma, ligações e barras de carga sobre o trilho. Também confere que o bloco escuro do `@media` é igual ao de `[data-theme='dark']`. Mudou uma cor? Rode `npm test`.
 
 As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam de propósito abaixo de 3:1.
 
@@ -100,7 +147,7 @@ Nunca deixe um título em negrito. Nunca troque o mono por uma sans no corpo: a 
 | `--radius-round` | 50% | Botões redondos de ícone |
 | `--shadow` | `none` | Nada tem sombra |
 
-Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (osso → massa).
+Nada abaixo de 12px em cartão. Nenhuma sombra: elevação é borda de 1px e troca de superfície (papel → hover).
 
 Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--control-xs-touch` 30px (o mesmo × no celular), `--control-sm` 32px, `--control-md` 36px. Larguras de layout: `--panel-width` 360px, `--tabpanel-min-height` 240px (altura mínima da aba aberta do painel antes de o painel todo rolar), `--inspector-width` 340px, `--piece-width` 184px, `--page-width` 1200px.
 
@@ -116,8 +163,8 @@ De cima para baixo: cabeçalho mínimo (logo pequeno, botão de recolher e os li
 
 Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo livre (logo, título serifado `--title-4xl`, linha de apoio, Voltar ao jogo, seletor de tema). Abaixo, duas colunas: a lista de exercícios agrupada por empresa (rótulo em caixa-alta `--ink-soft`; o exercício aberto tem borda `--ink`, o que passou ganha "· passou" em `--ok`) e a área de trabalho: empresa, rota em serifa `--title-lg`, enunciado, editor, botões e resultados. No celular (até 860px) a lista fica acima.
 
-- **Editor:** CodeMirror 6 em modo TypeScript, borda `--line`, `--radius-field`, fundo `--paper`, mono `--text-xs`, altura mínima de 240px e no máximo 60% da tela. O realce não usa cor: palavras-chave em 500, textos, números e comentários em `--ink-soft` (comentários e tipos em itálico). Linha atual em `--sunk`. Tab indenta; Esc e depois Tab sai do editor (a nota abaixo dele diz isso).
-- **Ações:** Rodar testes (fantasma, só os testes visíveis), **Enviar** (a pílula preta, visíveis e escondidos) e Voltar ao início (fantasma pequeno, pede confirmação e volta ao código inicial). Rodando, o botão fica `aria-busy` e uma linha `role="status"` anuncia o andamento e o resultado.
+- **Editor:** CodeMirror 6 em modo TypeScript, borda `--line`, `--radius-field`, fundo `--paper`, mono `--text-xs`, altura mínima de 240px e no máximo 60% da tela. Realce colorido com os tokens `--code-*` (ver Código colorido). Linha atual em `--sunk`. Tab indenta; Esc e depois Tab sai do editor (a nota abaixo dele diz isso).
+- **Ações:** Rodar testes (fantasma, só os testes visíveis), **Enviar** (a pílula cobalto, visíveis e escondidos) e Voltar ao início (fantasma pequeno, pede confirmação e volta ao código inicial). Rodando, o botão fica `aria-busy` e uma linha `role="status"` anuncia o andamento e o resultado.
 - **Resultados:** um cartão `--radius-field` por teste, "Passou" em `--ok` ou "Falhou" em `--hot` (é estado, como no selo), a mensagem, um link "Linha N" que leva o cursor à linha do erro, e Esperado/Recebido em blocos `.code`. Teste escondido mostra só a mensagem.
 - **Dicas e referência:** cada envio que falha libera uma dica (lista numerada). A solução de referência e a explicação aparecem só depois de um envio que passa.
 - O código fica salvo por exercício em `gargalo:oficina:code:<id>`.
@@ -149,7 +196,7 @@ Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo l
 - **Painel** (`.inspector`): folha lateral à direita do desenho, com cabeçalho serifado e régua de ganhos e custos (`.ledger`). No celular vira folha inferior.
 - **Peça no canvas** (`.node`): papel, borda `--line`, `--radius-piece`, título em mono caixa-alta. A peça Usuários é invertida. Carga pinta o fundo com o preenchimento do estado (`.heat--warm`, `.heat--hot`, `.heat--down` com listras).
 - **Ligações:** traço `--ink-soft`, mais grosso quanto mais tráfego passa; selecionada em `--accent`; disjuntor aberto pontilhado em `--hot`, meio-aberto tracejado em `--warm`.
-- **Briefing da fase** (`.brief`): cartão `--wash`, `--radius-card`.
+- **Briefing da fase** (`.brief`): cartão `--company-wash` (ou `--wash` sem empresa), `--radius-card`.
 - **Selo** (`.sheet`): folha de metas com borda `--line` e `--radius-card`, cabeçalhos em caixa-alta, valor medido na tinta do estado.
 - **Medidor** (`.meter`): nome em caixa-alta, valor serifado, sparkline em `--ink` com a meta tracejada em `--line`; `.is-bad` pinta valor e linha de `--hot`.
 - **Toast** (`.toast`): pílula `--ink` com texto `--on-ink`; `.toast--notice` para avisos de várias linhas usa `--radius-piece`.
@@ -161,7 +208,8 @@ Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo l
 
 - Branco puro como fundo.
 - Títulos em 500 ou mais.
-- Qualquer cor saturada fora das cores de carga: a ênfase é a tinta preta.
+- Cor saturada fora dos seus significados (ação primária, empresa, carga, código). Cor de empresa nunca indica estado, e cor de carga nunca indica empresa.
+- Mais de uma pílula cobalto cheia por tela.
 - Pastéis como cor de interface fora do estado de carga.
 - Bordas mais grossas que 1px ou mais escuras que `--line` (exceto o botão fantasma).
 - Sombras.

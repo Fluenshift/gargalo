@@ -143,6 +143,8 @@ interface Play {
   shared?: ReturnType<typeof parseDesign>
   /** Career phases can be shared as an image and a link. */
   linkable?: boolean
+  /** Company id, for its line colour (data-company, DESIGN.md). */
+  company?: string
   /** Makes a result worth sharing; the Result then offers to copy it. */
   share?: (stars: number, cost: number, p99Ms: number) => string
   /** A free-mode system: no goals to pass, nothing recorded, the drawing lives on the system. */
@@ -160,6 +162,7 @@ function careerPlay(stage: Stage, shared?: Play['shared']): Play {
   return {
     shared,
     linkable: true,
+    company: stage.company.id,
     level: stage.level,
     start: startArchitecture(stage),
     pieces: PALETTE,
@@ -1303,7 +1306,7 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
   }
 
   return (
-    <div className={`app${panelOpen ? '' : ' is-collapsed'}`}>
+    <div className={`app${panelOpen ? '' : ' is-collapsed'}`} data-company={play.company}>
       <aside className="panel" id="panel" hidden={!panelOpen}>
         <header className="brand">
           <h1>

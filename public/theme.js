@@ -10,5 +10,5 @@
   var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme)
   var meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', dark ? '#0f0f0e' : '#e7e5e4')
+  if (meta) meta.setAttribute('content', dark ? '#0f1114' : '#f3f4f1')
 })()
