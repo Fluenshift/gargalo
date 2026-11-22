@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useState, type RefObject, useRef } from 'react'
 import { Stars } from './Stars'
 import { loadSavedResults, revealedHints } from './oficina/progress'
 import { info, type CheckInfo, type Verdict } from './oficina/projeto/checklist'
@@ -6,9 +6,74 @@ import { buildContext } from './oficina/projeto/context'
 import { docsFor } from './oficina/projeto/docs'
 import { explain } from './oficina/projeto/explain'
 import type { Project } from './oficina/projeto/project'
-import { resumeStage, runStage, saveStageResult, stagePassed, type ProjectCourse, type StageResult } from './oficina/projeto/stage'
+import { resumeStage, runStage, saveStageResult, splitStatement, stagePassed, type ProjectCourse, type StageResult } from './oficina/projeto/stage'
 
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2))
+
+const stepKey = (course: string, stage: string) => `gargalo:passo:${course}:${stage}`
+
+/** The statement one numbered step at a time (the owner found the whole text too long); "Ver tudo" shows it whole. The step is remembered per course and stage. */
+function Passos({ course, stageId, statement, runRef }: { course: string; stageId: string; statement: string; runRef: RefObject<HTMLButtonElement | null> }) {
+  const { intro, steps } = splitStatement(statement)
+  const last = steps.length - 1
+  const [step, setStep] = useState(() => {
+    try {
+      return Math.min(Math.max(Number(localStorage.getItem(stepKey(course, stageId))) || 0, 0), last)
+    } catch {
+      return 0
+    }
+  })
+  const [all, setAll] = useState(false)
+  const go = (i: number) => {
+    setStep(i)
+    try {
+      localStorage.setItem(stepKey(course, stageId), String(i))
+    } catch {
+      // Private mode or full storage: the step is just not remembered.
+    }
+  }
+  return (
+    <div className="passos">
+      {intro && !all && <p className="oficina__statement">{intro}</p>}
+      {steps.length === 1 || all ? (
+        <p className="oficina__statement passos__card">{all ? statement : steps[0]}</p>
+      ) : (
+        <section className="passos__card" aria-label="Passo a passo">
+          <p className="passos__count">
+            Passo {step + 1} de {steps.length}
+          </p>
+          <p className="oficina__statement passos__text" aria-live="polite" tabIndex={0}>
+            {steps[step]}
+          </p>
+          <ol className="passos__dots" aria-hidden="true">
+            {steps.map((_, i) => (
+              <li key={i} className={i === step ? 'is-current' : i < step ? 'is-done' : undefined} />
+            ))}
+          </ol>
+          <div className="etapa__actions">
+            <button type="button" className="btn btn--ghost btn--small" onClick={() => go(step - 1)} disabled={step === 0}>
+              Voltar
+            </button>
+            {step < last ? (
+              <button type="button" className="btn btn--primary btn--small" onClick={() => go(step + 1)}>
+                Prosseguir
+              </button>
+            ) : (
+              <button type="button" className="btn btn--primary btn--small" onClick={() => runRef.current?.focus()}>
+                Último passo: rodar os testes
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+      {steps.length > 1 && (
+        <button type="button" className="levels__map passos__toggle" aria-pressed={all} onClick={() => setAll(!all)}>
+          {all ? 'Ver em passos' : 'Ver tudo'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 /** The Etapa panel: the current stage, its acceptance tests and checklist, hints, explained errors, "copiar contexto" and the framework's docs. */
 export function Etapa({ project, course, warming, onGoTo }: { project: Project; course: ProjectCourse; warming: boolean; onGoTo: (file: string, line?: number) => void }) {
@@ -21,6 +86,7 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
   // Hints per stage the player asked for with "Ver próxima dica", on top of hint 1 and one per failed run.
   const [revealed, setRevealed] = useState<Record<string, number>>({})
   const [status, setStatus] = useState('')
+  const runRef = useRef<HTMLButtonElement>(null)
 
   const stage = course.stages[index]
   const passed = stagePassed(saved, course.id, stage.id)
@@ -73,7 +139,19 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
         {course.title} · etapa {index + 1} de {course.stages.length}
       </p>
       <h3 className="etapa__title">{stage.title}</h3>
-      <p className="oficina__statement">{stage.statement}</p>
+      <Passos key={`${course.id}:${stage.id}`} course={course.id} stageId={stage.id} statement={stage.statement} runRef={runRef} />
+      <div className="etapa__actions">
+        <button type="button" ref={runRef} className="btn btn--primary btn--small" onClick={start} disabled={running}>
+          Rodar testes
+        </button>
+        <button type="button" className="btn btn--ghost btn--small" onClick={copy}>
+          Copiar contexto
+        </button>
+      </div>
+      <p className="oficina__status" role="status" aria-live="polite">
+        {status || (warming ? 'Carregando o Postgres do navegador…' : '')}
+      </p>
+
       <p className="etapa__files">
         Arquivos:{' '}
         {stage.files.map((f, i) => (
@@ -90,18 +168,6 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
             </span>{' '}
           </Fragment>
         ))}
-      </p>
-
-      <div className="etapa__actions">
-        <button type="button" className="btn btn--primary btn--small" onClick={start} disabled={running}>
-          Rodar testes
-        </button>
-        <button type="button" className="btn btn--ghost btn--small" onClick={copy}>
-          Copiar contexto
-        </button>
-      </div>
-      <p className="oficina__status" role="status" aria-live="polite">
-        {status || (warming ? 'Carregando o Postgres do navegador…' : '')}
       </p>
 
       {run && (
