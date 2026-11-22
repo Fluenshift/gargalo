@@ -65,7 +65,7 @@ export default async function handler(req: Request, ctx: Ctx): Promise<Response>
 
 - O jogador não importa nada. `Request`, `Response`, `URL`, `Headers` e `crypto.randomUUID` são os do próprio Worker.
 - `import` e `fetch` ficam bloqueados: o código só fala com `ctx.db`.
-- O Worker é recriado a cada execução (estado limpo) e encerrado se passar do tempo limite (2 s por teste). Isso trata loop infinito.
+- O Worker é reaproveitado entre execuções, com o Postgres já carregado (começa a carregar quando /oficina abre), e recriado se um teste passar do tempo limite (2 s por teste, o que trata loop infinito) ou se ele cair. Execuções não se sobrepõem: uma pedida durante outra entra na fila. Entre testes, o banco volta ao esquema do exercício, com `ROLLBACK` e `RESET ALL`; o código do jogador é avaliado de novo, em escopo novo, a cada execução.
 
 ### Testes
 

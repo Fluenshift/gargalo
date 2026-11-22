@@ -11,7 +11,7 @@ import { ThemeToggle } from './ThemeToggle'
 import type { TestResult } from './oficina/exercise'
 import { EXERCISES, type OficinaExercise } from './oficina/exercises'
 import { allPassed, byCompany, clearCode, loadCode, saveCode, unlockedHints } from './oficina/progress'
-import { runTests } from './oficina/runner'
+import { prewarm, runTests } from './oficina/runner'
 
 /** Colour means load state only, so the code is told apart by weight, style and ink-soft, never by hue. */
 const highlight = HighlightStyle.define([
@@ -99,7 +99,12 @@ export default function Oficina() {
   const [failed, setFailed] = useState<Record<string, number>>({})
   const [passed, setPassed] = useState<Record<string, boolean>>({})
   const [resetKey, setResetKey] = useState(0)
+  const [warming, setWarming] = useState(true)
   useEffect(() => heading.current?.focus(), [])
+  // A failed warm-up is reported by the first run, which tries again.
+  useEffect(() => {
+    prewarm().catch(() => {}).finally(() => setWarming(false))
+  }, [])
   const onView = useCallback((v: EditorView | null) => {
     view.current = v
   }, [])
@@ -212,7 +217,7 @@ export default function Oficina() {
           </div>
 
           <p className="oficina__status" role="status" aria-live="polite">
-            {announce}
+            {announce || (warming ? 'Carregando o Postgres do navegador…' : '')}
           </p>
 
           {run && (

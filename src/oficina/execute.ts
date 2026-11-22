@@ -60,6 +60,8 @@ export function compile(code: string): Handler {
     const message = (err as Error).message
     throw new CodeError(`Erro de sintaxe: ${message}`, Number(/\((\d+):\d+\)$/.exec(message)?.[1]) || undefined)
   }
+  // A new function scope per run, so a previous run's top-level variables can't be seen.
+  // shortcut: globalThis assignments survive in the long-lived worker; recreate the worker per exercise if that ever matters.
   // Same first line as the player's code, so line numbers in errors match the editor; sucrase keeps lines too.
   // oxlint-disable-next-line no-eval -- running the player's code is the point; it happens inside the Oficina worker.
   const factory = (0, eval)(`(function (exports) {${js}\n})\n//# sourceURL=${SOURCE_URL}`) as (exports: { default?: unknown }) => void

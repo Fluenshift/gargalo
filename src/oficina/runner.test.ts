@@ -1,7 +1,7 @@
 import { Worker } from 'node:worker_threads'
-import { describe, expect, it, vi } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import type { Exercise, TestCase } from './exercise'
-import { LOAD_TIMEOUT_MESSAGE, LOAD_TIMEOUT_MS, TIMEOUT_MESSAGE, runTests, type StartWorker } from './runner'
+import { LOAD_TIMEOUT_MESSAGE, LOAD_TIMEOUT_MS, TIMEOUT_MESSAGE, prewarm, runTests, type StartWorker } from './runner'
 
 // A real thread, so a loop that never ends is cut off the same way the browser worker is.
 const startNodeWorker: StartWorker = (onMessage, onError) => {
@@ -30,7 +30,68 @@ const code = `export default async function handler(req: Request) {
   return new Response('ok')
 }`
 
+/** Wraps a factory to count how many workers it started and keep them to terminate at the end. */
+const counted = (inner: StartWorker) => {
+  const started: ReturnType<StartWorker>[] = []
+  const start: StartWorker = (onMessage, onError) => {
+    const w = inner(onMessage, onError)
+    started.push(w)
+    return w
+  }
+  return { start, started }
+}
+
+// The last run's worker stays alive on purpose; don't leave a thread behind.
+afterAll(async () => {
+  // Replacing the session terminates the old worker.
+  await prewarm((onMessage) => (queueMicrotask(() => onMessage({ ready: true })), { postMessage: () => {}, terminate: () => {} }))
+})
+
 describe('runTests', () => {
+  it('reuses one worker across runs, and starts a new one only after a timeout', async () => {
+    const { start, started } = counted(startNodeWorker)
+    const one = { ...exercise, visible: [test('rápido', '/')], hidden: [] }
+    expect((await runTests(code, one, 'visible', start)).map((r) => r.passed)).toEqual([true])
+    expect((await runTests(code, one, 'visible', start)).map((r) => r.passed)).toEqual([true])
+    expect(started).toHaveLength(1)
+
+    const looping = { ...exercise, visible: [test('loop', '/loop')], hidden: [] }
+    expect((await runTests(code, looping, 'visible', start))[0]).toMatchObject({ passed: false, message: TIMEOUT_MESSAGE })
+    expect(started).toHaveLength(1)
+    expect((await runTests(code, one, 'visible', start)).map((r) => r.passed)).toEqual([true])
+    expect(started).toHaveLength(2)
+  })
+
+  it('queues a run asked for while another is in flight', async () => {
+    const { start, started } = counted(startNodeWorker)
+    const slow = `export default async () => { await new Promise((r) => setTimeout(r, 100)); return new Response('ok') }`
+    const one = { ...exercise, visible: [test('a', '/')], hidden: [] }
+    const order: string[] = []
+    const first = runTests(slow, one, 'visible', start).then((r) => (order.push('first'), r))
+    const second = runTests(code, one, 'visible', start).then((r) => (order.push('second'), r))
+    const [a, b] = await Promise.all([first, second])
+    expect(order).toEqual(['first', 'second'])
+    expect([a[0].passed, b[0].passed]).toEqual([true, true])
+    expect(started).toHaveLength(1)
+  })
+
+  it('a prewarmed worker is used by the first run', async () => {
+    const { start, started } = counted(startNodeWorker)
+    await prewarm(start)
+    const one = { ...exercise, visible: [test('a', '/')], hidden: [] }
+    expect((await runTests(code, one, 'visible', start))[0].passed).toBe(true)
+    expect(started).toHaveLength(1)
+  })
+
+  it('prewarm rejects when the database does not load, and the next run starts over', async () => {
+    const broken: StartWorker = (onMessage) => ({ postMessage: () => {}, terminate: () => {}, ...(queueMicrotask(() => onMessage({ ready: false, message: 'sem wasm' })), {}) })
+    await expect(prewarm(broken)).rejects.toThrow('sem wasm')
+    const { start, started } = counted(startNodeWorker)
+    const one = { ...exercise, visible: [test('a', '/')], hidden: [] }
+    expect((await runTests(code, one, 'visible', start))[0].passed).toBe(true)
+    expect(started).toHaveLength(1)
+  })
+
   it('cuts off a loop that never ends and runs the remaining tests in a new worker', async () => {
     const results = await runTests(code, exercise, 'all', startNodeWorker)
     expect(results.map(({ name, passed, message }) => ({ name, passed, message }))).toEqual([
