@@ -8,7 +8,15 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       // The libraries change less often than the game: in their own file they stay cached across deploys.
-      output: { codeSplitting: { groups: [{ name: 'vendor', test: /node_modules/ }] } },
+      // The Oficina's editor stays out of it, so only /oficina downloads it.
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'editor', test: /node_modules[\\/](@codemirror|codemirror|@lezer|@marijn|style-mod|w3c-keyname|crelt)[\\/]/, priority: 1 },
+            { name: 'vendor', test: /node_modules/ },
+          ],
+        },
+      },
     },
   },
   test: {

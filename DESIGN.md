@@ -110,7 +110,17 @@ Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 
 
 ### O painel da fase
 
-De cima para baixo: cabeçalho mínimo (logo pequeno, botão de recolher e os links para as outras telas: Desafio do dia, Modo livre, Mapa da carreira, Perfil), onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
+De cima para baixo: cabeçalho mínimo (logo pequeno, botão de recolher e os links para as outras telas: Desafio do dia, Modo livre, Oficina, Mapa da carreira, Perfil), onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
+
+### A Oficina (`/oficina`)
+
+Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo livre (logo, título serifado `--title-4xl`, linha de apoio, Voltar ao jogo, seletor de tema). Abaixo, duas colunas: a lista de exercícios agrupada por empresa (rótulo em caixa-alta `--ink-soft`; o exercício aberto tem borda `--ink`, o que passou ganha "· passou" em `--ok`) e a área de trabalho: empresa, rota em serifa `--title-lg`, enunciado, editor, botões e resultados. No celular (até 860px) a lista fica acima.
+
+- **Editor:** CodeMirror 6 em modo TypeScript, borda `--line`, `--radius-field`, fundo `--paper`, mono `--text-xs`, altura mínima de 240px e no máximo 60% da tela. O realce não usa cor: palavras-chave em 500, textos, números e comentários em `--ink-soft` (comentários e tipos em itálico). Linha atual em `--sunk`. Tab indenta; Esc e depois Tab sai do editor (a nota abaixo dele diz isso).
+- **Ações:** Rodar testes (fantasma, só os testes visíveis), **Enviar** (a pílula preta, visíveis e escondidos) e Voltar ao início (fantasma pequeno, pede confirmação e volta ao código inicial). Rodando, o botão fica `aria-busy` e uma linha `role="status"` anuncia o andamento e o resultado.
+- **Resultados:** um cartão `--radius-field` por teste, "Passou" em `--ok` ou "Falhou" em `--hot` (é estado, como no selo), a mensagem, um link "Linha N" que leva o cursor à linha do erro, e Esperado/Recebido em blocos `.code`. Teste escondido mostra só a mensagem.
+- **Dicas e referência:** cada envio que falha libera uma dica (lista numerada). A solução de referência e a explicação aparecem só depois de um envio que passa.
+- O código fica salvo por exercício em `gargalo:oficina:code:<id>`.
 
 ## Camadas
 

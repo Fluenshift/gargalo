@@ -569,6 +569,9 @@ export default function App() {
           Modo livre
         </button>
       )}
+      <a className="levels__map" href="/oficina">
+        Oficina
+      </a>
       <button type="button" className="levels__map" onClick={() => setView('map')}>
         Mapa da carreira
       </button>
