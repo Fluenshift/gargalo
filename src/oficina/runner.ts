@@ -1,22 +1,25 @@
 // Runs the player's code in a fresh worker per run, so a loop that never ends can be cut off without freezing the page.
 
 import type { Exercise, TestResult } from './exercise'
-import type { WorkerInput, WorkerOutput } from './execute'
+import type { WorkerInput, WorkerOutput, WorkerReady } from './execute'
 
 export const TEST_TIMEOUT_MS = 2000
 export const TIMEOUT_MESSAGE = 'Passou de 2 s: confira se há um loop que nunca termina.'
+/** Loading Postgres (a few MB of WASM) has its own clock, so it never eats into a test's 2 s. */
+export const LOAD_TIMEOUT_MS = 60_000
+export const LOAD_TIMEOUT_MESSAGE = 'O Postgres do navegador não carregou em 60 s. Confira a conexão e tente de novo.'
 
 export interface WorkerHandle {
   postMessage(input: WorkerInput): void
   terminate(): void
 }
 
-/** Starts a worker that runs `executeTests` on what it is posted and posts back each `WorkerOutput`. */
-export type StartWorker = (onMessage: (out: WorkerOutput) => void, onError: (message: string) => void) => WorkerHandle
+/** Starts a worker that posts `WorkerReady` once, then runs `executeTests` on what it is posted and posts back each `WorkerOutput`. */
+export type StartWorker = (onMessage: (out: WorkerOutput | WorkerReady) => void, onError: (message: string) => void) => WorkerHandle
 
 const startBrowserWorker: StartWorker = (onMessage, onError) => {
   const worker = new Worker(new URL('./oficinaWorker.ts', import.meta.url), { type: 'module' })
-  worker.onmessage = (e: MessageEvent<WorkerOutput>) => onMessage(e.data)
+  worker.onmessage = (e: MessageEvent<WorkerOutput | WorkerReady>) => onMessage(e.data)
   worker.onerror = (e) => {
     e.preventDefault()
     onError(e.message)
@@ -29,25 +32,34 @@ function runBatch(start: StartWorker, input: WorkerInput): Promise<TestResult[]>
   const results: TestResult[] = []
   return new Promise((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    const finish = (failure?: string) => {
+    // `all`: the database never loaded, so no remaining test can run and a new worker wouldn't help.
+    const finish = (failure?: string, all = false) => {
       clearTimeout(timer)
       worker.terminate()
-      if (failure !== undefined && results.length < input.tests.length) results.push({ name: input.tests[results.length].name, passed: false, message: failure })
+      while (failure !== undefined && results.length < input.tests.length) {
+        results.push({ name: input.tests[results.length].name, passed: false, message: failure })
+        if (!all) break
+      }
       resolve(results)
     }
-    const arm = () => {
+    const arm = (ms = TEST_TIMEOUT_MS, message = TIMEOUT_MESSAGE, all = false) => {
       clearTimeout(timer)
-      timer = setTimeout(() => finish(TIMEOUT_MESSAGE), TEST_TIMEOUT_MS)
+      timer = setTimeout(() => finish(message, all), ms)
     }
     const worker = start(
-      ({ result }) => {
-        results.push(result)
+      (out) => {
+        if ('ready' in out) {
+          if (out.ready) arm()
+          else finish(out.message, true)
+          return
+        }
+        results.push(out.result)
         if (results.length === input.tests.length) finish()
         else arm()
       },
       (message) => finish(message || 'O código parou o executor.'),
     )
-    arm()
+    arm(LOAD_TIMEOUT_MS, LOAD_TIMEOUT_MESSAGE, true)
     worker.postMessage(input)
   })
 }

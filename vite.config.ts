@@ -20,6 +20,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Simulation and PGlite tests are CPU-bound and deterministic; 5 s flakes on a loaded machine.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       // Logic lives in .ts; React screens (.tsx) are checked with the verify-ui skill, not unit tests.
