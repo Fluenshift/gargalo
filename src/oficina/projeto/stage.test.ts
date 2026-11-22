@@ -5,9 +5,10 @@ import type { TestResult } from '../exercise'
 import { loadSavedResults } from '../progress'
 import { prewarm, type StartWorker, type WorkerMessage } from '../runner'
 import { checkTests } from './checklist'
+import { COURSE } from './courses'
 import type { Project } from './project'
 import { executeProjectTests, type ProjectTestsInput } from './runtime'
-import { evaluateStage, runStage, saveStageResult, stageResultId, stageStars, type Stage } from './stage'
+import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, type Stage } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -137,5 +138,31 @@ describe('saveStageResult', () => {
     expect(saveStageResult('ecommerce', 'health', { stars: 3 }).xp).toBe(XP_PER_STAR)
     expect(JSON.parse(data.get(RESULTS_KEY)!)).toEqual({ 'projeto:ecommerce:health': { stars: 3, cost: 0, p99Ms: 0, availability: 1 } })
     expect(totalXp(loadSavedResults())).toBe(XP_PER_LEVEL + 3 * XP_PER_STAR)
+  })
+})
+
+describe('resumeStage', () => {
+  const course = { id: 'c', title: 'C', stages: [stage, { ...stage, id: 'b' }, { ...stage, id: 'z' }] }
+  const won = (...ids: string[]) => Object.fromEntries(ids.map((id) => [stageResultId('c', id), { stars: 1, cost: 0, p99Ms: 0, availability: 1 }]))
+
+  it('opens the first stage not passed, and the last once all are', () => {
+    expect(resumeStage(course, {})).toBe(0)
+    expect(resumeStage(course, won('criar-produto'))).toBe(1)
+    expect(resumeStage(course, won('criar-produto', 'b', 'z'))).toBe(2)
+  })
+
+  it('counts a stage as passed only with a starred result of the same course', () => {
+    expect(stagePassed(won('b'), 'c', 'b')).toBe(true)
+    expect(stagePassed(won('b'), 'outro', 'b')).toBe(false)
+    expect(stagePassed({ [stageResultId('c', 'b')]: { stars: 0, cost: 0, p99Ms: 0, availability: 1 } }, 'c', 'b')).toBe(false)
+  })
+})
+
+describe('COURSE', () => {
+  it.each(['hono', 'fetch'] as const)('passes every stage with 3 stars from its %s reference', async (framework) => {
+    for (const s of COURSE.stages) {
+      const p: Project = { id: 'ref', framework, files: s.reference[framework] }
+      expect(evaluateStage(p, s, await results(p, s)), s.id).toMatchObject({ passed: true, stars: 3 })
+    }
   })
 })
