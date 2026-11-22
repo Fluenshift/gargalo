@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { WorkerMessage, StartWorker } from '../runner'
 import { TIMEOUT_MESSAGE } from '../runner'
 import { starter, type Project } from './project'
-import { applyMigrations, listTables, prewarm, request, resetDev, runTests, tableRows } from './runner'
+import { applyMigrations, dropDev, listTables, prewarm, request, resetDev, runTests, tableRows } from './runner'
 
 // A real thread, so a loop that never ends is cut off the same way the browser worker is.
 const startNodeWorker: StartWorker = (onMessage, onError) => {
@@ -49,6 +49,7 @@ describe('project runner', () => {
     const p = starter('p', 'hono')
     expect(await applyMigrations(p, start)).toBe('migrate')
     expect(await resetDev(p, start)).toBe('reset')
+    expect(await dropDev(p, start)).toBe('drop')
     expect(await listTables(p, start)).toBe('tables')
     expect(await tableRows(p, 'produtos', undefined, start)).toBe('rows')
     expect(posted.at(-1)).toEqual({ call: { op: 'rows', project: p, table: 'produtos', limit: 100 } })

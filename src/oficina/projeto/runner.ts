@@ -29,6 +29,9 @@ export const applyMigrations = (project: Project, start?: StartWorker) => enqueu
 /** Empties the dev database, `_migrations` included. */
 export const resetDev = (project: Project, start?: StartWorker) => enqueue(() => call({ op: 'reset', project }, start)) as Promise<void>
 
+/** Deletes the project's dev database (when the project is deleted). */
+export const dropDev = (project: Pick<Project, 'id'>, start?: StartWorker) => enqueue(() => call({ op: 'drop', project }, start)) as Promise<void>
+
 /** The dev database's tables, by name. */
 export const listTables = (project: Project, start?: StartWorker) => enqueue(() => call({ op: 'tables', project }, start)) as Promise<string[]>
 

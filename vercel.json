@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/design", "destination": "/index.html" },
     { "source": "/oficina", "destination": "/index.html" },
+    { "source": "/oficina/(.*)", "destination": "/index.html" },
     { "source": "/carreira", "destination": "/index.html" },
     { "source": "/perfil", "destination": "/index.html" },
     { "source": "/livre", "destination": "/index.html" },

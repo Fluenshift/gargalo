@@ -97,3 +97,40 @@ export async function health(env: Env): Promise<Response> {
 
 /** A new project with a health route and one migration. */
 export const starter = (id: string, framework: Framework): Project => ({ id, framework, files: { ...STARTERS[framework] } })
+
+/** What the Projetos list shows; the files live under each project's own key. */
+export interface ProjectEntry {
+  id: string
+  name: string
+  framework: Framework
+}
+
+export const PROJECTS_KEY = 'gargalo:oficina:projetos'
+
+/** The player's projects, newest last; empty when there are none or storage is off. */
+export function loadProjectList(): ProjectEntry[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as unknown
+    return Array.isArray(saved) ? (saved as ProjectEntry[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveProjectList(list: ProjectEntry[]): boolean {
+  try {
+    localStorage.setItem(PROJECTS_KEY, JSON.stringify(list))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Forgets a project's files (its list entry and dev database are the caller's). */
+export function removeProject(id: string) {
+  try {
+    localStorage.removeItem(projectKey(id))
+  } catch {
+    // Storage off: nothing was kept.
+  }
+}

@@ -1,35 +1,24 @@
-import { syntaxHighlighting } from '@codemirror/language'
-import { javascript, typescriptLanguage } from '@codemirror/lang-javascript'
-import { indentWithTab } from '@codemirror/commands'
-import { highlightCode, tagHighlighter, tags } from '@lezer/highlight'
-import { EditorView, basicSetup } from 'codemirror'
-import { keymap } from '@codemirror/view'
+import { typescriptLanguage } from '@codemirror/lang-javascript'
+import { highlightCode } from '@lezer/highlight'
+import { EditorView } from 'codemirror'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import './App.css'
 import { GoalRow } from './GoalRow'
 import { Stars } from './Stars'
+import { Projetos } from './Projetos'
 import { TopBar } from './TopBar'
+import { PROJETOS_PATH, followLink, oficinaPlace } from './route'
 import type { RequestMetrics, TestResult } from './oficina/exercise'
 import { EXERCISES, type OficinaExercise } from './oficina/exercises'
 import { MIN_AVAILABILITY, OFICINA_ARCH, loadLevel, requestCost, oficinaStars } from './oficina/load'
 import { allPassed, byCompany, clearCode, loadCode, loadSavedResults, resultId, saveCode, saveResult, unlockedHints } from './oficina/progress'
+import { codeExtensions, highlight } from './oficina/editor'
 import { prewarm, runTests } from './oficina/runner'
 import type { RunSummary } from './sim/engine'
 import { runInBackground } from './sim/runner'
 
-/** Token classes for the editor and the reference block alike; colours are the --code-* tokens in App.css (.tok-*). */
-const highlight = tagHighlighter([
-  { tag: [tags.keyword, tags.definitionKeyword, tags.modifier, tags.controlKeyword, tags.operatorKeyword], class: 'tok-keyword' },
-  { tag: [tags.string, tags.special(tags.string), tags.regexp], class: 'tok-string' },
-  { tag: [tags.number, tags.bool, tags.null], class: 'tok-number' },
-  { tag: [tags.comment, tags.lineComment, tags.blockComment], class: 'tok-comment' },
-  { tag: [tags.typeName, tags.className], class: 'tok-type' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.function(tags.definition(tags.variableName))], class: 'tok-function' },
-  { tag: [tags.operator, tags.punctuation, tags.bracket, tags.separator], class: 'tok-punctuation' },
-])
-
 /** Read-only TypeScript, coloured like the editor. */
-function Code({ code }: { code: string }) {
+export function Code({ code }: { code: string }) {
   const parts = useMemo(() => {
     const out: ReactNode[] = []
     highlightCode(
@@ -44,21 +33,6 @@ function Code({ code }: { code: string }) {
   return <pre className="code code--wrap">{parts}</pre>
 }
 
-const editorTheme = EditorView.theme({
-  '&': { color: 'var(--ink)', backgroundColor: 'var(--paper)', fontSize: 'var(--text-xs)' },
-  '&.cm-focused': { outline: 'var(--focus-width) solid var(--focus)', outlineOffset: '2px' },
-  '.cm-scroller': { fontFamily: 'var(--mono)', lineHeight: '1.6' },
-  '.cm-content, .cm-gutter': { minHeight: '240px' },
-  '.cm-content': { caretColor: 'var(--ink)' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--ink)' },
-  '.cm-gutters': { backgroundColor: 'var(--paper)', color: 'var(--ink-soft)', borderRight: '1px solid var(--line)' },
-  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'var(--sunk)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'var(--line)' },
-  '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--line)', color: 'inherit' },
-  '.cm-tooltip, .cm-panels': { backgroundColor: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--line)' },
-  '.cm-tooltip-autocomplete ul li[aria-selected]': { backgroundColor: 'var(--ink)', color: 'var(--on-ink)' },
-})
-
 function Editor({ exercise, onView }: { exercise: OficinaExercise; onView: (view: EditorView | null) => void }) {
   const host = useRef<HTMLDivElement>(null)
   const [saveFailed, setSaveFailed] = useState(false)
@@ -66,18 +40,11 @@ function Editor({ exercise, onView }: { exercise: OficinaExercise; onView: (view
     const view = new EditorView({
       parent: host.current!,
       doc: loadCode(exercise.id, exercise.starter),
-      extensions: [
-        basicSetup,
-        // Tab indents; Esc then Tab (CodeMirror's own escape) leaves the editor.
-        keymap.of([indentWithTab]),
-        javascript({ typescript: true }),
-        syntaxHighlighting(highlight),
-        editorTheme,
-        EditorView.contentAttributes.of({ 'aria-label': 'Código do handler', 'aria-describedby': 'oficina-keys' }),
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged) setSaveFailed(!saveCode(exercise.id, u.state.doc.toString()))
-        }),
-      ],
+      extensions: codeExtensions({
+        label: 'Código do handler',
+        describedBy: 'oficina-keys',
+        onChange: (code) => setSaveFailed(!saveCode(exercise.id, code)),
+      }),
     })
     onView(view)
     return () => {
@@ -122,8 +89,7 @@ const decimal = (n: number) => (Math.round(n * 10) / 10).toLocaleString('pt-BR')
 /** The pill shows only the route ("GET /ola"); the rest of the title is for screen readers. */
 const route = (title: string) => title.split(': ')[0]
 
-export default function Oficina() {
-  const heading = useRef<HTMLHeadingElement>(null)
+function Exercicios() {
   const view = useRef<EditorView | null>(null)
   const [current, setCurrent] = useState(EXERCISES[0])
   const [run, setRun] = useState<Run | null>(null)
@@ -137,7 +103,6 @@ export default function Oficina() {
   })
   const [resetKey, setResetKey] = useState(0)
   const [warming, setWarming] = useState(true)
-  useEffect(() => heading.current?.focus(), [])
   // A failed warm-up is reported by the first run, which tries again.
   useEffect(() => {
     prewarm().catch(() => {}).finally(() => setWarming(false))
@@ -213,18 +178,6 @@ export default function Oficina() {
 
   return (
     <>
-    <TopBar screen="oficina" />
-    <div className="career free oficina">
-      <header className="career__head">
-        <h1 ref={heading} tabIndex={-1}>
-          Oficina
-        </h1>
-        <p className="career__lede">
-          Escreva o handler de verdade, em TypeScript, e rode os testes aqui no navegador. Rodar testes usa só os visíveis; Enviar roda também os
-          escondidos. Cada envio que falha libera uma dica.
-        </p>
-      </header>
-
       <nav className="oficina__strip" aria-label="Exercícios" onKeyDown={arrows}>
         {byCompany(EXERCISES).map(([company, items]) => (
           <div key={company} className="oficina__group" role="group" aria-label={company} data-company={COMPANY_ID[company]}>
@@ -390,6 +343,50 @@ export default function Oficina() {
           )}
         </div>
       </div>
+    </>
+  )
+}
+
+const TABS = [
+  ['exercicios', 'Exercícios', '/oficina'],
+  ['projetos', 'Projetos', PROJETOS_PATH],
+] as const
+
+/** The Oficina: the exercises, or the projects (`/oficina/projetos`). */
+export default function Oficina() {
+  const heading = useRef<HTMLHeadingElement>(null)
+  const [place, setPlace] = useState(() => oficinaPlace(location.pathname))
+  useEffect(() => heading.current?.focus(), [])
+  useEffect(() => {
+    const onPop = () => setPlace(oficinaPlace(location.pathname))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  return (
+    <>
+    <TopBar screen="oficina" />
+    <div className="career free oficina">
+      <header className="career__head">
+        <h1 ref={heading} tabIndex={-1}>
+          Oficina
+        </h1>
+        <p className="career__lede">
+          {place.tab === 'exercicios'
+            ? 'Escreva o handler de verdade, em TypeScript, e rode os testes aqui no navegador. Rodar testes usa só os visíveis; Enviar roda também os escondidos. Cada envio que falha libera uma dica.'
+            : 'Construa uma API do zero, em Hono ou fetch puro: vários arquivos, migrações SQL e um banco Postgres que fica salvo no navegador.'}
+        </p>
+      </header>
+
+      <nav className="segmented oficina__tabs" aria-label="Oficina">
+        {TABS.map(([tab, label, href]) => (
+          <a key={tab} href={href} onClick={followLink} aria-current={place.tab === tab ? 'page' : undefined}>
+            {label}
+          </a>
+        ))}
+      </nav>
+
+      {place.tab === 'exercicios' ? <Exercicios /> : <Projetos open={place.project} />}
     </div>
     </>
   )
