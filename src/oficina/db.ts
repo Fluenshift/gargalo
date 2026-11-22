@@ -11,6 +11,8 @@ export function pgliteDb(pg: PGlite): OpenDb {
     transaction: (fn) => pg.transaction((tx) => fn(inTransaction(tx))),
   }
   return async (schema, seed) => {
+    // The worker lives across runs: undo what the last handler left on the session (an open transaction, SET) before the schema reset.
+    await pg.exec('ROLLBACK;\nRESET ALL')
     // Newlines so a trailing `-- comment` in the exercise's SQL doesn't swallow what follows; ANALYZE so the planner sees the seed.
     await pg.exec(`DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n${schema}\n;\n${seed}\n;\nANALYZE;`)
     return db

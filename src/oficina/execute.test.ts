@@ -229,3 +229,19 @@ describe('matches', () => {
     expect(matches(null, null)).toBe(true)
   })
 })
+
+describe('session state between tests', () => {
+  const show = (what: string) => `export default async (req: Request, ctx: Ctx) => Response.json((await ctx.db.query('SHOW ${what}'))[0])`
+  const probe = (name: string, key: string, value: unknown): TestCase => ({ name, requests: [{ request: { path: '/' }, expect: { status: 200, body: { [key]: value } } }] })
+
+  it('undoes SET and an open transaction the handler left behind', async () => {
+    await run(`export default async (req: Request, ctx: Ctx) => { await ctx.db.query("SET application_name = 'vazou'"); return new Response('ok') }`, [
+      { name: 'sujo', requests: [{ request: { path: '/' }, expect: { status: 200 } }] },
+    ])
+    expect(await run(show('application_name'), [probe('limpo', 'application_name', '')])).toMatchObject([{ passed: true }])
+
+    // A transaction the handler could not close (a driver-level BEGIN) must not carry into the next test.
+    await pg.exec('BEGIN ISOLATION LEVEL SERIALIZABLE')
+    expect(await run(show('transaction_isolation'), [probe('limpo', 'transaction_isolation', 'read committed')])).toMatchObject([{ passed: true }])
+  })
+})
