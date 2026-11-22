@@ -1,6 +1,7 @@
 // The Oficina's exercises, in play order; each lives in its own file under exercises/. New ones are appended to EXERCISES.
 
 import type { Exercise } from './exercise'
+import { cadastro } from './exercises/cadastro'
 import { ola } from './exercises/ola'
 
 /** An exercise plus what the screen shows around it. */
@@ -16,4 +17,4 @@ export interface OficinaExercise extends Exercise {
   explanation: string
 }
 
-export const EXERCISES: OficinaExercise[] = [ola]
+export const EXERCISES: OficinaExercise[] = [ola, cadastro]
