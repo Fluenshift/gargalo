@@ -3147,21 +3147,40 @@ ul {
   max-width: min(520px, calc(100vw - 32px));
 }
 
-/* Oficina (/oficina): the exercise list beside the statement, the editor and the test results. */
+/* Oficina (/oficina): a strip of exercises, then the statement and editor beside the statement, the editor and the test results. */
 
 a.levels__map {
   color: inherit;
 }
 
-.oficina__layout {
-  display: grid;
-  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
-  gap: var(--space-40);
-  max-width: var(--page-width);
+.oficina__strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-20);
+  overflow-x: auto;
+  padding-bottom: var(--space-8);
+  margin-bottom: var(--space-24);
+  border-bottom: 1px solid var(--line);
 }
 
-.oficina__list h2,
-.oficina__work h3,
+/* On a wide screen the strip wraps instead of hiding exercises off to the side. */
+@media (min-width: 900px) {
+  .oficina__strip {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    row-gap: var(--space-10);
+  }
+}
+
+.oficina__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex: none;
+}
+
+.oficina__co,
+.oficina__right h3,
 .oficina__diff h4 {
   font-size: var(--text-xs);
   font-weight: 500;
@@ -3171,30 +3190,27 @@ a.levels__map {
   margin-bottom: var(--space-8);
 }
 
-.oficina__list ul {
-  list-style: none;
-  margin: 0 0 var(--space-20);
-  padding: 0;
-  display: grid;
-  gap: var(--space-4);
+.oficina__co {
+  margin: 0 var(--space-4) 0 0;
+  color: var(--company, var(--ink-soft));
+  white-space: nowrap;
 }
 
-.oficina__list button {
-  width: 100%;
-  text-align: left;
+.oficina__pill {
+  flex: none;
+  white-space: nowrap;
   background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-field-sm);
-  padding: var(--space-8) var(--space-10);
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-6) var(--space-12);
+  font-size: var(--text-xs);
 }
 
-.oficina__list button:hover:not(:disabled) {
+.oficina__pill:hover:not(:disabled) {
   background: var(--sunk);
 }
 
-.oficina__list button[aria-current='true'] {
+.oficina__pill[aria-pressed='true'] {
   border-color: var(--ink);
 }
 
@@ -3202,15 +3218,35 @@ a.levels__map {
   color: var(--ok);
 }
 
+.oficina__layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-40);
+  align-items: flex-start;
+  max-width: var(--page-width);
+}
+
+.oficina__left {
+  flex: 999 1 560px;
+  min-width: 0;
+}
+
+.oficina__right {
+  flex: 1 1 380px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-14);
+}
+
+.oficina__right > section {
+  min-width: 0;
+}
+
 .oficina__work {
   display: grid;
   gap: var(--space-14);
   min-width: 0;
-}
-
-.oficina__work > section {
-  min-width: 0;
-  margin-top: var(--space-10);
 }
 
 .oficina__title {
@@ -3319,13 +3355,6 @@ a.levels__map {
   list-style: decimal;
   padding-left: var(--space-20);
   max-width: 72ch;
-}
-
-@media (max-width: 860px) {
-  .oficina__layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-20);
-  }
 }
 
 /* ==========================================================================
@@ -3767,4 +3796,9 @@ a.levels__map {
   .profile-page .profile__list {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The goal numbers never wrap. */
+.oficina__sheet td:not(:first-child) {
+  white-space: nowrap;
 }
