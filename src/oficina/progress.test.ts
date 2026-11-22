@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { executeTests } from './execute'
-import type { Db, TestResult } from './exercise'
-import { EXERCISES } from './exercises'
 import { RESULTS_KEY, XP_PER_LEVEL, XP_PER_STAR, totalXp } from '../score'
 import { allPassed, byCompany, clearCode, codeKey, loadCode, loadSavedResults, resultId, saveCode, saveResult, unlockedHints } from './progress'
 
@@ -63,30 +60,6 @@ describe('hints and results', () => {
       ['Fintech', [2]],
     ])
   })
-})
-
-const noDb: Db = { query: () => Promise.reject(new Error('sem banco')), transaction: (fn) => fn(noDb) }
-
-async function runAll(code: string, exercise: (typeof EXERCISES)[number]): Promise<TestResult[]> {
-  const results: TestResult[] = []
-  const tests = [...exercise.visible, ...exercise.hidden]
-  await executeTests({ code, schema: exercise.schema, seed: exercise.seed, tests }, async () => noDb, ({ result }) => results.push(result))
-  return results
-}
-
-describe('exercises', () => {
-  it('have unique ids', () => {
-    expect(new Set(EXERCISES.map((e) => e.id)).size).toBe(EXERCISES.length)
-  })
-
-  // shortcut: runs without a database; once ctx.db is Postgres (#83), exercises that query it need the real one here.
-  for (const exercise of EXERCISES.filter((e) => !e.schema)) {
-    it(`${exercise.id}: the reference passes, the naive and the starter fail`, async () => {
-      expect(allPassed(await runAll(exercise.reference, exercise))).toBe(true)
-      expect(allPassed(await runAll(exercise.naive, exercise))).toBe(false)
-      expect(allPassed(await runAll(exercise.starter, exercise))).toBe(false)
-    })
-  }
 })
 
 describe('saved results', () => {

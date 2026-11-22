@@ -214,8 +214,18 @@ INSERT INTO itens VALUES (1, 10), (1, 20), (1, 30), (2, 40);`,
 })
 
 describe('compile', () => {
-  it('returns the default export', () => {
-    expect(typeof compile('export default async function handler() { return new Response() }')).toBe('function')
+  it('returns the default export and the migration, if any', () => {
+    expect(typeof compile('export default async function handler() { return new Response() }').handler).toBe('function')
+    expect(compile('export const migration = "CREATE INDEX x ON t (a)"\nexport default async () => new Response()').migration).toBe('CREATE INDEX x ON t (a)')
+    expect(() => compile('export const migration = 1\nexport default async () => new Response()')).toThrow(/A migration precisa ser um texto/)
+  })
+
+  it('runs the migration after the data, and says when it fails', async () => {
+    const code = (sql: string) => `export const migration = ${JSON.stringify(sql)}
+export default async (req: Request, ctx: Ctx) => Response.json(await ctx.db.query("SELECT indexname FROM pg_indexes WHERE indexname = 'contas_saldo'"))`
+    const test: TestCase = { name: 'índice', requests: [{ request: { path: '/' }, expect: { status: 200, body: [{ indexname: 'contas_saldo' }] } }] }
+    expect(await run(code('CREATE INDEX contas_saldo ON contas (saldo)'), [test])).toMatchObject([{ passed: true }])
+    expect(await run(code('CREATE INDEX contas_saldo ON nada (saldo)'), [test])).toMatchObject([{ passed: false, message: expect.stringMatching(/A migration falhou: .*nada/) }])
   })
 })
 
