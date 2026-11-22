@@ -493,7 +493,8 @@ export function Projetos({ open }: { open?: string }) {
     e.preventDefault()
     const id = crypto.randomUUID().slice(0, 8)
     const first = courseOf(courseId).starter
-    const created = first ? { ...first, id } : starter(id, framework)
+    const base = starter(id, framework)
+    const created = first ? { ...first, id } : { ...base, files: { ...base.files, ...courseOf(courseId).baseFiles } }
     saveProject(created)
     update([...list, { id, name: name.trim() || `Projeto ${list.length + 1}`, framework: created.framework, course: courseId }])
     setName('')

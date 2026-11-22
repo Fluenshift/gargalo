@@ -175,3 +175,16 @@ describe('COURSES', () => {
     }
   })
 })
+
+describe('course base files', () => {
+  it('every helper a hint says comes from src/http.ts is in the files the course starts with', () => {
+    for (const course of COURSES) {
+      const hints = course.stages.flatMap((s) => s.hints).filter((h) => h.includes('src/http.ts'))
+      if (!hints.length || course.id === 'ecommerce') continue // the orders course has the player write src/http.ts in its health stage
+      const http = course.baseFiles?.['src/http.ts'] ?? course.starter?.files['src/http.ts']
+      expect(http, course.id).toBeDefined()
+      for (const name of ['ErroHttp', 'problema', 'idDe', 'achado'].filter((n) => hints.some((h) => h.includes(n))))
+        expect(http, `${course.id}: ${name}`).toMatch(new RegExp(`export (class|function|const) ${name}[^\\w]`))
+    }
+  })
+})

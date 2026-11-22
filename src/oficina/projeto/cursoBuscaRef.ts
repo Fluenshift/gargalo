@@ -4,7 +4,7 @@
 import type { Framework } from './project'
 import { starter } from './project'
 
-const HTTP = String.raw`/** An error with the status it should answer; deErro turns it into problem+json. */
+export const HTTP = String.raw`/** An error with the status it should answer; deErro turns it into problem+json. */
 export class ErroHttp extends Error {
   status: number
   title: string

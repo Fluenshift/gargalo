@@ -1,7 +1,7 @@
 // Projeto Banco of the Oficina: guided project created from transferencia.ts and pagamento.ts.
 
 import type { RequestSpec } from '../exercise'
-import { referencia } from './cursoBancoRef'
+import { HTTP, referencia } from './cursoBancoRef'
 import type { ProjectCourse, Stage } from './stage'
 
 const post = (path: string, body: unknown, headers?: Record<string, string>): RequestSpec => ({ method: 'POST', path, body, headers })
@@ -276,6 +276,7 @@ const pagamentos: Stage = {
 }
 
 export const cursoBanco: ProjectCourse = {
+  baseFiles: { 'src/http.ts': HTTP },
   id: 'banco',
   title: 'API do Banco',
   stages: [contas, transferencias, pagamentos],
