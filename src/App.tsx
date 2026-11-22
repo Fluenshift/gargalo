@@ -11,7 +11,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
+import type { Connection, Edge, FitViewOptions, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { TopBar } from './TopBar'
@@ -79,6 +79,11 @@ const Profile = lazy(() => import('./Profile').then((m) => ({ default: m.Profile
 const nodeTypes = { component: NodeCard, region: RegionArea }
 const DELETE_KEYS = ['Backspace', 'Delete']
 const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
+/** On a wide screen the brief floats over the left of the canvas: the first fit leaves room for it. */
+const firstFit = (): FitViewOptions =>
+  typeof window !== 'undefined' && window.matchMedia('(min-width: 641px)').matches
+    ? { maxZoom: 1, padding: { top: '190px', left: '440px', right: '24px', bottom: '24px' } }
+    : FIT_VIEW
 /** How long the drawing must stay still before it is saved. */
 const SAVE_DELAY_MS = 300
 const edgeTypes = { removable: RemovableEdge }
@@ -827,6 +832,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
   const [notice, setNotice] = useState<string | null>(null)
   // Over the canvas: the brief card, the phases popover and the right panel (goals and result, or traffic).
   const [briefOpen, setBriefOpen] = useState(true)
+  const [firstFitOptions] = useState(firstFit)
   const [phasesOpen, setPhasesOpen] = useState(false)
   const [side, setSide] = useState<Side | null>(null)
   const phasesButton = useRef<HTMLButtonElement>(null)
@@ -1465,7 +1471,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
               onSelectionChange={onSelectionChange}
               onPaneClick={closeListInfo}
               fitView
-              fitViewOptions={FIT_VIEW}
+              fitViewOptions={firstFitOptions}
               minZoom={0.2}
             >
               <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
@@ -1787,7 +1793,8 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
           Peças
         </h2>
         <ul className="dock__parts" aria-labelledby="parts-title">
-        {play.pieces.map((kind) => {
+        {/* What you can use comes first; locked pieces trail at the end of the dock. */}
+        {[...play.pieces].sort((a, b) => Number(!play.unlock(a).unlocked) - Number(!play.unlock(b).unlocked)).map((kind) => {
           const unlock = play.unlock(kind)
           const detail = !unlock.unlocked
             ? unlock.by

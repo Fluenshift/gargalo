@@ -3415,7 +3415,8 @@ a.levels__map {
   text-underline-offset: 6px;
 }
 
-@media (max-width: 640px) {
+/* Below 960 px the links, XP and theme no longer fit on one line: they move into the Menu. */
+@media (max-width: 960px) {
   .topbar {
     flex-wrap: nowrap;
     justify-content: space-between;
