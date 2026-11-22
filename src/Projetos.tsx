@@ -13,7 +13,9 @@ import {
   saveProjectList,
   starter,
 } from './oficina/projeto/project'
-import { applyMigrations, dropDev, listTables, prewarm, request, resetDev, tableRows } from './oficina/projeto/runner'
+import { forgetClient } from './oficina/projeto/http'
+import { applyMigrations, dropDev, listTables, prewarm, resetDev, tableRows } from './oficina/projeto/runner'
+import { HttpClient } from './HttpClient'
 import type { CodeError, LogLine, RequestOutcome, TableRows } from './oficina/projeto/runtime'
 import { PROJETOS_PATH, followLink, navigate } from './route'
 
@@ -312,21 +314,11 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     close(active)
   }
 
-  // shortcut: a one-path GET so the Console has something to show; #109 replaces it with the HTTP client.
-  const [path, setPath] = useState('/health')
-  const [sending, setSending] = useState(false)
+  // Every request the HTTP client sends leaves a line in the Console, then the project's own logs.
   const record = (method: string, sent: string, outcome: RequestOutcome) => {
     const head: ConsoleLine = { level: outcome.error ? 'error' : 'log', text: `${method} ${sent} → ${outcome.response?.status ?? 'erro'} · ${Math.round(outcome.ms)} ms` }
     const error: ConsoleLine[] = outcome.error ? [{ level: 'error', text: outcome.error.message, error: outcome.error }] : []
     setLogs((l) => [...l, head, ...outcome.logs, ...error])
-  }
-  const send = async (e: FormEvent) => {
-    e.preventDefault()
-    setSending(true)
-    const sent = path.startsWith('/') ? path : `/${path}`
-    record('GET', sent, await request(project, { method: 'GET', path: sent }))
-    setSending(false)
-    setPanel('console')
   }
 
   const rows = treeOf(Object.keys(files))
@@ -452,21 +444,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           </button>
         </div>
         {side === 'requisicao' ? (
-          <div className="projeto__slot">
-            <p className="oficina__note">Em breve: o cliente HTTP, com método, headers, corpo, resposta e histórico. Por enquanto, um GET:</p>
-            <form className="projeto__get" onSubmit={send}>
-              <label htmlFor="projeto-path" className="sr-only">
-                Caminho do GET
-              </label>
-              <input id="projeto-path" type="text" value={path} spellCheck={false} onChange={(e) => setPath(e.target.value)} />
-              <button type="submit" className="btn btn--ghost btn--small" disabled={sending} aria-busy={sending}>
-                Enviar GET
-              </button>
-            </form>
-            <p className="oficina__status" role="status" aria-live="polite">
-              {warming ? 'Carregando o Postgres do navegador…' : ''}
-            </p>
-          </div>
+          <HttpClient project={project} warming={warming} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
         ) : (
           <div className="projeto__slot">
             <p className="oficina__note">Em breve: as etapas do projeto, com testes de aceitação, checklist de boas práticas e dicas.</p>
@@ -514,6 +492,7 @@ export function Projetos({ open }: { open?: string }) {
   const remove = async (entry: ProjectEntry) => {
     if (!confirm(`Apagar o projeto ${entry.name}, com os arquivos e o banco de desenvolvimento dele?`)) return
     removeProject(entry.id)
+    forgetClient(entry.id)
     update(list.filter((p) => p.id !== entry.id))
     try {
       await dropDev(entry)
