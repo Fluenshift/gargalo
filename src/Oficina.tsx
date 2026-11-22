@@ -6,10 +6,9 @@ import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import './App.css'
-import { BrandMark } from './BrandMark'
 import { GoalRow } from './GoalRow'
 import { Stars } from './Stars'
-import { ThemeToggle } from './ThemeToggle'
+import { TopBar } from './TopBar'
 import type { RequestMetrics, TestResult } from './oficina/exercise'
 import { EXERCISES, type OficinaExercise } from './oficina/exercises'
 import { MIN_AVAILABILITY, OFICINA_ARCH, loadLevel, requestCost, oficinaStars } from './oficina/load'
@@ -195,12 +194,10 @@ export default function Oficina() {
   const hints = unlockedHints(current.hints, failed[current.id] ?? 0)
 
   return (
+    <>
+    <TopBar screen="oficina" />
     <div className="career free oficina">
       <header className="career__head">
-        <p className="career__brand">
-          <BrandMark size={28} />
-          gargalo
-        </p>
         <h1 ref={heading} tabIndex={-1}>
           Oficina
         </h1>
@@ -208,12 +205,6 @@ export default function Oficina() {
           Escreva o handler de verdade, em TypeScript, e rode os testes aqui no navegador. Rodar testes usa só os visíveis; Enviar roda também os
           escondidos. Cada envio que falha libera uma dica.
         </p>
-        <div className="career__actions">
-          <a className="btn btn--ghost" href="/">
-            Voltar ao jogo
-          </a>
-        </div>
-        <ThemeToggle />
       </header>
 
       <div className="oficina__layout">
@@ -368,5 +359,6 @@ export default function Oficina() {
         </section>
       </div>
     </div>
+    </>
   )
 }

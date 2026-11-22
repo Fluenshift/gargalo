@@ -95,7 +95,7 @@ O resto (variáveis, propriedades) fica em `--ink`. As classes saem de um `tagHi
 O escuro é grafite: papel `#0f1114`, hover `#191c21`, linhas `#2c3139`, tinta `#eef0f2`. As cores de linha, de código e o cobalto viram versões claras para ler sobre o grafite; a ação primária é uma pílula cobalto clara com texto grafite.
 
 - Segue `prefers-color-scheme` por padrão.
-- O seletor Claro / Escuro / Sistema (no pé do painel da fase e no topo do mapa e do modo livre) grava `gargalo:theme` no `localStorage` e põe `data-theme` no `<html>`. "Sistema" apaga a chave.
+- O seletor Claro / Escuro / Sistema (na barra do topo; no celular, dentro do Menu) grava `gargalo:theme` no `localStorage` e põe `data-theme` no `<html>`. "Sistema" apaga a chave.
 - `public/theme.js` roda antes da primeira pintura e aplica o tema salvo, então não pisca. É um arquivo e não um script inline porque a CSP proíbe scripts inline.
 - `color-scheme` acompanha o tema, então barras de rolagem, `select` e controles nativos também escurecem. A cor da barra do navegador (`theme-color`) é o `--paper` do tema.
 - `data-theme` em qualquer outro elemento fixa um tema só naquele trecho (é o que a `/design` usa para mostrar os dois lado a lado).
@@ -121,14 +121,14 @@ As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam 
 | `--text-sm` | 13px | Texto secundário, botões |
 | `--text-base` | 14px | Corpo |
 | `--text-glyph` / `--text-glyph-lg` | 17px / 18px | O × dos botões redondos |
-| `--title-xs` | 22px | Chefão na lista, estrelas |
+| `--title-xs` | 22px | Chefão na lista, estrelas, título do cartão de fase na Carreira |
 | `--title-sm` | 24px | Título da folha, resultado, cartão do modo livre |
 | `--title-meter-compact` | 26px | Medidor em telas até 1400px |
-| `--title-md` | 28px | Logo, painel de conceitos, código, modal |
-| `--title-lg` | 32px | Medidores, empresas, seções |
-| `--title-xl` | 40px | Título da fase no painel, patente no perfil |
-| `--title-2xl` | 44px | Título do modo livre no celular |
-| `--title-4xl` | 56px | Título do mapa da carreira |
+| `--title-md` | 28px | Logo, painel de conceitos, código, modal, blocos do perfil |
+| `--title-lg` | 32px | Medidores, empresas, seções, destinos do Menu no celular |
+| `--title-xl` | 40px | Título da fase no painel |
+| `--title-2xl` | 44px | Título do modo livre e das páginas no celular, números do perfil |
+| `--title-4xl` | 56px | Título das páginas (Carreira, Perfil, Oficina, Modo livre) |
 
 Tracking: `--tracking-tight` −0.02em, `--tracking-caps` 0.02em, `--tracking-wide` 0.04em, `--tracking-stars` 0.08em, `--tracking-none` 0. Entrelinha: `--leading` 1.35.
 
@@ -155,13 +155,26 @@ Tamanhos de controle: `--control-xs` 26px (× de peça e de definição), `--con
 
 Base de 4px: `--space-2` a `--space-56`, nomeados pelo valor em px (2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56). Os passos ímpares (3, 5, 7, 9) existem para as listas densas e não devem crescer. Cartões com 20–24px de respiro; o canvas é o centro e os painéis cedem espaço a ele. O painel da esquerda pode ser recolhido.
 
+### A barra do topo e os endereços
+
+Toda tela começa pela barra do topo (`TopBar`, `.topbar`): logo (leva a `/`, a fase atual), os destinos Carreira, Modo livre, Desafio do dia #N, Oficina e Perfil em mono caixa-alta `--text-xs`, a patente e o XP em `--ink-soft` e o seletor de tema. O destino aberto tem `aria-current="page"` e um traço `--ink` embaixo; numa fase, Carreira fica marcada. A barra é `sticky`, papel com linha `--line` embaixo, em `--z-menu`. Até 640px ela mostra só o logo e o botão **Menu**, que abre os destinos em tela cheia num `<dialog>` nativo (foco preso, Esc fecha e devolve o foco ao Menu), com os destinos em serifa `--title-lg`, o XP e o tema.
+
+Cada tela tem endereço, pela History API (`src/route.ts`, sem dependência de roteador): `/` fase atual, `/carreira`, `/perfil`, `/livre`, `/desafio`, `/oficina` e `/design`. Voltar e avançar do navegador trocam de tela; `?fase=&d=` (link compartilhado) continua abrindo o desenho em `/`, e `?oficina`/`?design` continuam valendo. Na Vercel, `vercel.json` reescreve esses caminhos para o `index.html`.
+
+### Carreira e Perfil
+
+Páginas comuns abaixo da barra (`.page`, largura `--page-width`): rótulo em caixa-alta `--ink-soft`, título serifado `--title-4xl` (`--title-2xl` no celular), seções separadas por linha `--line`.
+
+- **Carreira** (`/carreira`): a ação principal é "Continuar: <fase>" (a pílula preta). Cada empresa é uma seção (rótulo, nome em `--title-lg`, estado, orçamento) com um cartão por fase (`.phase-card`, `--radius-piece`): feita (✓ e estrelas), agora (superfície invertida `--ink`), aberta ("Jogar →"), trancada (`--ink-soft`, borda tracejada, cadeado e o porquê) e chefão (borda `--ink`). Embaixo, as peças que a empresa libera.
+- **Perfil** (`/perfil`): patente em `--title-4xl`, XP com a barra de progresso e o que falta; três blocos (Carreira, Oficina, Desafio do dia) com o número em `--title-2xl`; conquistas em duas colunas (uma no celular).
+
 ### O painel da fase
 
-De cima para baixo: cabeçalho mínimo (logo pequeno, botão de recolher e os links para as outras telas: Desafio do dia, Modo livre, Oficina, Mapa da carreira, Perfil), onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
+De cima para baixo: cabeçalho mínimo (onde a fase está em caixa-alta `--ink-soft` (`.phase__where`), o botão de recolher e, no desafio do dia e no modo livre, só o caminho de volta: Voltar à carreira, Meus sistemas; o resto foi para a barra do topo), o título da fase em serifa `--title-xl` (`.phase__title`), o briefing e as abas. As abas são **Fases** e **Peças** (no modo livre, **Tráfego** e **Peças**; no desafio do dia só há peças, sem abas). Peças abre por padrão, e a aba escolhida continua ao trocar de fase. O briefing fica sempre à vista: quem rola é só a aba aberta (`.panel__tabpanel`), e o painel inteiro só rola quando a tela é baixa demais para ela ter `--tabpanel-min-height`. No celular o painel fica acima do canvas e a aba aberta tem no máximo meia tela de altura, para o canvas ficar a uma rolada.
 
 ### A Oficina (`/oficina`)
 
-Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo livre (logo, título serifado `--title-4xl`, linha de apoio, Voltar ao jogo, seletor de tema). Abaixo, duas colunas: a lista de exercícios agrupada por empresa (rótulo em caixa-alta `--ink-soft`; o exercício aberto tem borda `--ink`, o que passou ganha "· passou" em `--ok`) e a área de trabalho: empresa, rota em serifa `--title-lg`, enunciado, editor, botões e resultados. No celular (até 860px) a lista fica acima.
+Página própria, carregada sob demanda com o editor. A barra do topo; abaixo, título serifado `--title-4xl` e linha de apoio. Abaixo, duas colunas: a lista de exercícios agrupada por empresa (rótulo em caixa-alta `--ink-soft`; o exercício aberto tem borda `--ink`, o que passou ganha "· passou" em `--ok`) e a área de trabalho: empresa, rota em serifa `--title-lg`, enunciado, editor, botões e resultados. No celular (até 860px) a lista fica acima.
 
 - **Editor:** CodeMirror 6 em modo TypeScript, borda `--line`, `--radius-field`, fundo `--paper`, mono `--text-xs`, altura mínima de 240px e no máximo 60% da tela. Realce colorido com os tokens `--code-*` (ver Código colorido). Linha atual em `--sunk`. Tab indenta; Esc e depois Tab sai do editor (a nota abaixo dele diz isso).
 - **Ações:** Rodar testes (fantasma, só os testes visíveis), **Enviar** (a pílula cobalto, visíveis e escondidos) e Voltar ao início (fantasma pequeno, pede confirmação e volta ao código inicial). Rodando, o botão fica `aria-busy` e uma linha `role="status"` anuncia o andamento e o resultado.
@@ -176,7 +189,7 @@ Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo l
 | `--z-under` | −1 | Mancha do mapa da carreira |
 | `--z-float` | 5 | Lixeira, botão de abrir o painel |
 | `--z-toast` | 6 | Toasts |
-| `--z-menu` | 20 | Menu de contexto |
+| `--z-menu` | 20 | Menu de contexto, barra do topo |
 | `--z-sheet` | 30 | Painel de conceitos como folha inferior no celular |
 
 ## Estados
@@ -200,7 +213,9 @@ Página própria, carregada sob demanda com o editor. Mesmo cabeçalho do modo l
 - **Selo** (`.sheet`): folha de metas com borda `--line` e `--radius-card`, cabeçalhos em caixa-alta, valor medido na tinta do estado.
 - **Medidor** (`.meter`): nome em caixa-alta, valor serifado, sparkline em `--ink` com a meta tracejada em `--line`; `.is-bad` pinta valor e linha de `--hot`.
 - **Toast** (`.toast`): pílula `--ink` com texto `--on-ink`; `.toast--notice` para avisos de várias linhas usa `--radius-piece`.
-- **Modal** (`.profile`): `<dialog>` nativo (foco preso, Esc, volta o foco), cartão `--radius-card` sobre `--backdrop`.
+- **Modal** (`.profile`): `<dialog>` nativo (foco preso, Esc, volta o foco), cartão `--radius-card` sobre `--backdrop`. O Perfil virou página; o modal fica como padrão para o que precisar dele.
+- **Barra do topo** (`.topbar`) e **Menu** (`.topbar__sheet`): ver "A barra do topo e os endereços".
+- **Cartão de fase** (`.phase-card`): ver "Carreira e Perfil".
 - **Menu** (`.menu`): cartão `--radius-piece`; itens viram pílula invertida no hover e no foco.
 - **Código** (`.code`): bloco mono `--text-xs` com borda `--line` e `--radius-field`.
 

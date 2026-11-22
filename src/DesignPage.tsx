@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { BrandMark } from './BrandMark'
 import { KindIcon } from './KindIcon'
 import { Sparkline } from './Sparkline'
-import { ThemeToggle } from './ThemeToggle'
+import { TopBar } from './TopBar'
 
 /**
  * Internal reference at /design (or ?design): every token and component, side by
@@ -326,28 +325,21 @@ export default function DesignPage() {
     document.title = 'gargalo — design system'
   }, [])
   return (
+    <>
+    <TopBar screen="design" />
     <div className="ds">
       <header className="career__head ds-head">
-        <p className="career__brand">
-          <BrandMark size={28} />
-          gargalo
-        </p>
         <h1>Design system</h1>
         <p className="career__lede">
-          Tokens e componentes nos dois temas. A regra de uso de cada um está em DESIGN.md. O seletor muda o tema do jogo inteiro; as duas
-          folhas abaixo ficam fixas.
+          Tokens e componentes nos dois temas. A regra de uso de cada um está em DESIGN.md. O seletor de tema na barra muda o jogo inteiro; as
+          duas folhas abaixo ficam fixas.
         </p>
-        <div className="career__actions">
-          <a className="btn btn--ghost" href="/">
-            Voltar ao jogo
-          </a>
-        </div>
-        <ThemeToggle />
       </header>
       <div className="ds-sheets">
         <Sheet theme="light" />
         <Sheet theme="dark" />
       </div>
     </div>
+    </>
   )
 }

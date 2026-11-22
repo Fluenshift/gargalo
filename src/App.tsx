@@ -1,4 +1,3 @@
-import { ThemeToggle } from './ThemeToggle'
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
 import {
@@ -15,7 +14,9 @@ import {
 import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
-import { BrandMark } from './BrandMark'
+import { TopBar } from './TopBar'
+import { navigate, pathOf, screenOf } from './route'
+import type { Screen } from './route'
 import { LockIcon } from './LockIcon'
 import { ContextMenu } from './ContextMenu'
 import type { MenuItem } from './ContextMenu'
@@ -40,7 +41,7 @@ import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
 import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
-import { DAILY_KEY, dailyLevel, dailyXp, dayNumber, loadDaily, localDate, shareText, streak } from './daily'
+import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
 import { TrafficEditor } from './TrafficEditor'
 import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
@@ -369,9 +370,10 @@ export default function App() {
   })
   const [results, setResults] = useState<Results>(() => loadResults(readStorage(RESULTS_KEY), progress.passed))
   const resultsRef = useRef(results)
-  const [view, setView] = useState<'board' | 'map'>('board')
+  /** The screen the URL names; back, forward and the top bar change it through popstate. */
+  const [screen, setScreen] = useState<Screen>(() => screenOf(location.pathname, location.search))
   /** Free mode: the list (id null) or a system being played; null while on the career or the daily. */
-  const [free, setFree] = useState<{ id: string | null } | null>(null)
+  const [free, setFree] = useState<{ id: string | null } | null>(() => (screen === 'livre' ? { id: null } : null))
   const [systems, setSystems] = useState<FreeSystem[]>(() => loadSystems(readStorage(FREE_KEY)))
   // The latest saved list, readable from the board's callbacks without re-rendering the app.
   // `render` is false for the board's drawing, which the board already shows.
@@ -387,12 +389,29 @@ export default function App() {
     }
     return self
   })
-  const [profileOpen, setProfileOpen] = useState(false)
   const [dailyRecord, setDailyRecord] = useState<DailyRecord>(() => loadDaily(readStorage(DAILY_KEY)))
   const dailyRef = useRef(dailyRecord)
   /** The daily challenge being played, or null while on the career. */
-  const [daily, setDaily] = useState<Daily | null>(null)
+  const [daily, setDaily] = useState<Daily | null>(() => (screen === 'desafio' ? dailyLevel(localDate(new Date())) : null))
   const [today, setToday] = useState(() => localDate(new Date()))
+  // The URL changed (back, forward, a link): show the screen it names.
+  useEffect(() => {
+    const onPop = () => {
+      const next = screenOf(location.pathname, location.search)
+      setScreen(next)
+      setDaily(next === 'desafio' ? dailyLevel(today) : null)
+      // Back to /livre keeps the system that was open.
+      setFree((f) => (next === 'livre' ? (f ?? { id: null }) : null))
+      if (next === 'livre') setSystems(store.list)
+      if (next === 'fase') {
+        const link = decodeShare(location.search)
+        setShared(link)
+        if (link) setProgress((prev) => ({ ...prev, current: link.level.id }))
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [today, store])
   // A tab left open past midnight picks up the new day when it is looked at again.
   useEffect(() => {
     const refresh = () => setToday(localDate(new Date()))
@@ -487,24 +506,13 @@ export default function App() {
     focusLevel.current = levelId
     setShared(null)
     setProgress((prev) => ({ ...prev, current: levelId }))
-    setDaily(null)
-    setFree(null)
-    setView('board')
+    navigate(pathOf('fase'))
   }
-
-  const openDaily = () => {
-    setShared(null)
-    setFree(null)
-    setDaily(dailyLevel(today))
-    setView('board')
-  }
+  const backToCareer = () => navigate(pathOf('fase'))
   const saveDesign = (id: string, design: unknown) => store.commit(updateDesign(store.list, id, design), false)
   const openFreeList = () => {
-    setShared(null)
-    setSystems(store.list)
-    setDaily(null)
     setFree({ id: null })
-    setView('board')
+    navigate(pathOf('livre'))
   }
   const openSystem = (id: string) => {
     setSystems(store.list)
@@ -527,15 +535,9 @@ export default function App() {
   const system = free?.id ? systems.find((s) => s.id === free.id) : undefined
   const freeLevel = useMemo(() => (system ? levelOf(system) : null), [system])
   const days = streak(dailyRecord, today)
-  const todayNumber = dayNumber(today)
 
   const profile = (
     <>
-      {profileOpen && (
-        <Suspense fallback={null}>
-          <Profile results={results} daily={dailyRecord} today={today} onClose={() => setProfileOpen(false)} />
-        </Suspense>
-      )}
       {unsaved && (
         <div className="toast toast--notice save-warning" role="status">
           <span>O navegador não deixou salvar: o que você fizer nesta aba some quando ela fechar.</span>
@@ -547,40 +549,28 @@ export default function App() {
     </>
   )
 
-  if (view === 'map')
+  const top = <TopBar screen={screen} />
+
+  if (screen === 'carreira' || screen === 'perfil')
     return (
       <>
+        {top}
         <Suspense fallback={null}>
-          <CareerMap passed={passed} results={results} current={current} onPlay={play} onClose={() => setView('board')} onProfile={() => setProfileOpen(true)} onDaily={openDaily} onFree={openFreeList} dailyNumber={todayNumber} streak={days} />
+          {screen === 'carreira' ? (
+            <CareerMap passed={passed} results={results} current={current} onPlay={play} />
+          ) : (
+            <Profile passed={passed} results={results} daily={dailyRecord} today={today} />
+          )}
         </Suspense>
         {profile}
       </>
     )
 
-  const dailyLinks = (
+  // The other screens moved to the top bar; the panel keeps only the way back.
+  const backLink = (
     <span className="levels__links">
-      {daily || free ? (
-        <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
-          Voltar à carreira
-        </button>
-      ) : (
-        <button type="button" className="levels__map" onClick={openDaily}>
-          Desafio do dia #{todayNumber}
-        </button>
-      )}
-      {!free && (
-        <button type="button" className="levels__map" onClick={openFreeList}>
-          Modo livre
-        </button>
-      )}
-      <a className="levels__map" href="/oficina">
-        Oficina
-      </a>
-      <button type="button" className="levels__map" onClick={() => setView('map')}>
-        Mapa da carreira
-      </button>
-      <button type="button" className="levels__map" onClick={() => setProfileOpen(true)}>
-        Perfil
+      <button type="button" className="levels__map" onClick={backToCareer}>
+        Voltar à carreira
       </button>
     </span>
   )
@@ -589,6 +579,7 @@ export default function App() {
   if (free && !system)
     return (
       <>
+        {top}
         {profile}
         <Suspense fallback={null}>
           <FreeSystems
@@ -599,7 +590,7 @@ export default function App() {
           onDuplicate={(id) => store.commit(duplicateSystem(store.list, id).list)}
           onDelete={(id) => store.commit(deleteSystem(store.list, id))}
           onImport={importFree}
-          onClose={() => setFree(null)}
+          onClose={backToCareer}
           />
         </Suspense>
       </>
@@ -608,6 +599,8 @@ export default function App() {
   if (system && freeLevel) {
     const errors = validateTraffic(system.traffic)
     return (
+      <div className="shell">
+      {top}
       <ReactFlowProvider key={freeLevel.id}>
         {profile}
         <Board
@@ -619,7 +612,7 @@ export default function App() {
               <button type="button" className="levels__map" onClick={openFreeList}>
                 Meus sistemas
               </button>
-              <button type="button" className="levels__map" onClick={() => (setDaily(null), setFree(null))}>
+              <button type="button" className="levels__map" onClick={backToCareer}>
                 Voltar à carreira
               </button>
             </span>
@@ -632,11 +625,14 @@ export default function App() {
           onTab={setPanelTab}
         />
       </ReactFlowProvider>
+      </div>
     )
   }
 
   if (daily)
     return (
+      <div className="shell">
+      {top}
       <ReactFlowProvider key={daily.level.id}>
         {profile}
         <Board
@@ -644,14 +640,17 @@ export default function App() {
           onPassed={(_, result) => markDaily(daily.date, result)}
           where={daily.date.split('-').reverse().join('/')}
           note={streakNote}
-          links={dailyLinks}
+          links={backLink}
           tab={panelTab}
           onTab={setPanelTab}
         />
       </ReactFlowProvider>
+      </div>
     )
 
   return (
+    <div className="shell">
+    {top}
     <ReactFlowProvider key={stage.level.id}>
       {profile}
       <Board
@@ -659,7 +658,6 @@ export default function App() {
         onPassed={markPassed}
         where={`Empresa ${stage.companyIndex + 1} · ${company.name}`}
         note={streakNote}
-        links={dailyLinks}
         tab={panelTab}
         onTab={setPanelTab}
         phases={{
@@ -705,6 +703,7 @@ export default function App() {
         }}
       />
     </ReactFlowProvider>
+    </div>
   )
 }
 
@@ -720,8 +719,8 @@ type BoardProps = {
   /** Where the level sits (company, daily, free mode), above its title. */
   where: string
   note?: ReactNode
-  /** Links to the other screens, in the panel header. */
-  links: ReactNode
+  /** The way back (to the career, to the free systems), in the panel header; the other screens are in the top bar. */
+  links?: ReactNode
   /** What the first panel tab holds (the company's phases, the free system's traffic); without it the panel shows only the pieces. */
   phases?: { label: string; content: ReactNode }
   tab: PanelTab
@@ -1309,10 +1308,7 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
     <div className={`app${panelOpen ? '' : ' is-collapsed'}`} data-company={play.company}>
       <aside className="panel" id="panel" hidden={!panelOpen}>
         <header className="brand">
-          <h1>
-            <BrandMark size={30} />
-            gargalo
-          </h1>
+          <p className="phase__where">{where}</p>
           <button
             ref={collapseRef}
             type="button"
@@ -1324,14 +1320,15 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
           >
             <PanelIcon />
           </button>
-          <nav className="brand__links" aria-label="Outras telas">
-            {links}
-          </nav>
+          {links && (
+            <nav className="brand__links" aria-label="Voltar">
+              {links}
+            </nav>
+          )}
         </header>
 
         <div className="phase">
-          <p className="phase__where">{where}</p>
-          <h2 className="phase__title">{level.title}</h2>
+          <h1 className="phase__title">{level.title}</h1>
           {note}
         </div>
 
@@ -1412,8 +1409,6 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
             direito (toque longo no celular). Ctrl+Z desfaz.
           </p>
         </section>
-
-        <ThemeToggle />
       </aside>
 
       <main className="stage">
