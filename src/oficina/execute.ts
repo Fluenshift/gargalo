@@ -22,8 +22,8 @@ export interface WorkerOutput {
 /** Sent once by the worker when its database has loaded (or failed to), before any WorkerOutput. */
 export type WorkerReady = { ready: true } | { ready: false; message: string }
 
-/** Opens a database with the exercise's schema and data, fresh for each test. */
-export type OpenDb = (schema: string, seed: string) => Promise<Db>
+/** Opens a database with the exercise's schema and data, then the player's migration, fresh for each test. */
+export type OpenDb = (schema: string, seed: string, migration?: string) => Promise<Db>
 
 export const BLOCKED_NETWORK = 'fetch não é permitido: o handler só fala com ctx.db.'
 const SOURCE_URL = 'oficina-handler.js'
@@ -39,7 +39,7 @@ class CodeError extends Error {
 
 const BLOCKED: [RegExp, string][] = [
   [/^\s*import\b|\bimport\s*\(/m, 'import não é permitido: Request, Response, URL e crypto já estão disponíveis, e o banco vem em ctx.db.'],
-  [/^\s*export\s+(?!default\b)/m, 'Só o export default do handler é permitido.'],
+  [/^\s*export\s+(?!default\b|const\s+migration\b)/m, 'Só o export default do handler (e export const migration) é permitido.'],
   [/\b(fetch|importScripts)\s*\(/, BLOCKED_NETWORK],
 ]
 
@@ -47,8 +47,14 @@ function lineAt(code: string, index: number): number {
   return code.slice(0, index).split('\n').length
 }
 
-/** Strips the types and evaluates the code; returns its default export. */
-export function compile(code: string): Handler {
+/** What the player's file exports: the handler and, optionally, SQL that runs after the exercise's data (to create indexes). */
+export interface Compiled {
+  handler: Handler
+  migration?: string
+}
+
+/** Strips the types and evaluates the code; returns its exports. */
+export function compile(code: string): Compiled {
   for (const [pattern, message] of BLOCKED) {
     const match = pattern.exec(code)
     if (match) throw new CodeError(message, lineAt(code, match.index + match[0].length - match[0].trimStart().length))
@@ -64,11 +70,12 @@ export function compile(code: string): Handler {
   // shortcut: globalThis assignments survive in the long-lived worker; recreate the worker per exercise if that ever matters.
   // Same first line as the player's code, so line numbers in errors match the editor; sucrase keeps lines too.
   // oxlint-disable-next-line no-eval -- running the player's code is the point; it happens inside the Oficina worker.
-  const factory = (0, eval)(`(function (exports) {${js}\n})\n//# sourceURL=${SOURCE_URL}`) as (exports: { default?: unknown }) => void
-  const exports: { default?: unknown } = {}
+  const factory = (0, eval)(`(function (exports) {${js}\n})\n//# sourceURL=${SOURCE_URL}`) as (exports: { default?: unknown; migration?: unknown }) => void
+  const exports: { default?: unknown; migration?: unknown } = {}
   factory(exports)
   if (typeof exports.default !== 'function') throw new CodeError('Falta o export default do handler: export default async function handler(req, ctx) { … }')
-  return exports.default as Handler
+  if (exports.migration !== undefined && typeof exports.migration !== 'string') throw new CodeError('A migration precisa ser um texto com SQL: export const migration = `CREATE INDEX …`')
+  return { handler: exports.default as Handler, migration: exports.migration }
 }
 
 function errorLine(err: unknown): number | undefined {
@@ -90,11 +97,12 @@ export function matches(expected: unknown, received: unknown): boolean {
 function toRequest(spec: RequestSpec): Request {
   const headers = new Headers(spec.headers)
   if (spec.body !== undefined && !headers.has('content-type')) headers.set('content-type', 'application/json')
-  return new Request(new URL(spec.path, 'http://oficina.local'), {
-    method: spec.method ?? 'GET',
-    headers,
-    body: spec.body === undefined ? undefined : JSON.stringify(spec.body),
-  })
+  const body = spec.body === undefined ? undefined : JSON.stringify(spec.body)
+  const req = new Request(new URL(spec.path, 'http://oficina.local'), { method: spec.method ?? 'GET', headers, body })
+  // Chrome reads a body in tasks, so the first request would run all its queries before the second had its body, and no race
+  // would ever show. Read from memory, every await in the handler is a microtask and concurrent requests interleave as in Node.
+  if (body !== undefined) Object.assign(req, { text: async () => body, json: async () => JSON.parse(body) as unknown })
+  return req
 }
 
 async function readBody(res: Response): Promise<unknown> {
@@ -145,18 +153,18 @@ async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestRe
 
 /** Runs the tests in order, reporting each result as soon as it is known. */
 export async function executeTests(input: WorkerInput, openDb: OpenDb, report: (out: WorkerOutput) => void): Promise<void> {
-  let handler: Handler | undefined
+  let compiled: Compiled | undefined
   let compileError: unknown
   try {
-    handler = compile(input.code)
+    compiled = compile(input.code)
   } catch (err) {
     compileError = err
   }
   for (const [index, test] of input.tests.entries()) {
     let result: TestResult
     try {
-      if (!handler) throw compileError
-      result = await runTest(handler, test, await openDb(input.schema, input.seed))
+      if (!compiled) throw compileError
+      result = await runTest(compiled.handler, test, await openDb(input.schema, input.seed, compiled.migration))
     } catch (err) {
       result = { name: test.name, passed: false, message: err instanceof CodeError ? err.message : String(err), line: errorLine(err) }
     }
