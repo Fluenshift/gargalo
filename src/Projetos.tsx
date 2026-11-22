@@ -233,7 +233,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     if (form === null) formOpener.current?.focus()
   }, [form])
   const [panel, setPanel] = useState<'banco' | 'console'>('banco')
-  const [side, setSide] = useState<'requisicao' | 'etapa' | 'openapi'>('requisicao')
+  const [side, setSide] = useState<'requisicao' | 'etapa' | 'openapi'>('etapa')
   const [routes, setRoutes] = useState<Route[]>()
   const [logs, setLogs] = useState<ConsoleLine[]>([])
   const [saveFailed, setSaveFailed] = useState(false)
@@ -441,11 +441,11 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
       {/* The right panel: the HTTP client, or the stage of the course. */}
       <aside className="projeto__side" aria-label="Requisição e etapa">
         <div className="segmented segmented--small" role="group" aria-label="Painel da direita">
-          <button type="button" aria-pressed={side === 'requisicao'} onClick={() => setSide('requisicao')}>
-            Requisição
-          </button>
           <button type="button" aria-pressed={side === 'etapa'} onClick={() => setSide('etapa')}>
             Etapa
+          </button>
+          <button type="button" aria-pressed={side === 'requisicao'} onClick={() => setSide('requisicao')}>
+            Requisição
           </button>
           <button type="button" aria-pressed={side === 'openapi'} onClick={() => setSide('openapi')}>
             OpenAPI

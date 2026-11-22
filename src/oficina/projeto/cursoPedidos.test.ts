@@ -23,6 +23,7 @@ const failures = (r: StageResult) => [...r.tests.filter((t) => !t.passed).map((t
 
 /** The mistake a beginner makes at each stage, applied to a file the two frameworks share. */
 const NAIVE: [file: string, from: string, to: string, breaks: 'tests' | 'checklist'][] = [
+  ['src/routes/ola.ts', "mensagem: 'olá'", "mensagem: 'ola'", 'tests'],
   ['src/http.ts', "'application/problem+json'", "'application/json'", 'checklist'],
   ['src/db/produtos.ts', "'SELECT id, nome, preco_centavos FROM produtos WHERE id = $1'", "'SELECT * FROM produtos WHERE id = $1'", 'checklist'],
   // The transaction becomes a plain function over `db`: the order is written, then the missing product throws.
@@ -33,8 +34,8 @@ const NAIVE: [file: string, from: string, to: string, breaks: 'tests' | 'checkli
 ]
 
 describe('curso do projeto 1', () => {
-  it('has the six stages of the spec, each with a reference per framework', () => {
-    expect(cursoPedidos.stages.map((s) => s.id)).toEqual(['health', 'produtos', 'pedidos', 'validacao', 'paginacao', 'auth'])
+  it('has the first steps and the six stages of the spec, each with a reference per framework', () => {
+    expect(cursoPedidos.stages.map((s) => s.id)).toEqual(['primeiros-passos', 'health', 'produtos', 'pedidos', 'validacao', 'paginacao', 'auth'])
     for (const s of cursoPedidos.stages) {
       expect(Object.keys(s.reference.hono).length).toBeGreaterThan(5)
       expect(s.reference.fetch['src/index.ts']).not.toContain('hono')
