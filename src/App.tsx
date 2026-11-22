@@ -11,7 +11,7 @@ import {
   useNodesState,
   useReactFlow,
 } from '@xyflow/react'
-import type { Connection, Edge, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
+import type { Connection, Edge, FitViewOptions, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { TopBar } from './TopBar'
@@ -32,14 +32,14 @@ import {
 } from './editing'
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
-import { dialogOpen, isTyping } from './keys'
+import { dialogOpen, escapeFor, isTyping, stepIndex } from './keys'
 import type { Editor } from './editorContext'
 import { CodePanel } from './CodePanel'
 import { serverCode } from './serverCode'
 import { Inspector } from './Inspector'
 import { ALTERNATIVES } from './alternatives'
 import { KindIcon } from './KindIcon'
-import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, startArchitecture } from './career'
+import { COMPANIES, CURRENT_KEY, PASSED_KEY, findStage, levelStatus, loadProgress, pieceUnlock, stages, startArchitecture } from './career'
 import type { Progress, Stage } from './career'
 import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
@@ -79,6 +79,11 @@ const Profile = lazy(() => import('./Profile').then((m) => ({ default: m.Profile
 const nodeTypes = { component: NodeCard, region: RegionArea }
 const DELETE_KEYS = ['Backspace', 'Delete']
 const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
+/** On a wide screen the brief floats over the left of the canvas: the first fit leaves room for it. */
+const firstFit = (): FitViewOptions =>
+  typeof window !== 'undefined' && window.matchMedia('(min-width: 641px)').matches
+    ? { maxZoom: 1, padding: { top: '190px', left: '440px', right: '24px', bottom: '24px' } }
+    : FIT_VIEW
 /** How long the drawing must stay still before it is saved. */
 const SAVE_DELAY_MS = 300
 const edgeTypes = { removable: RemovableEdge }
@@ -109,7 +114,6 @@ const REGION_BAND = 900
 const bandOf = (region: Region) => (Object.keys(REGIONS) as Region[]).indexOf(region)
 const TICK_MS = 120
 const TOAST_MS = 6000
-const PANEL_KEY = 'gargalo:panel'
 const LONG_PRESS_MS = 550
 
 type BoardRemoval = Removal<ComponentNode, Edge>
@@ -310,7 +314,7 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
   if (summary.failed.noRoute / total > 0.001)
     out.push('Algumas requisições não tinham para onde ir. Confira se os usuários chegam a um servidor e se cada servidor chega ao banco.')
   if (summary.failed.overload / total > 0.001)
-    out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle acima até o momento em que algo fica vermelho.')
+    out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle de tempo, abaixo, até o momento em que algo fica vermelho.')
   const stormy = arch.edges.some((e) => (e.retries ?? 0) > 0 && !e.backoff && !e.breaker)
   // A fragile piece down when the level did not take it out: load knocked it over.
   const crashedNode = arch.nodes.find(
@@ -498,9 +502,7 @@ export default function App() {
     return dailyXp(next, date) - dailyXp(before, date)
   }, [])
 
-  /** The panel's open tab, kept across levels so picking a phase leaves the list open. */
-  const [panelTab, setPanelTab] = useState<PanelTab>('parts')
-  /** The level the player just opened: its button in the new board's list takes the focus. */
+  /** The level the player just opened from the phases list: the new board's Fases button takes the focus. */
   const focusLevel = useRef<string | null>(null)
   const play = (levelId: string) => {
     focusLevel.current = levelId
@@ -535,6 +537,8 @@ export default function App() {
   const system = free?.id ? systems.find((s) => s.id === free.id) : undefined
   const freeLevel = useMemo(() => (system ? levelOf(system) : null), [system])
   const days = streak(dailyRecord, today)
+  const all = stages()
+  const nextStage = all[all.findIndex((s) => s.level.id === stage.level.id) + 1]
 
   const profile = (
     <>
@@ -566,7 +570,7 @@ export default function App() {
       </>
     )
 
-  // The other screens moved to the top bar; the panel keeps only the way back.
+  // The other screens are in the top bar; the title block keeps only the way back.
   const backLink = (
     <span className="levels__links">
       <button type="button" className="levels__map" onClick={backToCareer}>
@@ -617,12 +621,7 @@ export default function App() {
               </button>
             </span>
           }
-          phases={{
-            label: 'Tráfego',
-            content: <TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />,
-          }}
-          tab={panelTab}
-          onTab={setPanelTab}
+          traffic={<TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />}
         />
       </ReactFlowProvider>
       </div>
@@ -641,8 +640,6 @@ export default function App() {
           where={daily.date.split('-').reverse().join('/')}
           note={streakNote}
           links={backLink}
-          tab={panelTab}
-          onTab={setPanelTab}
         />
       </ReactFlowProvider>
       </div>
@@ -658,11 +655,14 @@ export default function App() {
         onPassed={markPassed}
         where={`Empresa ${stage.companyIndex + 1} · ${company.name}`}
         note={streakNote}
-        tab={panelTab}
-        onTab={setPanelTab}
-        phases={{
-          label: 'Fases',
-          content: (
+        next={nextStage && levelStatus(nextStage.level.id, passed) !== 'locked' ? () => play(nextStage.level.id) : undefined}
+        focusPhases={() => {
+          // Asked once, when the new board mounts: a level picked from the list gives focus back to Fases.
+          const picked = focusLevel.current === stage.level.id
+          focusLevel.current = null
+          return picked
+        }}
+        phases={
           <nav className="levels" aria-label={`Fases da empresa ${company.name}`}>
             {[...company.levels, company.boss].map((l, i) => {
               const status = levelStatus(l.id, passed)
@@ -671,12 +671,6 @@ export default function App() {
               return (
                 <button
                   key={l.id}
-                  ref={(el) => {
-                    if (el && focusLevel.current === l.id) {
-                      focusLevel.current = null
-                      el.focus()
-                    }
-                  }}
                   className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
                   aria-current={current ? 'step' : undefined}
                   disabled={status === 'locked'}
@@ -699,8 +693,7 @@ export default function App() {
               )
             })}
           </nav>
-          ),
-        }}
+        }
       />
     </ReactFlowProvider>
     </div>
@@ -710,25 +703,29 @@ export default function App() {
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
-/** One level's editor and simulation. Remounted per level so each starts from its saved design. */
-type PanelTab = 'phases' | 'parts'
-const PANEL_TABS: PanelTab[] = ['phases', 'parts']
+/** What the right panel shows when no piece, link or code is open there. */
+type Side = 'goals' | 'traffic'
 
 type BoardProps = {
   play: Play
   /** Where the level sits (company, daily, free mode), above its title. */
   where: string
   note?: ReactNode
-  /** The way back (to the career, to the free systems), in the panel header; the other screens are in the top bar. */
+  /** The way back (to the career, to the free systems), beside the title; the other screens are in the top bar. */
   links?: ReactNode
-  /** What the first panel tab holds (the company's phases, the free system's traffic); without it the panel shows only the pieces. */
-  phases?: { label: string; content: ReactNode }
-  tab: PanelTab
-  onTab: (tab: PanelTab) => void
+  /** The company's phases, listed in the Fases popover. */
+  phases?: ReactNode
+  /** The free system's traffic editor, opened in the right panel by Tráfego. */
+  traffic?: ReactNode
+  /** Opens the next phase, when there is one and it is open. */
+  next?: () => void
+  /** Asked on mount: whether the Fases button takes the focus (a phase was just picked from the list). */
+  focusPhases?: () => boolean
   onPassed: (id: string, result: LevelResult) => number
 }
 
-function Board({ play, where, note, links, phases, tab, onTab, onPassed }: BoardProps) {
+/** One level's editor and simulation. Remounted per level so each starts from its saved design. */
+function Board({ play, where, note, links, phases, traffic, next, focusPhases, onPassed }: BoardProps) {
   const { level } = play
   const { fitView } = useReactFlow()
   /** Id of a just-added node to bring into view once React Flow has measured it. */
@@ -833,23 +830,44 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
   const [toast, setToast] = useState<UndoEntry | null>(null)
   /** Why the last connection the player tried was refused. */
   const [notice, setNotice] = useState<string | null>(null)
-  const [panelOpen, setPanelOpen] = useState(() => readStorage(PANEL_KEY) !== JSON.stringify('closed'))
-  const togglePanel = () => {
-    focusToggle.current = true
-    setPanelOpen((open) => {
-      save(PANEL_KEY, open ? 'closed' : 'open')
-      return !open
-    })
-  }
-  // The button pressed disappears with the panel or comes back inside it: focus follows.
-  const focusToggle = useRef(false)
-  const collapseRef = useRef<HTMLButtonElement>(null)
-  const expandRef = useRef<HTMLButtonElement>(null)
+  // Over the canvas: the brief card, the phases popover and the right panel (goals and result, or traffic).
+  const [briefOpen, setBriefOpen] = useState(true)
+  const [firstFitOptions] = useState(firstFit)
+  const [phasesOpen, setPhasesOpen] = useState(false)
+  const [side, setSide] = useState<Side | null>(null)
+  const phasesButton = useRef<HTMLButtonElement>(null)
+  const phasesList = useRef<HTMLDivElement>(null)
+  const goalsButton = useRef<HTMLButtonElement>(null)
+  const sideRef = useRef<HTMLElement>(null)
+  const sideTitle = useRef<HTMLHeadingElement>(null)
+  /** Where focus goes back to when the right panel closes. */
+  const sideOpener = useRef<HTMLElement | null>(null)
+  const focusSide = useRef(false)
   useEffect(() => {
-    if (!focusToggle.current) return
-    focusToggle.current = false
-    ;(panelOpen ? collapseRef : expandRef).current?.focus()
-  }, [panelOpen])
+    if (focusPhases?.()) phasesButton.current?.focus()
+  }, [focusPhases])
+  useEffect(() => {
+    if (!phasesOpen) return
+    const list = phasesList.current
+    ;(list?.querySelector<HTMLElement>('[aria-current="step"]') ?? list?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus()
+  }, [phasesOpen])
+  const closePhases = () => {
+    setPhasesOpen(false)
+    phasesButton.current?.focus()
+  }
+  // Arrows, Home and End move through the open phases; Escape closes the list and nothing under it.
+  const onPhasesKey = (e: ReactKeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closePhases()
+      return
+    }
+    const buttons = [...(phasesList.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+    const i = stepIndex(e.key, buttons.indexOf(document.activeElement as HTMLButtonElement), buttons.length)
+    if (i === null) return
+    e.preventDefault()
+    buttons[i].focus()
+  }
   const canvasRef = useRef<HTMLDivElement>(null)
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -1166,11 +1184,35 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
 
   const closeInfo = useCallback(() => {
     setListInfo((info) => {
-      if (info?.opener.isConnected) info.opener.focus()
+      // After the render: an opener in the right panel is shown again only once this panel goes.
+      if (info) requestAnimationFrame(() => info.opener.isConnected && info.opener.focus())
       return null
     })
     setNodes((ns) => (ns.some((n) => n.selected) ? ns.map((n) => (n.selected ? { ...n, selected: false } : n)) : ns))
   }, [setNodes])
+
+  /** Opens the goals or traffic in the right panel, over whatever piece, link or code was open there. */
+  const openSide = (mode: Side, opener: Element | null, focus = true) => {
+    sideOpener.current = opener instanceof HTMLElement ? opener : null
+    focusSide.current = focus
+    setPhasesOpen(false)
+    setListInfo(null)
+    setCodeId(null)
+    setNodes((ns) => (ns.some((n) => n.selected) ? ns.map((n) => (n.selected ? { ...n, selected: false } : n)) : ns))
+    setEdges((es) => (es.some((e) => e.selected) ? es.map((e) => (e.selected ? { ...e, selected: false } : e)) : es))
+    setSide(mode)
+  }
+  const closeSide = useCallback(() => {
+    setSide(null)
+    const back = sideOpener.current
+    ;(back?.isConnected && !(back as HTMLButtonElement).disabled ? back : goalsButton.current)?.focus()
+  }, [])
+  const toggleSide = (mode: Side, opener: HTMLElement) => (side === mode ? closeSide() : openSide(mode, opener))
+  useEffect(() => {
+    if (!side || !focusSide.current) return
+    focusSide.current = false
+    sideTitle.current?.focus()
+  }, [side])
 
   const onSelectionChange: OnSelectionChangeFunc = useCallback(({ nodes: picked }) => {
     if (picked.length > 0) {
@@ -1195,6 +1237,18 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
     if (play.free?.blocked || computing) return
     setMenu(null)
     setGain(0)
+    // The run takes the stage: the brief folds away and the goals open to follow it, focus staying on Rodar.
+    setBriefOpen(false)
+    // A piece or link open in the panel stays (it shows its run numbers); the goals come back when it closes.
+    if (side !== 'goals') {
+      sideOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setPhasesOpen(false)
+      setSide('goals')
+    }
+    if (window.matchMedia('(min-width: 641px)').matches) {
+      const panel = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inspector-width')) || 0
+      fitView({ padding: { top: '120px', bottom: '24px', left: '24px', right: `${panel + 48}px` }, maxZoom: 1, duration: prefersReducedMotion() ? 0 : 250 })
+    }
     const id = ++runId.current
     setComputing(true)
     void runInBackground(arch, level, Date.now() & 0xffff).then((result) => {
@@ -1294,486 +1348,495 @@ function Board({ play, where, note, links, phases, tab, onTab, onPassed }: Board
   const saturated = tick && mostSaturated(tick)
   const perMillion = costPerMillion(cost, level)
   const selectNode = (id: string) => setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === id })))
-  // Two tabs: either arrow moves to the other one, Home and End go to the ends.
-  const onTabKey = (e: ReactKeyboardEvent) => {
-    const arrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight'
-    const next: PanelTab | null = e.key === 'Home' ? 'phases' : e.key === 'End' ? 'parts' : arrow ? (tab === 'phases' ? 'parts' : 'phases') : null
-    if (!next) return
-    e.preventDefault()
-    onTab(next)
-    document.getElementById(`tab-${next}`)?.focus()
-  }
+  const goalsTitle = finished ? 'Resultado' : free ? 'Medidas' : 'Metas'
+  const sideShown = !!side && !codeChallenge && !inspected && !selectedLink
+  // Escape closes the right panel when it is the top layer (no menu, popover or other panel above it).
+  useEffect(() => {
+    if (!sideShown || menu) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!escapeFor(e, sideRef.current)) return
+      e.preventDefault()
+      closeSide()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sideShown, menu, closeSide])
 
   return (
-    <div className={`app${panelOpen ? '' : ' is-collapsed'}`} data-company={play.company}>
-      <aside className="panel" id="panel" hidden={!panelOpen}>
-        <header className="brand">
-          <p className="phase__where">{where}</p>
-          <button
-            ref={collapseRef}
-            type="button"
-            className="panel__toggle"
-            onClick={togglePanel}
-            aria-expanded={panelOpen}
-            aria-controls="panel"
-            aria-label="Recolher painel"
-          >
-            <PanelIcon />
-          </button>
-          {links && (
-            <nav className="brand__links" aria-label="Voltar">
-              {links}
-            </nav>
-          )}
-        </header>
-
-        <div className="phase">
-          <h1 className="phase__title">{level.title}</h1>
-          {note}
-        </div>
-
-        <p className="brief">{level.briefing}</p>
-        {play.shared && <p className="hint">Desenho de um link compartilhado: o que você mudar aqui não é salvo.</p>}
-
-        {phases && (
-          <>
-            <div className="segmented panel__tabs" role="tablist" aria-label="Painel da fase" onKeyDown={onTabKey}>
-              {PANEL_TABS.map((t) => (
-                <button
-                  key={t}
-                  id={`tab-${t}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === t}
-                  aria-controls={`tabpanel-${t}`}
-                  tabIndex={tab === t ? 0 : -1}
-                  onClick={() => onTab(t)}
-                >
-                  {t === 'phases' ? phases.label : 'Peças'}
-                </button>
-              ))}
-            </div>
-            <div className="panel__tabpanel" id="tabpanel-phases" role="tabpanel" aria-labelledby="tab-phases" hidden={tab !== 'phases'}>
-              {phases.content}
-            </div>
-          </>
-        )}
-
-        <section
-          className="parts panel__tabpanel"
-          {...(phases ? { id: 'tabpanel-parts', role: 'tabpanel', 'aria-labelledby': 'tab-parts' } : { 'aria-labelledby': 'parts-title' })}
-          hidden={!!phases && tab !== 'parts'}
-        >
-          {!phases && <h2 id="parts-title">Peças</h2>}
-          <ul>
-            {play.pieces.map((kind) => {
-              const unlock = play.unlock(kind)
-              return (
-              <li key={kind} className={unlock.unlocked ? undefined : 'is-locked'}>
-                <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked || atMax(kind)}>
-                  <KindIcon kind={kind} size={22} />
-                  <span className="part__name">
-                    {SPECS[kind].label}
-                    {!unlock.unlocked && <LockIcon />}
-                  </span>
-                  {unlock.unlocked ? (
-                    <span className="part__spec">
-                      {SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, ${SPECS[kind].cost}/mês
-                      {atMax(kind) && ` · já no desenho, ${SPECS[kind].maxCount === 1 ? 'só cabe um' : `até ${SPECS[kind].maxCount}`}`}
-                    </span>
-                  ) : (
-                    <span className="part__spec">
-                      {unlock.by ? `Bloqueada até a empresa ${COMPANIES.indexOf(unlock.by) + 1}, ${unlock.by.name}.` : 'Bloqueada. Chega numa próxima empresa.'}
-                    </span>
-                  )}
-                  <span className="part__desc">{SPECS[kind].description}</span>
-                </button>
-                <button
-                  type="button"
-                  className={`part__info${listInfo?.kind === kind ? ' is-open' : ''}`}
-                  aria-label={`Sobre ${SPECS[kind].label}`}
-                  aria-pressed={listInfo?.kind === kind}
-                  title={`Sobre ${SPECS[kind].label}`}
-                  onClick={(e) => (listInfo?.kind === kind ? closeInfo() : openInfo(kind, e.currentTarget))}
-                >
-                  <InfoIcon />
-                </button>
-              </li>
-              )
-            })}
-          </ul>
-          <p className="help">
-            Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar,
-            ou selecione a peça e use Ligar a, no painel dela.
-            Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
-            direito (toque longo no celular). Ctrl+Z desfaz.
-          </p>
-        </section>
-      </aside>
-
-      <main className="stage">
-        <div className="workspace">
-          <div
-            ref={canvasRef}
-            className="canvas"
-            tabIndex={-1}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={cancelLongPress}
-            onPointerCancel={cancelLongPress}
-          >
-            <EditorContext.Provider value={editor}>
-              <ReactFlow
-                // Region areas are inert (not selectable, draggable or deletable), so no handler ever sees one.
-                nodes={displayNodes as ComponentNode[]}
-                edges={displayEdges}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChangeWhenEditable}
-                onConnect={onConnect}
-                onConnectEnd={onConnectEnd}
-                onClickConnectStart={onClickConnectStart}
-                onClickConnectEnd={onClickConnectEnd}
-                autoPanOnNodeDrag={false}
-                selectNodesOnDrag={false}
-                isValidConnection={isValidConnection}
-                nodesConnectable={editable}
-                nodesDraggable={editable}
-                deleteKeyCode={editable ? DELETE_KEYS : null}
-                onBeforeDelete={onBeforeDelete}
-                onNodeDragStart={onNodeDragStart}
-                onNodeDrag={onNodeDrag}
-                onNodeDragStop={onNodeDragStop}
-                onNodeContextMenu={onNodeContextMenu}
-                onEdgeContextMenu={onEdgeContextMenu}
-                onMoveStart={closeMenuOnMove}
-                onSelectionChange={onSelectionChange}
-                onPaneClick={closeListInfo}
-                fitView
-                fitViewOptions={FIT_VIEW}
-                minZoom={0.2}
-              >
-                <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
-                <Controls showInteractive={false} position="top-left" />
-                {!panelOpen && (
-                  <button
-                    ref={expandRef}
-                    type="button"
-                    className="panel__open"
-                    onClick={togglePanel}
-                    aria-expanded={false}
-                    aria-controls="panel"
-                  >
-                    <PanelIcon />
-                    Painel da fase
-                  </button>
-                )}
-              </ReactFlow>
-            </EditorContext.Provider>
-
-            {editable && (
+    <div className="app" data-company={play.company}>
+      <main className={`stage${sideShown || codeChallenge || inspected || selectedLink ? ' has-side' : ''}`}>
+        <div className="hud">
+          <div className="phase">
+            <p className="phase__where">{where}</p>
+            <h1 className="phase__title">{level.title}</h1>
+            {note}
+            {play.shared && <p className="hint">Desenho de um link compartilhado: o que você mudar aqui não é salvo.</p>}
+          </div>
+          <div className="phase__actions">
+            <button type="button" className="btn btn--ghost btn--small" aria-expanded={briefOpen} aria-controls="brief" onClick={() => setBriefOpen((o) => !o)}>
+              Briefing
+            </button>
+            {phases && (
               <div
-                ref={trashRef}
-                className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
-                aria-hidden
+                className="popover-anchor"
+                onKeyDown={phasesOpen ? onPhasesKey : undefined}
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget)) setPhasesOpen(false)
+                }}
               >
-                <TrashIcon />
-                <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
+                <button
+                  ref={phasesButton}
+                  type="button"
+                  className="btn btn--ghost btn--small"
+                  aria-expanded={phasesOpen}
+                  aria-controls="phases-list"
+                  onClick={() => setPhasesOpen((o) => !o)}
+                >
+                  Fases
+                </button>
+                <div ref={phasesList} id="phases-list" className="popover" hidden={!phasesOpen}>
+                  {phases}
+                </div>
               </div>
             )}
+            {traffic && (
+              <button type="button" className="btn btn--ghost btn--small" aria-expanded={side === 'traffic'} aria-controls="side" onClick={(e) => toggleSide('traffic', e.currentTarget)}>
+                Tráfego
+              </button>
+            )}
+            <button
+              ref={goalsButton}
+              type="button"
+              className="btn btn--ghost btn--small"
+              aria-expanded={side === 'goals'}
+              aria-controls="side"
+              onClick={(e) => toggleSide('goals', e.currentTarget)}
+            >
+              {free ? 'Medidas' : 'Metas'}
+            </button>
+            {links}
+          </div>
+          <section id="brief" className="brief" aria-label="Briefing" hidden={!briefOpen}>
+            <p>{level.briefing}</p>
+            <details className="help">
+              <summary>Como montar</summary>
+              <p>
+              Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar,
+              ou selecione a peça e use Ligar a, no painel dela.
+              Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
+              direito (toque longo no celular). Ctrl+Z desfaz.
+            </p>
+            </details>
+            <button type="button" className="levels__map" onClick={() => setBriefOpen(false)}>
+              Recolher
+            </button>
+          </section>
+        </div>
 
-            <div className="toast-slot" role="status" aria-live="polite">
-              {notice && (
-                <div className="toast toast--notice">
-                  <span>{notice}</span>
-                  <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso">
-                    Ok
-                  </button>
-                </div>
-              )}
-              {toast && (
-                <div className="toast">
-                  <span>{undoMessage(toast)}</span>
-                  <button type="button" onClick={undo} disabled={!editable}>
-                    Desfazer
-                  </button>
-                </div>
-              )}
+        <div
+          ref={canvasRef}
+          className="canvas"
+          tabIndex={-1}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={cancelLongPress}
+          onPointerCancel={cancelLongPress}
+        >
+          <EditorContext.Provider value={editor}>
+            <ReactFlow
+              // Region areas are inert (not selectable, draggable or deletable), so no handler ever sees one.
+              nodes={displayNodes as ComponentNode[]}
+              edges={displayEdges}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChangeWhenEditable}
+              onConnect={onConnect}
+              onConnectEnd={onConnectEnd}
+              onClickConnectStart={onClickConnectStart}
+              onClickConnectEnd={onClickConnectEnd}
+              autoPanOnNodeDrag={false}
+              selectNodesOnDrag={false}
+              isValidConnection={isValidConnection}
+              nodesConnectable={editable}
+              nodesDraggable={editable}
+              deleteKeyCode={editable ? DELETE_KEYS : null}
+              onBeforeDelete={onBeforeDelete}
+              onNodeDragStart={onNodeDragStart}
+              onNodeDrag={onNodeDrag}
+              onNodeDragStop={onNodeDragStop}
+              onNodeContextMenu={onNodeContextMenu}
+              onEdgeContextMenu={onEdgeContextMenu}
+              onMoveStart={closeMenuOnMove}
+              onSelectionChange={onSelectionChange}
+              onPaneClick={closeListInfo}
+              fitView
+              fitViewOptions={firstFitOptions}
+              minZoom={0.2}
+            >
+              <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="var(--grid)" />
+              <Controls showInteractive={false} position="bottom-left" />
+            </ReactFlow>
+          </EditorContext.Provider>
+
+          {editable && (
+            <div
+              ref={trashRef}
+              className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
+              aria-hidden
+            >
+              <TrashIcon />
+              <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
             </div>
+          )}
 
-            {menu && editable && (
-              <ContextMenu
-                x={menu.x}
-                y={menu.y}
-                label={'node' in menu.target ? 'Ações da peça' : 'Ações da ligação'}
-                items={menuItems(menu.target)}
-                onClose={closeMenu}
-              />
+          <div className="toast-slot" role="status" aria-live="polite">
+            {notice && (
+              <div className="toast toast--notice">
+                <span>{notice}</span>
+                <button type="button" onClick={() => setNotice(null)} aria-label="Fechar aviso">
+                  Ok
+                </button>
+              </div>
+            )}
+            {toast && (
+              <div className="toast">
+                <span>{undoMessage(toast)}</span>
+                <button type="button" onClick={undo} disabled={!editable}>
+                  Desfazer
+                </button>
+              </div>
             )}
           </div>
 
-          {codeChallenge && (
-            <CodePanel
-              challenge={codeChallenge}
-              route={endpointsOf(level).find((e) => e.class === codeChallenge.class)?.route ?? ''}
-              picked={fixes[codeChallenge.id]}
-              editable={editable}
-              onPick={(optionId) => {
-                clearRun()
-                const next = { ...fixes, [codeChallenge.id]: optionId }
-                setFixes(next)
-                // Links the new code forbids go away, with the reason.
-                const drawn = { ...toArchitecture(nodes, edges), fixes: next }
-                const open = new Set(openEdges(drawn, level))
-                const kept = edges.filter((_, i) => open.has(drawn.edges[i]))
-                const gone = edges.length - kept.length
-                if (gone === 0) return
-                const kind = new Map(nodes.map((n) => [n.id, n.data.kind]))
-                const e = edges.find((_, i) => !open.has(drawn.edges[i]))!
-                const reason = lockedLink(level, next, kind.get(e.source)!, kind.get(e.target)!)
-                setEdges(kept)
-                setNotice(`${gone === 1 ? '1 ligação removida' : `${gone} ligações removidas`}: ${reason}`)
-              }}
-              onClose={() => setCodeId(null)}
+          {menu && editable && (
+            <ContextMenu
+              x={menu.x}
+              y={menu.y}
+              label={'node' in menu.target ? 'Ações da peça' : 'Ações da ligação'}
+              items={menuItems(menu.target)}
+              onClose={closeMenu}
             />
-          )}
-          {!codeChallenge && !inspected && selectedLink && (
-            <LinkPanel
-              from={SPECS[nodes.find((n) => n.id === selectedLink.source)!.data.kind].label}
-              to={SPECS[nodes.find((n) => n.id === selectedLink.target)!.data.kind].label}
-              fromKind={nodes.find((n) => n.id === selectedLink.source)!.data.kind}
-              toKind={nodes.find((n) => n.id === selectedLink.target)!.data.kind}
-              policy={policyOf(selectedLink)}
-              state={tick ? (tick.breakers[`${selectedLink.source}->${selectedLink.target}`] ?? 'closed') : undefined}
-              editable={editable}
-              onChange={(policy) => {
-                clearRun()
-                setEdges((es) => es.map((e) => (e.id === selectedLink.id ? { ...e, data: { ...policy } } : e)))
-              }}
-              onClose={() => setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))}
-            />
-          )}
-          {!codeChallenge && inspected && (
-            <Inspector
-              kind={inspected}
-              level={level}
-              code={inspectedCode}
-              fixes={fixes}
-              onOpenCode={level.code ? setCodeId : undefined}
-              onClose={closeInfo}
-              focusOnOpen={listInfo !== null}
-              escapeCloses={!menu}
-              capacity={!listInfo && selected.length === 1 ? instanceCapacity(level, { id: selected[0].id, kind: selected[0].data.kind }) : undefined}
-              links={
-                !listInfo && selected.length === 1
-                  ? {
-                      targets: nodes
-                        .filter((n) => canConnect(arch, selected[0].id, n.id, level))
-                        .map((n) => ({ id: n.id, label: capitalize(nodeName(arch, n.id)) })),
-                      editable,
-                      onLink: (target) => {
-                        const fits = edgesRef.current.length < MAX_EDGES
-                        onConnect({ source: selected[0].id, target, sourceHandle: null, targetHandle: null })
-                        if (fits) setNotice(`Ligado a ${nodeName(arch, target)}.`)
-                      },
-                    }
-                  : undefined
-              }
-              balance={
-                !listInfo && selected.length === 1 && SPECS[selected[0].data.kind].balances && (canSetBalance(level, fixes) || forcedBalance)
-                  ? {
-                      value: balanceOf({ id: selected[0].id, ...selected[0].data }, level, fixes),
-                      forced: forcedBalance,
-                      editable,
-                      onChange: (b) => {
-                        clearRun()
-                        setNodes((ns) => ns.map((n) => (n.id === selected[0].id ? { ...n, data: { ...n.data, balance: b } } : n)))
-                      },
-                    }
-                  : undefined
-              }
-              region={
-                multiRegion && !listInfo && selected.length === 1 && !SPECS[selected[0].data.kind].global
-                  ? {
-                      value: regionOf({ id: selected[0].id, ...selected[0].data }),
-                      choices: regionChoices,
-                      editable,
-                      onChange: (r) => {
-                        clearRun()
-                        setNodes((ns) =>
-                          ns.map((n) => {
-                            if (n.id !== selected[0].id) return n
-                            const { region: _old, ...rest } = n.data
-                            // Each region keeps its own band of the canvas, so the areas never overlap.
-                            const y = n.position.y + (bandOf(r) - bandOf(regionOf({ id: n.id, ...n.data }))) * REGION_BAND
-                            return { ...n, position: { ...n.position, y }, data: r === HOME_REGION ? rest : { ...rest, region: r } }
-                          }),
-                        )
-                      },
-                    }
-                  : undefined
-              }
-            >
-              {/* A piece picked on the canvas also shows how it did in the run on screen. */}
-              {!listInfo && selected.length === 1 && run && shown > 0 && (
-                <NodeRunStats ticks={run.ticks} nodeId={selected[0].id} kind={selected[0].data.kind} shown={shown} />
-              )}
-            </Inspector>
           )}
         </div>
 
-        <footer className="console">
-          <div className="console__actions">
-            <button className="btn btn--primary run" onClick={start} disabled={running || computing || !!play.free?.blocked} aria-busy={running || computing}>
-              {computing ? 'Simulando…' : running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
-            </button>
-            <button className="btn btn--ghost" onClick={reset} disabled={running || computing}>
-              {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
-            </button>
-            {play.free?.blocked && <p className="hint" role="status">Para rodar, corrija o tráfego: {play.free.blocked}</p>}
-          </div>
-
-          <div className="meters">
-            <Meter
-              name="Tráfego"
-              value={tick ? `${count(tick.rps)} req/s` : '—'}
-              sub={tick && tick.botRps > 0 ? `mais ${count(tick.botRps)} req/s de um bot` : undefined}
-            >
-              {saturated && (
-                <button className="meter__link" onClick={() => selectNode(saturated)}>
-                  Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label}{' '}
-                  {Math.round(tick!.nodes[saturated].utilization * 100)}%
-                </button>
-              )}
-            </Meter>
-            <Meter
-              name="Disponibilidade"
-              value={tick ? pct(tick.rps ? tick.served / tick.rps : 1) : '—'}
-              bad={!!tick && tick.rps > 0 && tick.served / tick.rps < g.minAvailability}
-              sub={tick && lostByReason(tick.failed, '/s') && `Perdendo ${lostByReason(tick.failed, '/s')}`}
-            >
-              <Sparkline
-                label="Disponibilidade por segundo"
-                values={visible.map((t) => (t.rps ? t.served / t.rps : 1))}
-                length={level.durationS}
-                goal={g.minAvailability}
-                min={0.8}
-                max={1}
-              />
-            </Meter>
-            <Meter
-              name="Latência p99"
-              value={tick ? ms(tick.p99Ms) : '—'}
-              bad={!!tick && tick.p99Ms > g.maxP99Ms}
-              sub={tick && `p50 ${ms(tick.p50Ms)}, p95 ${ms(tick.p95Ms)}`}
-            >
-              <Sparkline
-                label="p99 por segundo"
-                values={visible.map((t) => t.p99Ms)}
-                length={level.durationS}
-                goal={g.maxP99Ms}
-                max={g.maxP99Ms * 2}
-              />
-            </Meter>
-          </div>
-
-          {finished && (
-            <label className="scrub">
-              <span>
-                Rever o momento {shown - 1}s de {run.ticks.length}s
-              </span>
-              <input
-                type="range"
-                min={1}
-                max={run.ticks.length}
-                value={shown}
-                onChange={(e) => {
-                  // Scrubbing back must not resume playback from there.
-                  setPlaying(false)
-                  setShown(Number(e.target.value))
-                }}
-              />
-            </label>
-          )}
-
-          {/* Always on the page, so screen readers announce the verdict when it arrives. */}
-          <p className="sr-only" role="status" aria-live="polite">
-            {finished ? verdictOf(free, run.summary.passed.all && !free) : ''}
-          </p>
-
-          {finished && (
-            <Result
-              summary={run.summary}
-              ticks={run.ticks}
-              arch={arch}
-              level={level}
-              free={!!play.free}
-              share={play.share}
-              sheet={play.linkable ? play.sheet : undefined}
-              shareQuery={() => encodeShare(level.id, { nodes, edges, fixes })}
-              xpGained={gain}
-              onSeek={(t) => {
-                setPlaying(false)
-                setShown(t + 1)
-              }}
-              onConcept={openInfo}
-            />
-          )}
-
-          <table className="sheet">
-            <caption>
-              <span className="sheet__n">
-                {play.sheet}
-              </span>
-              <span className="sheet__title">{level.title}</span>
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Meta</th>
-                {!free && <th scope="col">Exigido</th>}
-                <th scope="col">Medido</th>
-              </tr>
-            </thead>
-            <tbody>
-              <GoalRow
-                name="Disponibilidade"
-                required={free ? undefined : `≥ ${pct(g.minAvailability)}`}
-                value={measured && pct(measured.availability)}
-                ok={free ? undefined : measured?.passed.availability}
-              />
-              <GoalRow
-                name="Latência p99"
-                required={free ? undefined : `≤ ${ms(g.maxP99Ms)}`}
-                value={measured && ms(measured.p99Ms)}
-                ok={free ? undefined : measured?.passed.p99}
-              />
-              <GoalRow name="Custo mensal" required={free ? undefined : `≤ $${g.maxCost}`} value={`$${cost}`} ok={free ? undefined : cost <= g.maxCost} />
-              {g.maxStaleReads !== undefined && (
-                <GoalRow
-                  name="Leituras desatualizadas"
-                  required={`≤ ${pct(g.maxStaleReads)}`}
-                  value={measured && pct(measured.staleReadRate)}
-                  ok={measured?.passed.stale}
+        {codeChallenge && (
+          <CodePanel
+            challenge={codeChallenge}
+            route={endpointsOf(level).find((e) => e.class === codeChallenge.class)?.route ?? ''}
+            picked={fixes[codeChallenge.id]}
+            editable={editable}
+            onPick={(optionId) => {
+              clearRun()
+              const next = { ...fixes, [codeChallenge.id]: optionId }
+              setFixes(next)
+              // Links the new code forbids go away, with the reason.
+              const drawn = { ...toArchitecture(nodes, edges), fixes: next }
+              const open = new Set(openEdges(drawn, level))
+              const kept = edges.filter((_, i) => open.has(drawn.edges[i]))
+              const gone = edges.length - kept.length
+              if (gone === 0) return
+              const kind = new Map(nodes.map((n) => [n.id, n.data.kind]))
+              const e = edges.find((_, i) => !open.has(drawn.edges[i]))!
+              const reason = lockedLink(level, next, kind.get(e.source)!, kind.get(e.target)!)
+              setEdges(kept)
+              setNotice(`${gone === 1 ? '1 ligação removida' : `${gone} ligações removidas`}: ${reason}`)
+            }}
+            onClose={() => setCodeId(null)}
+          />
+        )}
+        {!codeChallenge && !inspected && selectedLink && (
+          <LinkPanel
+            from={SPECS[nodes.find((n) => n.id === selectedLink.source)!.data.kind].label}
+            to={SPECS[nodes.find((n) => n.id === selectedLink.target)!.data.kind].label}
+            fromKind={nodes.find((n) => n.id === selectedLink.source)!.data.kind}
+            toKind={nodes.find((n) => n.id === selectedLink.target)!.data.kind}
+            policy={policyOf(selectedLink)}
+            state={tick ? (tick.breakers[`${selectedLink.source}->${selectedLink.target}`] ?? 'closed') : undefined}
+            editable={editable}
+            onChange={(policy) => {
+              clearRun()
+              setEdges((es) => es.map((e) => (e.id === selectedLink.id ? { ...e, data: { ...policy } } : e)))
+            }}
+            onClose={() => setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)))}
+          />
+        )}
+        {!codeChallenge && inspected && (
+          <Inspector
+            kind={inspected}
+            level={level}
+            code={inspectedCode}
+            fixes={fixes}
+            onOpenCode={level.code ? setCodeId : undefined}
+            onClose={closeInfo}
+            focusOnOpen={listInfo !== null}
+            escapeCloses={!menu}
+            capacity={!listInfo && selected.length === 1 ? instanceCapacity(level, { id: selected[0].id, kind: selected[0].data.kind }) : undefined}
+            links={
+              !listInfo && selected.length === 1
+                ? {
+                    targets: nodes
+                      .filter((n) => canConnect(arch, selected[0].id, n.id, level))
+                      .map((n) => ({ id: n.id, label: capitalize(nodeName(arch, n.id)) })),
+                    editable,
+                    onLink: (target) => {
+                      const fits = edgesRef.current.length < MAX_EDGES
+                      onConnect({ source: selected[0].id, target, sourceHandle: null, targetHandle: null })
+                      if (fits) setNotice(`Ligado a ${nodeName(arch, target)}.`)
+                    },
+                  }
+                : undefined
+            }
+            balance={
+              !listInfo && selected.length === 1 && SPECS[selected[0].data.kind].balances && (canSetBalance(level, fixes) || forcedBalance)
+                ? {
+                    value: balanceOf({ id: selected[0].id, ...selected[0].data }, level, fixes),
+                    forced: forcedBalance,
+                    editable,
+                    onChange: (b) => {
+                      clearRun()
+                      setNodes((ns) => ns.map((n) => (n.id === selected[0].id ? { ...n, data: { ...n.data, balance: b } } : n)))
+                    },
+                  }
+                : undefined
+            }
+            region={
+              multiRegion && !listInfo && selected.length === 1 && !SPECS[selected[0].data.kind].global
+                ? {
+                    value: regionOf({ id: selected[0].id, ...selected[0].data }),
+                    choices: regionChoices,
+                    editable,
+                    onChange: (r) => {
+                      clearRun()
+                      setNodes((ns) =>
+                        ns.map((n) => {
+                          if (n.id !== selected[0].id) return n
+                          const { region: _old, ...rest } = n.data
+                          // Each region keeps its own band of the canvas, so the areas never overlap.
+                          const y = n.position.y + (bandOf(r) - bandOf(regionOf({ id: n.id, ...n.data }))) * REGION_BAND
+                          return { ...n, position: { ...n.position, y }, data: r === HOME_REGION ? rest : { ...rest, region: r } }
+                        }),
+                      )
+                    },
+                  }
+                : undefined
+            }
+          >
+            {/* A piece picked on the canvas also shows how it did in the run on screen. */}
+            {!listInfo && selected.length === 1 && run && shown > 0 && (
+              <NodeRunStats ticks={run.ticks} nodeId={selected[0].id} kind={selected[0].data.kind} shown={shown} />
+            )}
+          </Inspector>
+        )}
+        {side && (
+          <aside ref={sideRef} id="side" className="inspector side" aria-labelledby="side-title" hidden={!sideShown}>
+            <header className="code-panel__head">
+              <h2 id="side-title" ref={sideTitle} tabIndex={-1}>
+                {side === 'traffic' ? 'Tráfego' : goalsTitle}
+              </h2>
+              <button type="button" className="inspector__close" onClick={closeSide} aria-label="Fechar painel" title="Fechar (Esc)">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                  <path d="M3 3l10 10M13 3L3 13" />
+                </svg>
+              </button>
+            </header>
+            {side === 'traffic' ? (
+              traffic
+            ) : (
+              <>
+              {finished && (
+                <Result
+                  summary={run.summary}
+                  ticks={run.ticks}
+                  arch={arch}
+                  level={level}
+                  free={!!play.free}
+                  share={play.share}
+                  sheet={play.linkable ? play.sheet : undefined}
+                  shareQuery={() => encodeShare(level.id, { nodes, edges, fixes })}
+                  xpGained={gain}
+                  onSeek={(t) => {
+                    setPlaying(false)
+                    setShown(t + 1)
+                  }}
+                  onConcept={openInfo}
+                  next={next}
                 />
               )}
-              {g.maxDuplicates !== undefined && (
-                <GoalRow
-                  name="Transferências duplicadas"
-                  required={`≤ ${pct(g.maxDuplicates)}`}
-                  value={measured && pct(measured.duplicateRate)}
-                  ok={measured?.passed.duplicates}
-                />
-              )}
-              <tr>
-                <th scope="row">Custo por 1 mi de req.</th>
-                {!free && <td>—</td>}
-                <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </footer>
+
+              <div className="meters">
+                <Meter
+                  name="Tráfego"
+                  value={tick ? `${count(tick.rps)} req/s` : '—'}
+                  sub={tick && tick.botRps > 0 ? `mais ${count(tick.botRps)} req/s de um bot` : undefined}
+                >
+                  {saturated && (
+                    <button className="meter__link" onClick={() => selectNode(saturated)}>
+                      Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label}{' '}
+                      {Math.round(tick!.nodes[saturated].utilization * 100)}%
+                    </button>
+                  )}
+                </Meter>
+                <Meter
+                  name="Disponibilidade"
+                  value={tick ? pct(tick.rps ? tick.served / tick.rps : 1) : '—'}
+                  bad={!!tick && tick.rps > 0 && tick.served / tick.rps < g.minAvailability}
+                  sub={tick && lostByReason(tick.failed, '/s') && `Perdendo ${lostByReason(tick.failed, '/s')}`}
+                >
+                  <Sparkline
+                    label="Disponibilidade por segundo"
+                    values={visible.map((t) => (t.rps ? t.served / t.rps : 1))}
+                    length={level.durationS}
+                    goal={g.minAvailability}
+                    min={0.8}
+                    max={1}
+                  />
+                </Meter>
+                <Meter
+                  name="Latência p99"
+                  value={tick ? ms(tick.p99Ms) : '—'}
+                  bad={!!tick && tick.p99Ms > g.maxP99Ms}
+                  sub={tick && `p50 ${ms(tick.p50Ms)}, p95 ${ms(tick.p95Ms)}`}
+                >
+                  <Sparkline
+                    label="p99 por segundo"
+                    values={visible.map((t) => t.p99Ms)}
+                    length={level.durationS}
+                    goal={g.maxP99Ms}
+                    max={g.maxP99Ms * 2}
+                  />
+                </Meter>
+              </div>
+
+                {finished && (
+                  <label className="scrub">
+                    <span>
+                      Rever o momento {shown - 1}s de {run.ticks.length}s
+                    </span>
+                    <input
+                      type="range"
+                      min={1}
+                      max={run.ticks.length}
+                      value={shown}
+                      onChange={(e) => {
+                        // Scrubbing back must not resume playback from there.
+                        setPlaying(false)
+                        setShown(Number(e.target.value))
+                      }}
+                    />
+                  </label>
+                )}
+              <table className="sheet">
+                <caption>
+                  <span className="sheet__n">
+                    {play.sheet}
+                  </span>
+                  <span className="sheet__title">{level.title}</span>
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Meta</th>
+                    {!free && <th scope="col">Exigido</th>}
+                    <th scope="col">Medido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <GoalRow
+                    name="Disponibilidade"
+                    required={free ? undefined : `≥ ${pct(g.minAvailability)}`}
+                    value={measured && pct(measured.availability)}
+                    ok={free ? undefined : measured?.passed.availability}
+                  />
+                  <GoalRow
+                    name="Latência p99"
+                    required={free ? undefined : `≤ ${ms(g.maxP99Ms)}`}
+                    value={measured && ms(measured.p99Ms)}
+                    ok={free ? undefined : measured?.passed.p99}
+                  />
+                  <GoalRow name="Custo mensal" required={free ? undefined : `≤ $${g.maxCost}`} value={`$${cost}`} ok={free ? undefined : cost <= g.maxCost} />
+                  {g.maxStaleReads !== undefined && (
+                    <GoalRow
+                      name="Leituras desatualizadas"
+                      required={`≤ ${pct(g.maxStaleReads)}`}
+                      value={measured && pct(measured.staleReadRate)}
+                      ok={measured?.passed.stale}
+                    />
+                  )}
+                  {g.maxDuplicates !== undefined && (
+                    <GoalRow
+                      name="Transferências duplicadas"
+                      required={`≤ ${pct(g.maxDuplicates)}`}
+                      value={measured && pct(measured.duplicateRate)}
+                      ok={measured?.passed.duplicates}
+                    />
+                  )}
+                  <tr>
+                    <th scope="row">Custo por 1 mi de req.</th>
+                    {!free && <td>—</td>}
+                    <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              </>
+            )}
+          </aside>
+        )}
+
+        {/* Always on the page, so screen readers announce the verdict when it arrives. */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {finished ? verdictOf(free, run.summary.passed.all && !free) : ''}
+        </p>
       </main>
+
+      <footer className="dock">
+        <h2 className="dock__label" id="parts-title">
+          Peças
+        </h2>
+        <ul className="dock__parts" aria-labelledby="parts-title">
+        {/* What you can use comes first; locked pieces trail at the end of the dock. */}
+        {[...play.pieces].sort((a, b) => Number(!play.unlock(a).unlocked) - Number(!play.unlock(b).unlocked)).map((kind) => {
+          const unlock = play.unlock(kind)
+          const detail = !unlock.unlocked
+            ? unlock.by
+              ? `Bloqueada até a empresa ${COMPANIES.indexOf(unlock.by) + 1}, ${unlock.by.name}.`
+              : 'Bloqueada. Chega numa próxima empresa.'
+            : `${SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, $${SPECS[kind].cost}/mês${atMax(kind) ? `, já no desenho: ${SPECS[kind].maxCount === 1 ? 'só cabe um' : `até ${SPECS[kind].maxCount}`}` : ''}.`
+          return (
+          <li key={kind} className={`dock__part${unlock.unlocked ? '' : ' is-locked'}`}>
+            <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked || atMax(kind)} title={`${detail} ${SPECS[kind].description}`}>
+              <KindIcon kind={kind} size={18} />
+              <span className="part__name">{SPECS[kind].label}</span>
+              {unlock.unlocked ? <span className="part__spec">${SPECS[kind].cost}</span> : <LockIcon />}
+              <span className="sr-only">{detail}</span>
+            </button>
+            <button
+              type="button"
+              className={`part__info${listInfo?.kind === kind ? ' is-open' : ''}`}
+              aria-label={`Sobre ${SPECS[kind].label}`}
+              aria-pressed={listInfo?.kind === kind}
+              title={`Sobre ${SPECS[kind].label}`}
+              onClick={(e) => (listInfo?.kind === kind ? closeInfo() : openInfo(kind, e.currentTarget))}
+            >
+              <InfoIcon />
+            </button>
+          </li>
+          )
+        })}
+        </ul>
+        {play.free?.blocked && (
+          <p className="hint dock__blocked" role="status">
+            Para rodar, corrija o tráfego: {play.free.blocked}
+          </p>
+        )}
+        <div className="dock__actions">
+          <button className="btn btn--ghost" onClick={reset} disabled={running || computing}>
+            {play.free ? 'Recomeçar desenho' : 'Recomeçar fase'}
+          </button>
+          <button className="btn btn--primary run" onClick={start} disabled={running || computing || !!play.free?.blocked} aria-busy={running || computing}>
+            {computing ? 'Simulando…' : running ? `Simulando ${shown}s de ${level.durationS}s` : run ? 'Rodar de novo' : 'Rodar simulação'}
+          </button>
+        </div>
+      </footer>
     </div>
   )
 }
@@ -1784,15 +1847,6 @@ function InfoIcon() {
       <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path d="M10 9v5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
       <circle cx="10" cy="6.2" r="1.1" fill="currentColor" />
-    </svg>
-  )
-}
-
-function PanelIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <rect x="3" y="4" width="18" height="16" rx="3" />
-      <path d="M9 4v16" />
     </svg>
   )
 }
@@ -1861,6 +1915,7 @@ function Result({
   xpGained,
   onSeek,
   onConcept,
+  next,
 }: {
   summary: RunSummary
   ticks: TickResult[]
@@ -1879,6 +1934,8 @@ function Result({
   /** Shows the given second on the canvas. */
   onSeek: (t: number) => void
   onConcept: (kind: Kind, opener: HTMLElement) => void
+  /** Opens the next phase, offered once this one is won. */
+  next?: () => void
 }) {
   const events = useMemo(() => timeline(arch, ticks), [arch, ticks])
   const neck = useMemo(() => bottleneck(arch, ticks), [arch, ticks])
@@ -1895,10 +1952,15 @@ function Result({
         <div className="stars-line">
           <Stars count={stars} />
           {xpGained > 0 && <span className="stars-line__xp">+{xpGained} XP</span>}
+          {next && (
+            <button type="button" className="btn btn--ghost btn--small" onClick={next}>
+              Próxima fase
+            </button>
+          )}
           {share && (
             <button
               type="button"
-              className="btn btn--ghost"
+              className="btn btn--ghost btn--small"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(share(stars, summary.cost, summary.p99Ms))
@@ -1914,7 +1976,7 @@ function Result({
           {sheet && (
             <button
               type="button"
-              className="btn btn--ghost"
+              className="btn btn--ghost btn--small"
               onClick={async () => {
                 const url = `${location.origin}${location.pathname}${shareQuery()}`
                 const g = level.goals

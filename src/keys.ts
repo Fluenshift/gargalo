@@ -16,3 +16,16 @@ export function escapeFor(e: KeyboardEvent, root: Element | null): boolean {
 
 /** Whether a modal dialog is open: shortcuts for the page behind it must wait. */
 export const dialogOpen = () => document.querySelector('dialog[open]') !== null
+
+/**
+ * Where a list's focus goes on a key: ArrowDown and ArrowUp step and wrap, Home and End jump to
+ * the ends. `index` is the focused item, -1 when focus is outside the list. Null for other keys.
+ */
+export function stepIndex(key: string, index: number, count: number): number | null {
+  if (count === 0) return null
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  if (key === 'ArrowDown') return (index + 1) % count
+  if (key === 'ArrowUp') return index < 0 ? count - 1 : (index - 1 + count) % count
+  return null
+}
