@@ -90,3 +90,18 @@ export function resumeStage(course: ProjectCourse, results: Results): number {
   const last = course.stages.findLastIndex((s) => stagePassed(results, course.id, s.id))
   return Math.min(last + 1, course.stages.length - 1)
 }
+
+/** A stage statement as its intro (text before step 1) and numbered steps ("1. ..."; other lines belong to the step above, the number is dropped). No numbering: one step. */
+export function splitStatement(statement: string): { intro: string; steps: string[] } {
+  const intro: string[] = []
+  const steps: string[][] = []
+  for (const line of statement.split('\n')) {
+    const m = /^\d+\. (.*)$/.exec(line)
+    if (m) steps.push([m[1]])
+    else (steps.at(-1) ?? intro).push(line)
+  }
+  const join = (lines: string[]) => lines.join('\n').trim()
+  return steps.length ? { intro: join(intro), steps: steps.map(join) } : { intro: '', steps: [statement.trim()] }
+}
+
+export const statementSteps = (statement: string): string[] => splitStatement(statement).steps

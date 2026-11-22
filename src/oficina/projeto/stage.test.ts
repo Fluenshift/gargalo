@@ -8,7 +8,7 @@ import { checkTests } from './checklist'
 import { COURSES, courseOf } from './courses'
 import type { Project } from './project'
 import { executeProjectTests, type ProjectTestsInput } from './runtime'
-import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, type Stage } from './stage'
+import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, statementSteps, splitStatement, type Stage } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -186,5 +186,18 @@ describe('course base files', () => {
       for (const name of ['ErroHttp', 'problema', 'idDe', 'achado'].filter((n) => hints.some((h) => h.includes(n))))
         expect(http, `${course.id}: ${name}`).toMatch(new RegExp(`export (class|function|const) ${name}[^\\w]`))
     }
+  })
+})
+
+describe('statementSteps', () => {
+  it('splits numbered steps, keeping sub-lines with their step', () => {
+    expect(statementSteps('1. Crie.\n- detalhe\n2. Rode.')).toEqual(['Crie.\n- detalhe', 'Rode.'])
+  })
+  it('separates the intro and treats plain text as one step', () => {
+    expect(splitStatement('Antes.\n\n1. Um\n2. Dois\n')).toEqual({ intro: 'Antes.', steps: ['Um', 'Dois'] })
+    expect(splitStatement(' Sem números ')).toEqual({ intro: '', steps: ['Sem números'] })
+  })
+  it('gives every course stage at least one step', () => {
+    for (const c of COURSES) for (const s of c.stages) expect(statementSteps(s.statement).length, s.id).toBeGreaterThan(0)
   })
 })
