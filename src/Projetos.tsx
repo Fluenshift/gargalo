@@ -18,7 +18,8 @@ import { applyMigrations, dropDev, listTables, prewarm, resetDev, tableRows } fr
 import { Etapa } from './Etapa'
 import { HttpClient } from './HttpClient'
 import { COURSE } from './oficina/projeto/courses'
-import type { CodeError, LogLine, RequestOutcome, TableRows } from './oficina/projeto/runtime'
+import { OpenApi } from './OpenApi'
+import type { CodeError, LogLine, RequestOutcome, Route, TableRows } from './oficina/projeto/runtime'
 import { PROJETOS_PATH, followLink, navigate } from './route'
 
 const FRAMEWORKS: [Framework, string][] = [
@@ -232,7 +233,8 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     if (form === null) formOpener.current?.focus()
   }, [form])
   const [panel, setPanel] = useState<'banco' | 'console'>('banco')
-  const [side, setSide] = useState<'requisicao' | 'etapa'>('requisicao')
+  const [side, setSide] = useState<'requisicao' | 'etapa' | 'openapi'>('requisicao')
+  const [routes, setRoutes] = useState<Route[]>()
   const [logs, setLogs] = useState<ConsoleLine[]>([])
   const [saveFailed, setSaveFailed] = useState(false)
   const [warming, setWarming] = useState(true)
@@ -318,6 +320,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
 
   // Every request the HTTP client sends leaves a line in the Console, then the project's own logs.
   const record = (method: string, sent: string, outcome: RequestOutcome) => {
+    if (outcome.routes) setRoutes(outcome.routes)
     const head: ConsoleLine = { level: outcome.error ? 'error' : 'log', text: `${method} ${sent} → ${outcome.response?.status ?? 'erro'} · ${Math.round(outcome.ms)} ms` }
     const error: ConsoleLine[] = outcome.error ? [{ level: 'error', text: outcome.error.message, error: outcome.error }] : []
     setLogs((l) => [...l, head, ...outcome.logs, ...error])
@@ -444,9 +447,14 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           <button type="button" aria-pressed={side === 'etapa'} onClick={() => setSide('etapa')}>
             Etapa
           </button>
+          <button type="button" aria-pressed={side === 'openapi'} onClick={() => setSide('openapi')}>
+            OpenAPI
+          </button>
         </div>
         {side === 'requisicao' ? (
           <HttpClient project={project} warming={warming} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
+        ) : side === 'openapi' ? (
+          <OpenApi project={project} name={entry.name} routes={routes} />
         ) : (
           <Etapa project={project} course={COURSE} warming={warming} onGoTo={goTo} />
         )}
