@@ -3670,6 +3670,144 @@ a.levels__map {
   min-width: 0;
 }
 
+/* The project's HTTP client (#109): method + path + send on one line, headers and body below, then the answer. */
+.http {
+  display: grid;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+.http__form {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.http__line {
+  display: flex;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.http select,
+.http input[type='text'],
+.http textarea {
+  font: inherit;
+  font-size: var(--text-xs);
+  letter-spacing: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-6) var(--space-12);
+  min-width: 0;
+}
+
+.http textarea {
+  font-family: var(--mono);
+  border-radius: var(--radius-field);
+  resize: vertical;
+  width: 100%;
+}
+
+.http__line input[type='text'],
+.http__save input[type='text'] {
+  flex: 1;
+}
+
+.http select:focus-visible,
+.http input[type='text']:focus-visible,
+.http textarea:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 1px;
+}
+
+.http__response {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.http__response .code {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.http__meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.http__status {
+  font-weight: 500;
+}
+
+.http__status.is-ok {
+  color: var(--ok);
+}
+
+.http__status.is-warm {
+  color: var(--warm);
+}
+
+.http__status.is-hot,
+.http__error {
+  color: var(--hot);
+}
+
+.http__headers summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.http__save {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.http__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.http__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.http__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.http__item:hover {
+  background: var(--sunk);
+}
+
+.http__item .http__status {
+  margin-left: auto;
+}
+
+.http__method {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
 /* Below 1100px the right panel moves under the editor; at 900px everything stacks. */
 @media (max-width: 1100px) {
   .projeto {
