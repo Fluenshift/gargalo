@@ -1,10 +1,10 @@
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { javascript } from '@codemirror/lang-javascript'
+import { syntaxHighlighting } from '@codemirror/language'
+import { javascript, typescriptLanguage } from '@codemirror/lang-javascript'
 import { indentWithTab } from '@codemirror/commands'
-import { tags } from '@lezer/highlight'
+import { highlightCode, tagHighlighter, tags } from '@lezer/highlight'
 import { EditorView, basicSetup } from 'codemirror'
 import { keymap } from '@codemirror/view'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import './App.css'
 import { BrandMark } from './BrandMark'
 import { GoalRow } from './GoalRow'
@@ -18,13 +18,32 @@ import { prewarm, runTests } from './oficina/runner'
 import type { RunSummary } from './sim/engine'
 import { runInBackground } from './sim/runner'
 
-/** Colour means load state only, so the code is told apart by weight, style and ink-soft, never by hue. */
-const highlight = HighlightStyle.define([
-  { tag: [tags.keyword, tags.definitionKeyword, tags.modifier, tags.controlKeyword], fontWeight: '500' },
-  { tag: [tags.string, tags.special(tags.string), tags.number, tags.bool, tags.null], color: 'var(--ink-soft)' },
-  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'var(--ink-soft)', fontStyle: 'italic' },
-  { tag: [tags.typeName, tags.className], fontStyle: 'italic' },
+/** Token classes for the editor and the reference block alike; colours are the --code-* tokens in App.css (.tok-*). */
+const highlight = tagHighlighter([
+  { tag: [tags.keyword, tags.definitionKeyword, tags.modifier, tags.controlKeyword, tags.operatorKeyword], class: 'tok-keyword' },
+  { tag: [tags.string, tags.special(tags.string), tags.regexp], class: 'tok-string' },
+  { tag: [tags.number, tags.bool, tags.null], class: 'tok-number' },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], class: 'tok-comment' },
+  { tag: [tags.typeName, tags.className], class: 'tok-type' },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.function(tags.definition(tags.variableName))], class: 'tok-function' },
+  { tag: [tags.operator, tags.punctuation, tags.bracket, tags.separator], class: 'tok-punctuation' },
 ])
+
+/** Read-only TypeScript, coloured like the editor. */
+function Code({ code }: { code: string }) {
+  const parts = useMemo(() => {
+    const out: ReactNode[] = []
+    highlightCode(
+      code,
+      typescriptLanguage.parser.parse(code),
+      highlight,
+      (text, classes) => out.push(classes ? <span key={out.length} className={classes}>{text}</span> : text),
+      () => out.push('\n'),
+    )
+    return out
+  }, [code])
+  return <pre className="code">{parts}</pre>
+}
 
 const editorTheme = EditorView.theme({
   '&': { color: 'var(--ink)', backgroundColor: 'var(--paper)', fontSize: 'var(--text-xs)' },
@@ -343,7 +362,7 @@ export default function Oficina() {
             <section aria-labelledby="oficina-reference">
               <h3 id="oficina-reference">Solução de referência</h3>
               <p className="oficina__statement">{current.explanation}</p>
-              <pre className="code">{current.reference}</pre>
+              <Code code={current.reference} />
             </section>
           )}
         </section>
