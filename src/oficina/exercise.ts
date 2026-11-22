@@ -61,6 +61,8 @@ export interface TestResult {
   received?: unknown
   /** Line in the player's code where the error happened. */
   line?: number
+  /** In a project, the file that line is in. */
+  file?: string
   /** What each request cost, in the order of `TestCase.requests`; absent when the handler didn't run to the end. */
   metrics?: RequestMetrics[]
 }

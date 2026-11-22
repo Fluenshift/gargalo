@@ -5,7 +5,7 @@ import { transform } from 'sucrase'
 import { measured } from './db.ts'
 import type { Ctx, Db, ExpectedResponse, RequestMetrics, RequestSpec, TestCase, TestResult } from './exercise'
 
-type Handler = (req: Request, ctx: Ctx) => Promise<Response>
+export type Handler = (req: Request, ctx: Ctx) => Promise<Response>
 
 export interface WorkerInput {
   code: string
@@ -97,8 +97,13 @@ export function matches(expected: unknown, received: unknown): boolean {
 function toRequest(spec: RequestSpec): Request {
   const headers = new Headers(spec.headers)
   if (spec.body !== undefined && !headers.has('content-type')) headers.set('content-type', 'application/json')
-  const body = spec.body === undefined ? undefined : JSON.stringify(spec.body)
-  const req = new Request(new URL(spec.path, 'http://oficina.local'), { method: spec.method ?? 'GET', headers, body })
+  return buildRequest({ ...spec, headers: Object.fromEntries(headers), body: spec.body === undefined ? undefined : JSON.stringify(spec.body) })
+}
+
+/** A request whose body (already text) is read from memory. */
+export function buildRequest(spec: Omit<RequestSpec, 'body'> & { body?: string }): Request {
+  const { body } = spec
+  const req = new Request(new URL(spec.path, 'http://oficina.local'), { method: spec.method ?? 'GET', headers: spec.headers, body })
   // Chrome reads a body in tasks, so the first request would run all its queries before the second had its body, and no race
   // would ever show. Read from memory, every await in the handler is a microtask and concurrent requests interleave as in Node.
   if (body !== undefined) Object.assign(req, { text: async () => body, json: async () => JSON.parse(body) as unknown })
@@ -126,7 +131,7 @@ async function compareResponse(res: unknown, expect: ExpectedResponse): Promise<
   return matches(expect.body, body) ? null : { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: body }
 }
 
-async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestResult> {
+export async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestResult> {
   const now = () => test.now ?? DEFAULT_NOW
   const metrics: RequestMetrics[] = test.requests.map(() => ({ queries: 0, rowsRead: 0, handlerMs: 0 }))
   // Every handler starts before any finishes, so concurrent requests interleave at their awaits. Each has its own meter.

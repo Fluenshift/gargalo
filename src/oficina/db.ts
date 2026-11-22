@@ -4,12 +4,17 @@ import type { PGlite, Transaction } from '@electric-sql/pglite'
 import type { Db, RequestMetrics } from './exercise'
 import type { OpenDb } from './execute'
 
-/** One PGlite per worker (creating one takes seconds); each test gets the exercise's schema and data back from scratch. */
-export function pgliteDb(pg: PGlite): OpenDb {
-  const db: Db = {
+/** The Db contract on a PGlite, as it is: no reset. */
+export function toDb(pg: PGlite): Db {
+  return {
     query: async (sql, params) => (await pg.query<never>(sql, params)).rows,
     transaction: (fn) => pg.transaction((tx) => fn(inTransaction(tx))),
   }
+}
+
+/** One PGlite per worker (creating one takes seconds); each test gets the exercise's schema and data back from scratch. */
+export function pgliteDb(pg: PGlite): OpenDb {
+  const db = toDb(pg)
   return async (schema, seed, migration) => {
     // The worker lives across runs: undo what the last handler left on the session (an open transaction, SET) before the schema reset.
     await pg.exec('ROLLBACK;\nRESET ALL')

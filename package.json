@@ -20,9 +20,11 @@
     "@lezer/highlight": "1.2.5",
     "@xyflow/react": "^12.12.1",
     "codemirror": "6.0.2",
+    "hono": "4.13.19",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "sucrase": "3.35.1"
+    "sucrase": "3.35.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
