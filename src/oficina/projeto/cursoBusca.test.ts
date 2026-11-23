@@ -4,9 +4,11 @@ import { pgliteDb } from '../db'
 import type { TestResult } from '../exercise'
 import { checkTests } from './checklist'
 import { cursoBusca } from './cursoBusca'
-import type { Framework, Project } from './project'
+import { starter, type Framework, type Project } from './project'
 import { executeProjectTests, migrate } from './runtime'
-import { evaluateStage, type Stage, type StageResult } from './stage'
+import { docsFor } from './docs'
+import { referencia } from './cursoBuscaRef'
+import { evaluateStage, missingInFile, stepFor, stepTest, type Stage, type StageResult } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -114,4 +116,60 @@ describe('curso de busca e paginação', () => {
     )
     expect(naivePlan).toMatch(/Seq Scan on produtos/)
   }, 60_000)
+})
+
+describe('passos guiados', () => {
+  const curso = cursoBusca
+  // Where the player starts each stage: the starter plus the course's base files, then the previous stage's reference.
+  const before = (framework: Framework, i: number) => (i === 0 ? { ...starter('antes', framework).files, ...curso.baseFiles } : referencia(framework, i))
+
+  it('guides every stage, with a short statement', () => {
+    for (const s of curso.stages) {
+      expect(s.steps?.length, s.id).toBeGreaterThanOrEqual(4)
+      expect(s.steps!.length, s.id).toBeLessThanOrEqual(8)
+      expect(s.statement.length, s.id).toBeLessThan(200)
+    }
+  })
+
+  for (const framework of ['hono', 'fetch'] as Framework[]) {
+    describe(framework, () => {
+      const ids = new Set(docsFor(framework).flatMap((s) => s.entries.map((e) => e.id)))
+
+      it('has unique doc ids', () => {
+        expect(ids.size).toBe(docsFor(framework).flatMap((s) => s.entries).length)
+      })
+
+      for (const [i, stage] of curso.stages.entries()) {
+        const steps = stage.steps!.map((s) => stepFor(s, framework))
+
+        it(stage.id + ': every docs id and [term](id) link exists', () => {
+          for (const s of steps) {
+            const linked = [...s.learn.matchAll(/\]\(([\w-]+)\)/g)].map((m) => m[1])
+            for (const id of [...(s.docs ?? []), ...linked]) expect(ids.has(id), s.title + ' → ' + id).toBe(true)
+          }
+        })
+
+        it(stage.id + ': learn stays short, at most 4 sentences', () => {
+          for (const s of steps) expect(s.learn.split(/[.!?](?:\s|$)/).filter((t) => t.trim()).length, s.title).toBeLessThanOrEqual(4)
+        })
+
+        it(stage.id + ': every file check passes on the reference and fails where the player starts', () => {
+          for (const s of steps) {
+            if (s.check?.kind !== 'file') continue
+            expect(missingInFile(stage.reference[framework], s.check), s.title).toBeUndefined()
+            expect(missingInFile(before(framework, i), s.check), s.title).toBeDefined()
+          }
+        })
+
+        it(stage.id + ': every request check answers as declared on the reference', async () => {
+          for (const s of steps) {
+            if (s.check?.kind !== 'request') continue
+            const out: TestResult[] = []
+            await executeProjectTests({ project: { id: 'passo', framework, files: stage.reference[framework] }, tests: [stepTest(s.check)], seed: stage.seed }, pg, ({ index, result }) => (out[index] = result))
+            expect(out[0], s.title).toMatchObject({ passed: true })
+          }
+        }, 60_000)
+      }
+    })
+  }
 })
