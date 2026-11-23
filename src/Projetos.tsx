@@ -27,9 +27,9 @@ import { OpenApi } from './OpenApi'
 import type { CodeError, LogLine, RequestOutcome, Route, TableRows } from './oficina/projeto/runtime'
 import { PROJETOS_PATH, followLink, navigate } from './route'
 
-const FRAMEWORKS: [Framework, string][] = [
-  ['hono', 'Hono'],
-  ['fetch', 'fetch puro'],
+const FRAMEWORKS: [Framework, string, string][] = [
+  ['hono', 'Hono', 'um framework leve: menos código repetido em cada rota. Bom para começar.'],
+  ['fetch', 'fetch puro', 'a API padrão da web, sem framework: você escreve o roteamento à mão.'],
 ]
 const frameworkName = (f: Framework) => FRAMEWORKS.find(([k]) => k === f)![1]
 const projectPath = (id: string) => `${PROJETOS_PATH}/${encodeURIComponent(id)}`
@@ -538,17 +538,24 @@ export function Projetos({ open }: { open?: string }) {
     )
   }
 
-  const create = (e: FormEvent) => {
-    e.preventDefault()
+  const start = (course: string, fw: Framework, projectName: string) => {
     const id = crypto.randomUUID().slice(0, 8)
-    const first = courseOf(courseId).starter
-    const base = courseOf(courseId).blank ? blank(id, framework) : starter(id, framework)
-    const created = first ? { ...first, id } : { ...base, files: { ...base.files, ...courseOf(courseId).baseFiles } }
+    const first = courseOf(course).starter
+    const base = courseOf(course).blank ? blank(id, fw) : starter(id, fw)
+    const created = first ? { ...first, id } : { ...base, files: { ...base.files, ...courseOf(course).baseFiles } }
     saveProject(created)
-    update([...list, { id, name: name.trim() || `Projeto ${list.length + 1}`, framework: created.framework, course: courseId }])
+    update([...list, { id, name: projectName, framework: created.framework, course }])
     setName('')
     navigate(projectPath(id))
   }
+
+  const create = (e: FormEvent) => {
+    e.preventDefault()
+    start(courseId, framework, name.trim() || `Projeto ${list.length + 1}`)
+  }
+
+  // First visit: one obvious way in (the course built for beginners, in Hono); the full form stays below for anyone who knows what they want.
+  const firstTime = list.length === 0
 
   const remove = async (entry: ProjectEntry) => {
     if (!confirm(`Apagar o projeto ${entry.name}, com os arquivos e o banco de desenvolvimento dele?`)) return
@@ -565,32 +572,52 @@ export function Projetos({ open }: { open?: string }) {
 
   return (
     <div className="projetos">
+      {firstTime && (
+        <section className="projetos__start" aria-labelledby="projetos-start">
+          <h2 id="projetos-start">Nunca escreveu uma API? Comece por aqui.</h2>
+          <p>
+            Você começa com um projeto vazio e cada passo diz o que abrir, o que digitar e por quê. Em poucos minutos, a sua primeira rota responde no
+            navegador.
+          </p>
+          <button type="button" className="btn btn--primary" onClick={() => start(COURSES[0].id, 'hono', 'Minha primeira API')}>
+            Começar do zero
+          </button>
+        </section>
+      )}
+
       <form className="projetos__new" onSubmit={create} aria-labelledby="projetos-new">
         <h2 id="projetos-new" className="projeto__label">
-          Novo projeto
+          {firstTime ? 'Ou escolha o curso' : 'Novo projeto'}
         </h2>
         <label htmlFor="projetos-name">Nome</label>
         <input id="projetos-name" type="text" value={name} placeholder={`Projeto ${list.length + 1}`} onChange={(e) => setName(e.target.value)} />
-        <fieldset className="projetos__framework">
+        <fieldset className="projetos__framework projetos__choices">
           <legend>Curso</legend>
           {COURSES.map((c) => (
             <label key={c.id}>
-              <input type="radio" name="course" value={c.id} checked={courseId === c.id} onChange={() => setCourseId(c.id)} /> {c.title}
+              <input type="radio" name="course" value={c.id} checked={courseId === c.id} onChange={() => setCourseId(c.id)} />
+              <span>
+                {c.title} <span className="projetos__hint">· {c.summary}</span>
+              </span>
             </label>
           ))}
         </fieldset>
         {/* A course with its own starter (the code review) fixes the framework. */}
         {!courseOf(courseId).starter && (
-          <fieldset className="projetos__framework">
+          <fieldset className="projetos__framework projetos__choices">
             <legend>Framework</legend>
-            {FRAMEWORKS.map(([f, label]) => (
+            {FRAMEWORKS.map(([f, label, hint]) => (
               <label key={f}>
-                <input type="radio" name="framework" value={f} checked={framework === f} onChange={() => setFramework(f)} /> {label}
+                <input type="radio" name="framework" value={f} checked={framework === f} onChange={() => setFramework(f)} />
+                <span>
+                  {label} <span className="projetos__hint">· {hint}</span>
+                </span>
               </label>
             ))}
           </fieldset>
         )}
-        <button type="submit" className="btn btn--primary">
+        {/* On a first visit "Começar do zero" is the one primary action. */}
+        <button type="submit" className={`btn ${firstTime ? 'btn--ghost' : 'btn--primary'}`}>
           Criar projeto
         </button>
       </form>
@@ -604,7 +631,7 @@ export function Projetos({ open }: { open?: string }) {
           Seus projetos
         </h2>
         {list.length === 0 ? (
-          <p className="oficina__note">Nenhum projeto ainda. Crie um: ele começa com uma rota /health e uma migração.</p>
+          <p className="oficina__note">Nenhum projeto ainda.</p>
         ) : (
           <ul className="projetos__list">
             {list.map((p) => (

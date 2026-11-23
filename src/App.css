@@ -3322,6 +3322,52 @@ a.levels__map {
   max-width: var(--page-width);
 }
 
+/* First visit: the guided way in, tinted like the step card it leads to. */
+.projetos__start {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-10);
+  padding: var(--space-20) var(--space-24);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--accent) 9%, var(--paper));
+}
+
+.projetos__start h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: var(--title-md);
+  line-height: 1.15;
+  text-wrap: balance;
+}
+
+.projetos__start p {
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.55;
+}
+
+/* Choices with a line of explanation each: one per row, the hint beside the name. */
+.projetos__framework.projetos__choices {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-8);
+}
+
+.projetos__framework.projetos__choices legend {
+  float: none;
+  margin-bottom: var(--space-4);
+}
+
+.projetos__new .projetos__framework label {
+  align-items: baseline;
+}
+
+.projetos__hint {
+  color: var(--ink-soft);
+}
+
 .projetos__new {
   display: flex;
   flex-wrap: wrap;

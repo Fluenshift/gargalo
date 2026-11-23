@@ -265,7 +265,7 @@ export const revisaoStarter: Project = {
   files: { 'src/index.ts': revisaoRoutes(...BUGGY_BLOCKS), 'migrations/001_init.sql': MIGRATION },
 }
 
-export const revisaoCourse: ProjectCourse = { id: 'revisao', title: 'Revisão de código', stages: [revisaoStage], starter: revisaoStarter }
+export const revisaoCourse: ProjectCourse = { id: 'revisao', title: 'Revisão de código', summary: 'Depois do básico: ache e corrija os problemas de uma API pronta, como vazamento de dados e N+1.', stages: [revisaoStage], starter: revisaoStarter }
 
 export interface BugVerdict {
   id: RevisaoBugId

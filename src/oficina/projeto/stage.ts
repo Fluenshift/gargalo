@@ -80,6 +80,8 @@ export interface Stage {
 export interface ProjectCourse {
   id: string
   title: string
+  /** One line for the course picker: what the player builds, and whether it is the place to start. */
+  summary: string
   stages: Stage[]
   /** The project a new one of this course starts from; without it, the framework's own starter. */
   starter?: Project

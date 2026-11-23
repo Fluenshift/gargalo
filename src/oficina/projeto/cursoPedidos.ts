@@ -1726,6 +1726,7 @@ const auth: Stage = {
 export const cursoPedidos: ProjectCourse = {
   id: 'ecommerce',
   title: 'API de pedidos do E-commerce',
+  summary: 'Para começar: um projeto vazio, guiado passo a passo, da primeira rota a pedidos, validação e login.',
   stages: [primeirosPassos, health, produtos, pedidos, validacao, paginacao, auth],
   blank: true,
 }
