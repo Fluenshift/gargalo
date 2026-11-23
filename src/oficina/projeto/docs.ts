@@ -3,6 +3,8 @@
 import type { Framework } from './project'
 
 export interface DocEntry {
+  /** Stable: guided steps link to it (`GuidedStep.docs`). Unique within docsFor(framework). */
+  id: string
   title: string
   text: string
   code?: string
@@ -18,7 +20,7 @@ const HONO: DocSection[] = [
     title: 'Hono: app e rotas',
     entries: [
       {
-        title: 'Criar o app',
+        id: 'hono-app', title: 'Criar o app',
         text: 'O app é um Hono com o tipo do Env; src/index.ts exporta ele por padrão.',
         code: `import { Hono } from 'hono'
 import type { Env } from './env'
@@ -27,7 +29,7 @@ const app = new Hono<{ Bindings: Env }>()
 export default app`,
       },
       {
-        title: 'Rotas',
+        id: 'hono-rotas', title: 'Rotas',
         text: 'Um método por verbo HTTP. O handler recebe o contexto c e devolve uma resposta.',
         code: `app.get('/produtos', (c) => c.json([]))
 app.post('/produtos', async (c) => { … })
@@ -35,7 +37,7 @@ app.put('/produtos/:id', …)
 app.delete('/produtos/:id', …)`,
       },
       {
-        title: 'Rotas em outro arquivo',
+        id: 'hono-route', title: 'Rotas em outro arquivo',
         text: 'Cada arquivo cria um Hono e o index monta ele num prefixo com app.route.',
         code: `// src/routes/produtos.ts
 export const produtos = new Hono<{ Bindings: Env }>()
@@ -50,21 +52,21 @@ app.route('/produtos', produtos)`,
   {
     title: 'Hono: ler a requisição',
     entries: [
-      { title: 'Parâmetro do caminho', text: 'Vem sempre como texto: converta antes de usar.', code: `const id = Number(c.req.param('id'))` },
-      { title: 'Query string', text: 'Texto ou undefined quando não veio.', code: `const limite = Number(c.req.query('limite') ?? 20)` },
-      { title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = await c.req.json<{ nome: string }>()` },
-      { title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas.', code: `const token = c.req.header('Authorization')` },
+      { id: 'hono-param', title: 'Parâmetro do caminho', text: 'Vem sempre como texto: converta antes de usar.', code: `const id = Number(c.req.param('id'))` },
+      { id: 'hono-query', title: 'Query string', text: 'Texto ou undefined quando não veio.', code: `const limite = Number(c.req.query('limite') ?? 20)` },
+      { id: 'hono-body', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = await c.req.json<{ nome: string }>()` },
+      { id: 'hono-header', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas.', code: `const token = c.req.header('Authorization')` },
     ],
   },
   {
     title: 'Hono: responder',
     entries: [
-      { title: 'JSON com status', text: 'c.json(corpo, status); sem status, 200.', code: `return c.json(produto, 201)` },
-      { title: 'Cabeçalho na resposta', text: 'Chame c.header antes de devolver.', code: `c.header('Location', \`/produtos/\${produto.id}\`)
+      { id: 'hono-json', title: 'JSON com status', text: 'c.json(corpo, status); sem status, 200.', code: `return c.json(produto, 201)` },
+      { id: 'hono-header-resposta', title: 'Cabeçalho na resposta', text: 'Chame c.header antes de devolver.', code: `c.header('Location', \`/produtos/\${produto.id}\`)
 return c.json(produto, 201)` },
-      { title: 'Sem corpo', text: '204 não tem corpo.', code: `return c.body(null, 204)` },
+      { id: 'hono-sem-corpo', title: 'Sem corpo', text: '204 não tem corpo.', code: `return c.body(null, 204)` },
       {
-        title: 'Erros com HTTPException',
+        id: 'hono-erros', title: 'Erros com HTTPException',
         text: 'Lance de qualquer lugar; o Hono responde com o status. app.onError trata todos num lugar só.',
         code: `import { HTTPException } from 'hono/http-exception'
 
@@ -76,12 +78,12 @@ app.onError((err, c) => {
   return c.json({ type: 'about:blank', title: 'Erro interno', status: 500 }, 500, problem)
 })`,
       },
-      { title: 'Rota não encontrada', text: 'Sem rota, o Hono responde 404 "404 Not Found"; app.notFound troca essa resposta.', code: `app.notFound((c) => c.json({ title: 'Rota não encontrada', status: 404 }, 404))` },
+      { id: 'hono-notfound', title: 'Rota não encontrada', text: 'Sem rota, o Hono responde 404 "404 Not Found"; app.notFound troca essa resposta.', code: `app.notFound((c) => c.json({ title: 'Rota não encontrada', status: 404 }, 404))` },
     ],
   },
   {
     title: 'Hono: banco',
-    entries: [{ title: 'c.env.db', text: 'O banco chega no Env, em c.env.db.', code: `const produtos = await c.env.db.query('SELECT id, nome FROM produtos')` }],
+    entries: [{ id: 'hono-db', title: 'c.env.db', text: 'O banco chega no Env, em c.env.db.', code: `const produtos = await c.env.db.query('SELECT id, nome FROM produtos')` }],
   },
 ]
 
@@ -90,7 +92,7 @@ const FETCH: DocSection[] = [
     title: 'fetch puro: o app',
     entries: [
       {
-        title: 'O formato',
+        id: 'fetch-app', title: 'O formato',
         text: 'O mesmo de Bun, Deno e Cloudflare Workers: um objeto com fetch(req, env) que devolve um Response.',
         code: `import type { Env } from './env'
 
@@ -101,7 +103,7 @@ export default {
 }`,
       },
       {
-        title: 'Rotear por método e caminho',
+        id: 'fetch-rotear', title: 'Rotear por método e caminho',
         text: 'Leia o caminho com new URL(req.url) e decida com if; um regex pega o parâmetro.',
         code: `const { pathname, searchParams } = new URL(req.url)
 if (req.method === 'GET' && pathname === '/produtos') return listar(env)
@@ -114,31 +116,66 @@ return Response.json({ title: 'Rota não encontrada', status: 404 }, { status: 4
   {
     title: 'fetch puro: ler a requisição',
     entries: [
-      { title: 'Query string', text: 'searchParams.get devolve texto ou null.', code: `const limite = Number(searchParams.get('limite') ?? 20)` },
-      { title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = (await req.json()) as { nome: string }` },
-      { title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas; null quando não veio.', code: `const token = req.headers.get('Authorization')` },
+      { id: 'fetch-query', title: 'Query string', text: 'searchParams.get devolve texto ou null.', code: `const limite = Number(searchParams.get('limite') ?? 20)` },
+      { id: 'fetch-body', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = (await req.json()) as { nome: string }` },
+      { id: 'fetch-header', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas; null quando não veio.', code: `const token = req.headers.get('Authorization')` },
     ],
   },
   {
     title: 'fetch puro: responder',
     entries: [
-      { title: 'JSON com status', text: 'Response.json(corpo, { status, headers }); sem status, 200.', code: `return Response.json(produto, { status: 201, headers: { Location: \`/produtos/\${produto.id}\` } })` },
-      { title: 'Sem corpo', text: '204 não tem corpo.', code: `return new Response(null, { status: 204 })` },
-      {
-        title: 'Erro em problem+json',
-        text: 'Passe o Content-Type em headers: ele substitui o application/json.',
-        code: `return Response.json({ type: 'about:blank', title: 'Não encontrado', status: 404 }, { status: 404, headers: { 'Content-Type': 'application/problem+json' } })`,
-      },
+      { id: 'fetch-json', title: 'JSON com status', text: 'Response.json(corpo, { status, headers }); sem status, 200.', code: `return Response.json(produto, { status: 201, headers: { Location: \`/produtos/\${produto.id}\` } })` },
+      { id: 'fetch-sem-corpo', title: 'Sem corpo', text: '204 não tem corpo.', code: `return new Response(null, { status: 204 })` },
     ],
   },
 ]
+
+/** The API's error format and thrown errors: plain TypeScript, the same in both frameworks. */
+export const ERROS_DOCS: DocSection = {
+  title: 'Erros da API',
+  entries: [
+    {
+      id: 'problem-json',
+      title: 'problem+json',
+      text: 'O formato padrão de erro de API (RFC 9457): Content-Type application/problem+json e um corpo com type, title e status (detail é opcional). Um formato só deixa o cliente tratar todo erro do mesmo jeito.',
+      code: `return Response.json(
+  { type: 'about:blank', title: 'Não encontrado', status: 404 },
+  { status: 404, headers: { 'Content-Type': 'application/problem+json' } },
+)`,
+    },
+    {
+      id: 'erro-lancado',
+      title: 'Lançar e capturar um erro',
+      text: 'throw interrompe a função e sobe até o primeiro catch. Uma classe que estende Error carrega dados a mais (o status, por exemplo); instanceof diz qual erro chegou.',
+      code: `class ErroHttp extends Error {
+  status: number
+  constructor(status: number, mensagem: string) {
+    super(mensagem)
+    this.status = status
+  }
+}
+
+try {
+  throw new ErroHttp(404, 'Não encontrado')
+} catch (err) {
+  if (err instanceof ErroHttp) console.log(err.status) // 404
+}`,
+    },
+    {
+      id: 'response-pronta',
+      title: 'Devolver um Response pronto',
+      text: 'Response é o tipo padrão da web: o fetch puro sempre devolve um. No Hono, um handler também pode devolver um Response em vez de c.json, então a mesma função de erro serve aos dois.',
+      code: `app.get('/x', () => Response.json({ ok: true }, { status: 200 }))`,
+    },
+  ],
+}
 
 /** The Env and its db: the same for both frameworks. */
 export const ENV_DOCS: DocSection = {
   title: 'Env e banco',
   entries: [
     {
-      title: 'Env',
+      id: 'env', title: 'Env',
       text: 'O que o app recebe de fora: só o banco, em env.db (no Hono, c.env.db). O tipo está em src/env.ts.',
       code: `export interface Env {
   db: {
@@ -148,7 +185,7 @@ export const ENV_DOCS: DocSection = {
 }`,
     },
     {
-      title: 'db.query',
+      id: 'db-query', title: 'db.query',
       text: 'Devolve as linhas como objetos. Valores entram por $1, $2… em params, nunca colados no SQL.',
       code: `const [produto] = await db.query<{ id: number; nome: string }>(
   'SELECT id, nome FROM produtos WHERE id = $1',
@@ -156,12 +193,12 @@ export const ENV_DOCS: DocSection = {
 )`,
     },
     {
-      title: 'RETURNING',
+      id: 'returning', title: 'RETURNING',
       text: 'INSERT e UPDATE devolvem a linha gravada com RETURNING.',
       code: `const [criado] = await db.query('INSERT INTO produtos (nome) VALUES ($1) RETURNING id, nome', [nome])`,
     },
     {
-      title: 'db.transaction',
+      id: 'db-transaction', title: 'db.transaction',
       text: 'Tudo dentro grava junto ou nada grava: um erro desfaz tudo. Use o tx que a função recebe.',
       code: `await db.transaction(async (tx) => {
   const [pedido] = await tx.query<{ id: number }>('INSERT INTO pedidos DEFAULT VALUES RETURNING id')
@@ -169,7 +206,7 @@ export const ENV_DOCS: DocSection = {
 })`,
     },
     {
-      title: 'Erros do banco',
+      id: 'db-erros', title: 'Erros do banco',
       text: 'O erro tem code do Postgres: 23505 valor repetido, 23502 campo obrigatório nulo, 23503 referência inválida.',
       code: `try { … } catch (err) {
   if ((err as { code?: string }).code === '23505') return c.json({ title: 'Já existe', status: 409 }, 409)
@@ -179,5 +216,5 @@ export const ENV_DOCS: DocSection = {
   ],
 }
 
-/** The reference beside the editor: the framework's sections, then the Env. */
-export const docsFor = (framework: Framework): DocSection[] => [...(framework === 'hono' ? HONO : FETCH), ENV_DOCS]
+/** The reference beside the editor: the framework's sections, the API's errors, then the Env. */
+export const docsFor = (framework: Framework): DocSection[] => [...(framework === 'hono' ? HONO : FETCH), ERROS_DOCS, ENV_DOCS]

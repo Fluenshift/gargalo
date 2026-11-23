@@ -1,21 +1,24 @@
-import { Fragment, useState, type RefObject, useRef } from 'react'
+import { javascript } from '@codemirror/lang-javascript'
+import { highlightCode } from '@lezer/highlight'
+import { Fragment, useState, type ReactNode, type RefObject, useRef } from 'react'
 import { Stars } from './Stars'
+import { highlight } from './oficina/editor'
 import { loadSavedResults, revealedHints } from './oficina/progress'
 import { info, type CheckInfo, type Verdict } from './oficina/projeto/checklist'
 import { buildContext } from './oficina/projeto/context'
 import { docsFor } from './oficina/projeto/docs'
 import { explain } from './oficina/projeto/explain'
+import type { Draft } from './oficina/projeto/http'
 import type { Project } from './oficina/projeto/project'
-import { resumeStage, runStage, saveStageResult, splitStatement, stagePassed, type ProjectCourse, type StageResult } from './oficina/projeto/stage'
+import { runTests } from './oficina/projeto/runner'
+import { missingInFile, resumeStage, runStage, saveStageResult, splitStatement, stagePassed, stepFor, stepTest, type ProjectCourse, type Stage, type StageResult } from './oficina/projeto/stage'
 
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2))
 
 const stepKey = (course: string, stage: string) => `gargalo:passo:${course}:${stage}`
 
-/** The statement one numbered step at a time (the owner found the whole text too long); "Ver tudo" shows it whole. The step is remembered per course and stage. */
-function Passos({ course, stageId, statement, runRef }: { course: string; stageId: string; statement: string; runRef: RefObject<HTMLButtonElement | null> }) {
-  const { intro, steps } = splitStatement(statement)
-  const last = steps.length - 1
+/** The step remembered for a course and stage (0 when unknown), and a way to change it. */
+function useStep(course: string, stageId: string, last: number) {
   const [step, setStep] = useState(() => {
     try {
       return Math.min(Math.max(Number(localStorage.getItem(stepKey(course, stageId))) || 0, 0), last)
@@ -23,7 +26,6 @@ function Passos({ course, stageId, statement, runRef }: { course: string; stageI
       return 0
     }
   })
-  const [all, setAll] = useState(false)
   const go = (i: number) => {
     setStep(i)
     try {
@@ -32,6 +34,169 @@ function Passos({ course, stageId, statement, runRef }: { course: string; stageI
       // Private mode or full storage: the step is just not remembered.
     }
   }
+  return [step, go] as const
+}
+
+const tsParser = javascript({ typescript: true }).language.parser
+
+/** Read-only code with the editor's token colours. */
+function Code({ code, label }: { code: string; label: string }) {
+  const parts: ReactNode[] = []
+  highlightCode(
+    code,
+    tsParser.parse(code),
+    highlight,
+    (text, classes) => parts.push(classes ? <span key={parts.length} className={classes}>{text}</span> : text),
+    () => parts.push('\n'),
+  )
+  return (
+    <pre className="code code--wrap passos__code" tabIndex={0} aria-label={label}>
+      {parts}
+    </pre>
+  )
+}
+
+/** Text where `[term](doc-id)` becomes a link to that docs entry. */
+const linked = (text: string, onDoc: (id: string) => void) =>
+  text.split(/\[([^\]]+)\]\(([\w-]+)\)/).map((part, i, all) =>
+    i % 3 === 1 ? (
+      <button key={i} type="button" className="levels__map" onClick={() => onDoc(all[i + 1])}>
+        {part}
+      </button>
+    ) : i % 3 === 2 ? null : (
+      part
+    ),
+  )
+
+interface GuidedProps {
+  course: string
+  stage: Stage
+  project: Project
+  runRef: RefObject<HTMLButtonElement | null>
+  onOpenFile: (path: string) => void
+  onTry: (draft: Draft) => void
+  onDoc: (id: string) => void
+}
+
+/** A stage's guided steps (#137), one at a time: the concept, the pattern in code, its docs, and a check of that step alone. */
+function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: GuidedProps) {
+  const steps = stage.steps!.map((s) => stepFor(s, project.framework))
+  const last = steps.length - 1
+  const [step, go] = useStep(course, stage.id, last)
+  // Per step this visit: true once "Conferir passo" passed, or what is missing.
+  const [checked, setChecked] = useState<Record<number, true | string>>({})
+  const [checking, setChecking] = useState(false)
+  const s = steps[step]
+  const docs = docsFor(project.framework).flatMap((d) => d.entries)
+  const result = checked[step]
+  const request = s.check?.kind === 'request' ? s.check : undefined
+
+  const check = async () => {
+    const c = s.check!
+    const at = step
+    const done = (r: true | string) => setChecked((all) => ({ ...all, [at]: r }))
+    if (c.kind === 'file') return done(missingInFile(project.files, c) ?? true)
+    setChecking(true)
+    try {
+      const [r] = await runTests(project, [stepTest(c)], stage.seed)
+      done(r.passed || `${r.message ?? 'Resposta diferente do esperado.'}${'expected' in r ? ` Esperado ${JSON.stringify(r.expected)}, veio ${JSON.stringify(r.received)}.` : ''}`)
+    } catch (err) {
+      done(`Não deu para conferir: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const next = () => {
+    if (s.check && result !== true && !confirm('Você ainda não conferiu este passo. Prosseguir mesmo assim?')) return
+    go(step + 1)
+  }
+
+  return (
+    <div className="passos">
+      <p className="oficina__statement">{stage.statement}</p>
+      <section className="passos__card" aria-label="Passo a passo">
+        <p className="passos__count">
+          Passo {step + 1} de {steps.length}
+        </p>
+        <div className="passos__body" aria-live="polite">
+          <h4 className="passos__title">{s.title}</h4>
+          <p className="oficina__statement">{linked(s.learn, onDoc)}</p>
+        </div>
+        {s.example && (
+          <div className="passos__example">
+            <p className="projeto__label">Exemplo{s.example.file && ` · ${s.example.file}`}</p>
+            <Code code={s.example.code} label={`Exemplo de código: ${s.title}`} />
+            {s.example.note && <p className="passos__note">{s.example.note}</p>}
+          </div>
+        )}
+        {s.docs && (
+          <p className="passos__docs">
+            Ver na documentação:{' '}
+            {s.docs.map((id, i) => (
+              <Fragment key={id}>
+                <button type="button" className="levels__map" onClick={() => onDoc(id)}>
+                  {docs.find((e) => e.id === id)?.title ?? id}
+                </button>
+                {i < s.docs!.length - 1 && ' · '}
+              </Fragment>
+            ))}
+          </p>
+        )}
+        {(s.file || s.check) && (
+          <div className="etapa__actions">
+            {s.file && (
+              <button type="button" className="btn btn--ghost btn--small" onClick={() => onOpenFile(s.file!)}>
+                Abrir {s.file}
+              </button>
+            )}
+            {request && (
+              <button type="button" className="btn btn--ghost btn--small" onClick={() => onTry({ method: request.method ?? 'GET', path: request.path, headers: '', body: '' })}>
+                Testar agora
+              </button>
+            )}
+            {s.check && (
+              <button type="button" className="btn btn--ghost btn--small" onClick={check} disabled={checking} aria-busy={checking}>
+                Conferir passo
+              </button>
+            )}
+          </div>
+        )}
+        {s.check && (
+          <p className={`passos__check${result === true ? ' is-ok' : result ? ' is-missing' : ''}`} role="status">
+            {checking ? 'Conferindo…' : result === true ? '✓ Passo conferido.' : result}
+          </p>
+        )}
+        <ol className="passos__dots" aria-hidden="true">
+          {steps.map((_, i) => (
+            <li key={i} className={i === step ? 'is-current' : i < step ? 'is-done' : undefined} />
+          ))}
+        </ol>
+        <div className="etapa__actions">
+          <button type="button" className="btn btn--ghost btn--small" onClick={() => go(step - 1)} disabled={step === 0}>
+            Voltar
+          </button>
+          {step < last ? (
+            <button type="button" className="btn btn--primary btn--small" onClick={next}>
+              Prosseguir
+            </button>
+          ) : (
+            <button type="button" className="btn btn--primary btn--small" onClick={() => runRef.current?.focus()}>
+              Último passo: rodar os testes
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+/** The statement one numbered step at a time (the owner found the whole text too long); "Ver tudo" shows it whole. The step is remembered per course and stage. */
+function Passos({ course, stageId, statement, runRef }: { course: string; stageId: string; statement: string; runRef: RefObject<HTMLButtonElement | null> }) {
+  const { intro, steps } = splitStatement(statement)
+  const last = steps.length - 1
+  const [step, go] = useStep(course, stageId, last)
+  const [all, setAll] = useState(false)
   return (
     <div className="passos">
       {intro && !all && <p className="oficina__statement">{intro}</p>}
@@ -76,7 +241,21 @@ function Passos({ course, stageId, statement, runRef }: { course: string; stageI
 }
 
 /** The Etapa panel: the current stage, its acceptance tests and checklist, hints, explained errors, "copiar contexto" and the framework's docs. */
-export function Etapa({ project, course, warming, onGoTo }: { project: Project; course: ProjectCourse; warming: boolean; onGoTo: (file: string, line?: number) => void }) {
+export function Etapa({
+  project,
+  course,
+  warming,
+  onGoTo,
+  onOpenFile,
+  onTry,
+}: {
+  project: Project
+  course: ProjectCourse
+  warming: boolean
+  onGoTo: (file: string, line?: number) => void
+  onOpenFile: (path: string) => void
+  onTry: (draft: Draft) => void
+}) {
   const [saved, setSaved] = useState(loadSavedResults)
   const [index, setIndex] = useState(() => resumeStage(course, loadSavedResults()))
   const [run, setRun] = useState<{ result: StageResult; xp: number }>()
@@ -87,6 +266,7 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
   const [revealed, setRevealed] = useState<Record<string, number>>({})
   const [status, setStatus] = useState('')
   const runRef = useRef<HTMLButtonElement>(null)
+  const docsRef = useRef<HTMLDetailsElement>(null)
 
   const stage = course.stages[index]
   const passed = stagePassed(saved, course.id, stage.id)
@@ -124,6 +304,14 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
     }
   }
 
+  /** Opens the docs and brings that entry into view. */
+  const showDoc = (id: string) => {
+    docsRef.current!.open = true
+    const entry = document.getElementById(`doc-${id}`)
+    entry?.scrollIntoView({ block: 'start' })
+    entry?.focus({ preventScroll: true })
+  }
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(buildContext({ project, stage, failure, explanation }))
@@ -139,7 +327,11 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
         {course.title} · etapa {index + 1} de {course.stages.length}
       </p>
       <h3 className="etapa__title">{stage.title}</h3>
-      <Passos key={`${course.id}:${stage.id}`} course={course.id} stageId={stage.id} statement={stage.statement} runRef={runRef} />
+      {stage.steps ? (
+        <Guiado key={`${course.id}:${stage.id}`} course={course.id} stage={stage} project={project} runRef={runRef} onOpenFile={onOpenFile} onTry={onTry} onDoc={showDoc} />
+      ) : (
+        <Passos key={`${course.id}:${stage.id}`} course={course.id} stageId={stage.id} statement={stage.statement} runRef={runRef} />
+      )}
       <div className="etapa__actions">
         <button type="button" ref={runRef} className="btn btn--primary btn--small" onClick={start} disabled={running}>
           Rodar testes
@@ -295,13 +487,13 @@ export function Etapa({ project, course, warming, onGoTo }: { project: Project; 
         </div>
       )}
 
-      <details className="etapa__docs">
+      <details className="etapa__docs" ref={docsRef}>
         <summary>Documentação</summary>
         {docsFor(project.framework).map((section) => (
           <section key={section.title} className="projeto__slot">
             <h4 className="projeto__label">{section.title}</h4>
             {section.entries.map((e) => (
-              <div key={e.title}>
+              <div key={e.id} id={`doc-${e.id}`} className="etapa__doc" tabIndex={-1}>
                 <p>
                   <strong>{e.title}.</strong> {e.text}
                 </p>

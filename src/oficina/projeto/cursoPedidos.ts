@@ -4,7 +4,7 @@
 import type { RequestSpec, TestStep } from '../exercise'
 import type { CheckRef } from './checklist'
 import { referencia } from './cursoPedidosRef'
-import type { ProjectCourse, Stage } from './stage'
+import type { GuidedStep, ProjectCourse, Stage, StepCheck } from './stage'
 
 const post = (path: string, body: unknown, headers?: Record<string, string>): RequestSpec => ({ method: 'POST', path, body, headers })
 const bearer = (variable: string) => ({ Authorization: 'Bearer {{' + variable + '}}' })
@@ -30,30 +30,332 @@ const USUARIOS: TestStep[] = [
 
 const itensDe = (...ids: number[]) => ids.map((id) => ({ id, nome: 'Produto ' + id, preco_centavos: id * 100 }))
 
+// --- Guided steps (issue #137): one concept each, the pattern in code, the docs entry and a check. ---
+
+const HEALTH_OK: StepCheck = { kind: 'request', path: '/health', status: 200, body: { status: 'ok' } }
+
+const PASSOS_OLA: GuidedStep[] = [
+  {
+    title: 'Conheça a tela',
+    learn:
+      'À esquerda ficam os arquivos do projeto; embaixo, o Banco (tabelas e migrações) e o Console (o que sua API registrou). Aqui à direita, a aba Requisição chama sua API como um navegador faria, e Rodar testes confere a etapa e dá até 3 estrelas. O projeto já responde GET /health: clique em Testar agora para ver.',
+    check: HEALTH_OK,
+  },
+  {
+    title: 'A porta de entrada: src/index.ts',
+    learn:
+      'Toda requisição entra por src/index.ts. Lá, new Hono() cria o [app](hono-app) e app.route liga cada caminho ao arquivo que cuida dele. Um arquivo por recurso deixa o index curto e fácil de ler.',
+    file: 'src/index.ts',
+    example: {
+      file: 'src/index.ts',
+      code: String.raw`import { Hono } from 'hono'
+import type { Env } from './env'
+import { health } from './routes/health' // o roteador de /health, em outro arquivo
+
+// O app recebe toda requisição. Env diz o que chega de fora: o banco.
+const app = new Hono<{ Bindings: Env }>()
+
+// Tudo que começa com /health vai para o roteador health.
+app.route('/health', health)
+
+// O servidor usa o que o arquivo exporta por padrão.
+export default app`,
+    },
+    docs: ['hono-app', 'hono-route'],
+    byFramework: {
+      fetch: {
+        learn:
+          'Toda requisição entra por src/index.ts, que exporta um objeto com [fetch(req, env)](fetch-app): o servidor chama essa função e espera um Response de volta. Lá, um if por rota olha o método e o caminho e chama a função certa.',
+        example: {
+          file: 'src/index.ts',
+          code: String.raw`import type { Env } from './env'
+import { health } from './routes/health' // a função de /health, em outro arquivo
+
+export default {
+  // Chamada a cada requisição; precisa devolver um Response.
+  async fetch(req: Request, env: Env): Promise<Response> {
+    // Só o caminho da URL: '/health', sem domínio nem ?query.
+    const { pathname } = new URL(req.url)
+    // Uma rota é um if: método, caminho e a função que responde.
+    if (req.method === 'GET' && pathname === '/health') return health(env)
+    // Nenhum if casou.
+    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })
+  },
+}`,
+        },
+        docs: ['fetch-app', 'fetch-rotear'],
+      },
+    },
+  },
+  {
+    title: 'Leia a rota /health',
+    learn:
+      'Uma rota recebe a requisição e devolve uma resposta. Repare que o SQL não está aqui: a rota chama src/db/saude.ts. Rotas cuidam de HTTP e src/db/ cuida do banco; os testes conferem essa separação.',
+    file: 'src/routes/health.ts',
+    example: {
+      file: 'src/routes/health.ts',
+      code: String.raw`import { Hono } from 'hono'
+import { bancoResponde } from '../db/saude'
+import type { Env } from '../env'
+
+// Um roteador só para /health; o index escolhe o prefixo.
+export const health = new Hono<{ Bindings: Env }>()
+
+// GET na raiz do roteador = GET /health. c é o contexto da requisição.
+health.get('/', async (c) => {
+  // O SQL fica em src/db/; a rota só chama. c.env.db é o banco.
+  await bancoResponde(c.env.db)
+  // c.json responde JSON, com status 200.
+  return c.json({ status: 'ok' })
+})`,
+      note: 'A sua rota /ola tem a mesma forma, mais simples: não usa o banco, então não precisa de async nem de await.',
+    },
+    docs: ['hono-rotas', 'hono-json'],
+    byFramework: {
+      fetch: {
+        example: {
+          file: 'src/routes/health.ts',
+          code: String.raw`import { bancoResponde } from '../db/saude'
+import type { Env } from '../env'
+
+// Uma função por rota: o index chama quando o caminho casa.
+export async function health(env: Env): Promise<Response> {
+  // O SQL fica em src/db/; a rota só chama. env.db é o banco.
+  await bancoResponde(env.db)
+  // Response.json responde JSON, com status 200.
+  return Response.json({ status: 'ok' })
+}`,
+          note: 'A sua rota /ola tem a mesma forma, mais simples: não usa o banco, então não precisa de async, await nem env.',
+        },
+        docs: ['fetch-json'],
+      },
+    },
+  },
+  {
+    title: 'Crie src/routes/ola.ts',
+    learn:
+      'Cada recurso ganha seu arquivo em src/routes/. O arquivo cria um roteador (outro new Hono) e exporta com nome; quem decide o caminho completo é o index.',
+    file: 'src/routes/ola.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`import { Hono } from 'hono'
+import type { Env } from '../env'
+
+// Exportado com nome, para o index importar: import { versao } from './routes/versao'
+export const versao = new Hono<{ Bindings: Env }>()
+
+// Sem banco, a resposta sai na hora: sem async, sem await.
+versao.get('/', (c) => c.json({ versao: '1.0' }))`,
+      note: "No seu caso: o arquivo é src/routes/ola.ts, o roteador se chama ola e o objeto é { mensagem: 'olá' }.",
+    },
+    docs: ['hono-rotas', 'hono-json'],
+    check: { kind: 'file', path: 'src/routes/ola.ts', contains: ['export const ola', "ola.get('/'"] },
+    byFramework: {
+      fetch: {
+        learn: 'Cada recurso ganha seu arquivo em src/routes/. O arquivo exporta com nome uma função que devolve o Response; quem decide o caminho é o index.',
+        example: {
+          file: 'modelo',
+          code: String.raw`// Exportada com nome, para o index importar: import { versao } from './routes/versao'
+// Sem banco, nada a esperar: sem async, devolve o Response direto.
+export function versao(): Response {
+  return Response.json({ versao: '1.0' })
+}`,
+          note: "No seu caso: o arquivo é src/routes/ola.ts, a função se chama ola e o objeto é { mensagem: 'olá' }.",
+        },
+        docs: ['fetch-json'],
+        check: { kind: 'file', path: 'src/routes/ola.ts', contains: ['export function ola', 'Response.json('] },
+      },
+    },
+  },
+  {
+    title: 'Registre a rota no index',
+    learn:
+      "O roteador só responde depois de montado no app: app.route('/ola', ola) soma o prefixo /ola ao '/' do roteador. Esquecer esse passo é a causa mais comum de 404.",
+    file: 'src/index.ts',
+    example: {
+      file: 'src/index.ts',
+      code: String.raw`import { health } from './routes/health'
+import { versao } from './routes/versao' // 1. importe o roteador
+
+const app = new Hono<{ Bindings: Env }>()
+
+app.route('/health', health)
+app.route('/versao', versao) // 2. monte no prefixo: agora GET /versao responde`,
+      note: "Faça o mesmo com ola: importe de './routes/ola' e monte em '/ola'.",
+    },
+    docs: ['hono-route'],
+    check: { kind: 'file', path: 'src/index.ts', contains: ["from './routes/ola'", "app.route('/ola', ola)"] },
+    byFramework: {
+      fetch: {
+        learn: 'O index só chama a sua função quando um if casa o método e o caminho. Ponha o if novo antes do return do fim: depois dele, nada mais roda.',
+        example: {
+          file: 'src/index.ts',
+          code: String.raw`import { health } from './routes/health'
+import { versao } from './routes/versao' // 1. importe a função
+
+// … dentro de fetch(req, env):
+    if (req.method === 'GET' && pathname === '/health') return health(env)
+    if (req.method === 'GET' && pathname === '/versao') return versao() // 2. um if por rota
+    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })`,
+          note: "Faça o mesmo com ola: importe de './routes/ola' e escreva o if de GET /ola.",
+        },
+        docs: ['fetch-rotear'],
+        check: { kind: 'file', path: 'src/index.ts', contains: ["from './routes/ola'", "pathname === '/ola'"] },
+      },
+    },
+  },
+  {
+    title: 'Teste a sua rota',
+    learn:
+      'Teste à mão antes dos testes automáticos: o erro aparece mais cedo e mais claro. 404 quer dizer que a rota não foi registrada; 500, que o código lançou um erro (veja o Console). Com 200 e a mensagem, rode os testes da etapa.',
+    check: { kind: 'request', path: '/ola', status: 200, body: { mensagem: 'olá' } },
+  },
+]
+
+const PASSOS_HEALTH: GuidedStep[] = [
+  {
+    title: 'Por que existe o /health',
+    learn:
+      'Balanceadores e orquestradores chamam GET /health de tempos em tempos para saber se a instância está viva. A rota faz await bancoResponde(...) antes de responder: se o banco cair, ela falha junto e a instância sai de circulação. O starter já tem essa rota; confirme que ela responde.',
+    file: 'src/routes/health.ts',
+    docs: ['db-query'],
+    check: HEALTH_OK,
+  },
+  {
+    title: 'Um formato só para erros: problem+json',
+    learn:
+      'Hoje cada erro sai de um jeito: o 404 do Hono é texto, e outra rota poderia responder { erro } ou { message }. [problem+json](problem-json) (RFC 9457) é o formato padrão: um Content-Type próprio e um corpo com type, title e status. Com um formato só, o cliente trata qualquer erro do mesmo jeito.',
+    example: {
+      code: String.raw`// Cabeçalho da resposta: Content-Type: application/problem+json
+{
+  "type": "about:blank",            // sem página própria sobre este erro
+  "title": "Rota não encontrada",   // resumo curto, o mesmo para todo erro deste tipo
+  "status": 404,                    // repete o status HTTP no corpo
+  "detail": "GET /nada não existe"  // opcional: este caso em particular
+}`,
+    },
+    docs: ['problem-json'],
+    byFramework: {
+      fetch: {
+        learn:
+          'Hoje cada erro sai de um jeito: o 404 do starter é { erro }, e outra rota poderia responder { message }. [problem+json](problem-json) (RFC 9457) é o formato padrão: um Content-Type próprio e um corpo com type, title e status. Com um formato só, o cliente trata qualquer erro do mesmo jeito.',
+      },
+    },
+  },
+  {
+    title: 'Escreva problema() em src/http.ts',
+    learn:
+      'Os erros da API ficam num arquivo só, src/http.ts, e cada rota só chama a função. problema(status, title, detail?) devolve um [Response pronto](response-pronta), que serve no Hono e no fetch puro.',
+    file: 'src/http.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`// Uma função que monta a resposta: quem chama só passa os dados.
+export function criado(corpo: unknown, local: string): Response {
+  // Response.json(corpo, init): init leva o status e os cabeçalhos.
+  return Response.json(corpo, { status: 201, headers: { Location: local } })
+}`,
+      note: "Escreva problema(status: number, title: string, detail?: string) no mesmo molde: o corpo é { type: 'about:blank', title, status, detail } e o cabeçalho é 'Content-Type': 'application/problem+json'.",
+    },
+    docs: ['problem-json', 'response-pronta'],
+    check: { kind: 'file', path: 'src/http.ts', contains: ['export function problema', "'application/problem+json'"] },
+  },
+  {
+    title: 'Lance erros com ErroHttp',
+    learn:
+      'Às vezes o erro nasce longe da rota, numa função que ela chamou. Em vez de devolver o erro de mão em mão, você o [lança](erro-lancado) com throw, e um lugar só o transforma em resposta. ErroHttp é um Error que carrega o status e o title.',
+    file: 'src/http.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`// Um Error com um campo a mais: quem captura sabe o que aconteceu.
+export class ErroDeCampo extends Error {
+  campo: string
+
+  constructor(campo: string, mensagem: string) {
+    super(mensagem) // a mensagem fica em err.message
+    this.campo = campo
+  }
+}
+
+// Em qualquer lugar: throw new ErroDeCampo('preco', 'Preço negativo')`,
+      note: 'Crie ErroHttp em src/http.ts com status e title; o detail opcional vai para super(detail ?? title) e vira err.message.',
+    },
+    docs: ['erro-lancado'],
+    check: { kind: 'file', path: 'src/http.ts', contains: ['export class ErroHttp', 'extends Error'] },
+  },
+  {
+    title: 'Converta qualquer erro: deErro()',
+    learn:
+      'deErro(err) recebe o que foi lançado e devolve a resposta certa. Um ErroHttp vira problema() com o status dele. Qualquer outro erro é um bug: vira 500 sem mostrar detalhes ao cliente, e o detalhe vai para o Console.',
+    file: 'src/http.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`// unknown: um throw pode lançar qualquer coisa.
+export function mensagemDe(err: unknown): string {
+  // instanceof confere a classe e libera os campos dela.
+  if (err instanceof ErroDeCampo) return err.campo + ': ' + err.message
+  console.error(err) // inesperado: registre para investigar
+  return 'Algo deu errado.'
+}`,
+      note: "deErro(err: unknown): Response faz igual: ErroHttp vira problema(err.status, err.title, err.message); o resto vira problema(500, 'Erro interno').",
+    },
+    docs: ['erro-lancado'],
+    check: { kind: 'file', path: 'src/http.ts', contains: ['export function deErro', 'instanceof ErroHttp', 'problema(500'] },
+  },
+  {
+    title: 'Ligue os erros no index',
+    learn:
+      'O Hono tem dois ganchos: app.notFound roda quando nenhuma rota casou, e app.onError recebe todo erro lançado numa rota. Ligados às suas funções, todos os erros da API saem em problem+json, sem try/catch em cada rota.',
+    file: 'src/index.ts',
+    example: {
+      file: 'src/index.ts',
+      code: String.raw`// Nenhuma rota casou: responda você, em vez do texto padrão do Hono.
+app.notFound((c) => c.json({ erro: 'não existe' }, 404))
+
+// Todo throw de dentro de uma rota chega aqui.
+app.onError((err, c) => c.json({ erro: err.message }, 500))
+
+export default app // os ganchos vêm antes do export`,
+      note: "Importe problema e deErro de './http'. O notFound devolve problema(404, 'Rota não encontrada'); o onError pode receber deErro direto, porque ela já recebe o erro e devolve um Response.",
+    },
+    docs: ['hono-notfound', 'hono-erros'],
+    check: { kind: 'file', path: 'src/index.ts', contains: ['app.notFound(', 'app.onError(', 'deErro'] },
+    byFramework: {
+      fetch: {
+        learn:
+          'No fetch puro, o 404 é o return do fim: nenhum if casou. Um try/catch em volta dos ifs pega todo erro lançado numa rota. Assim, todos os erros da API saem em problem+json.',
+        example: {
+          file: 'src/index.ts',
+          code: String.raw`async fetch(req: Request, env: Env): Promise<Response> {
+  const { pathname } = new URL(req.url)
+  try {
+    // return await: sem o await, o erro de uma rota async escapa do catch.
+    if (req.method === 'GET' && pathname === '/health') return await health(env)
+    return Response.json({ erro: 'não existe' }, { status: 404 }) // nenhum if casou
+  } catch (err) {
+    return Response.json({ erro: String(err) }, { status: 500 }) // todo throw chega aqui
+  }
+}`,
+          note: "Importe problema e deErro de './http'. O return do fim vira problema(404, 'Rota não encontrada') e o catch devolve deErro(err).",
+        },
+        docs: ['fetch-rotear', 'erro-lancado'],
+        check: { kind: 'file', path: 'src/index.ts', contains: ['problema(404', 'return await', 'catch', 'deErro('] },
+      },
+    },
+  },
+  {
+    title: 'Teste o 404',
+    learn:
+      'Peça uma rota que não existe: deve vir 404 com o corpo em problem+json. Abra os headers da resposta: o Content-Type deve ser application/problem+json. Se vier texto ou { erro }, o 404 ainda não passa por problema().',
+    docs: ['problem-json'],
+    check: { kind: 'request', path: '/nada', status: 404, body: { status: 404 } },
+  },
+]
+
 const primeirosPassos: Stage = {
   id: 'primeiros-passos',
   title: 'Primeiros passos',
-  statement: [
-    '1. Como esta tela funciona. À esquerda ficam os Arquivos do projeto: clique num nome para abrir no editor. Embaixo, Banco mostra as tabelas e as migrações SQL (arquivos que criam ou alteram tabelas) e Console mostra o que sua API registrou. Aqui à direita, a aba Requisição chama sua API como um navegador faria, e o botão Rodar testes confere a etapa: ele dá de 0 a 3 estrelas, e as dicas desta aba ajudam quando travar.',
-    '2. O que é o Hono. É uma biblioteca para escrever APIs em TypeScript; este projeto usa ela, ou o fetch puro (a função padrão da web, sem biblioteca). Cinco coisas aparecem o tempo todo:\n' +
-      '   - new Hono() cria o app, que recebe as requisições. Ex.: const app = new Hono()\n' +
-      '   - app.get(caminho, (c) => ...) diz o que responder a um GET naquele caminho; c é o contexto da requisição. Ex.: app.get("/ping", (c) => c.text("pong"))\n' +
-      '   - c.json(objeto, status) responde com JSON; o status é opcional (padrão 200). Ex.: c.json({ erro: "x" }, 404)\n' +
-      '   - app.route("/x", sub) monta um grupo de rotas (sub, outro Hono) sob o prefixo /x. Ex.: app.route("/health", health)\n' +
-      '   - c.env.db.query(sql, params) fala com o banco; os $1, $2 do SQL recebem os valores de params. Ex.: c.env.db.query("SELECT * FROM produtos WHERE id = $1", [id])',
-    '3. No fetch puro, o app é um objeto: export default { fetch(req, env) { ... } }. Leia o caminho com new URL(req.url).pathname, o método com req.method, e responda com Response.json(objeto, { status }). O banco é env.db.query(sql, params).',
-    '4. O que cada arquivo do projeto faz:\n' +
-      '   - src/index.ts: a porta de entrada; registra as rotas.\n' +
-      '   - src/routes/health.ts: a rota GET /health, que mostra o formato de uma rota.\n' +
-      '   - src/db/saude.ts: o SQL de que a rota precisa. Rotas cuidam de HTTP; o SQL fica em src/db/.\n' +
-      '   - src/env.ts: o tipo do env, ou seja, o que o Workers entrega ao app (aqui, o banco).\n' +
-      '   - migrations/001_init.sql: cria a tabela produtos.',
-    'Sua tarefa: criar GET /ola, que responde 200 com { "mensagem": "olá" }.',
-    '5. No Hono: abra src/routes/health.ts e use-o de modelo; crie src/routes/ola.ts com um new Hono() exportado como ola e, nele, ola.get("/", (c) => c.json({ mensagem: "olá" })).',
-    '6. Registre em src/index.ts: importe ola e escreva app.route("/ola", ola) junto do app.route("/health", health). No fetch puro: crie src/routes/ola.ts com export function ola() que devolve Response.json({ mensagem: "olá" }) e, em src/index.ts, adicione if (req.method === "GET" && pathname === "/ola") return ola().',
-    '7. Teste na aba Requisição: método GET, caminho /ola, Enviar. Deve vir 200 e o JSON esperado.',
-    '8. Clique em Rodar testes.',
-  ].join('\n'),
+  statement: 'Conheça a tela e o projeto inicial, depois crie sua primeira rota: GET /ola, que responde 200 com { "mensagem": "olá" }.',
+  steps: PASSOS_OLA,
   files: ['src/index.ts', 'src/routes/ola.ts', 'src/env.ts', 'migrations/001_init.sql'],
   tests: [
     { name: 'GET /ola responde 200 com a mensagem', requests: [{ request: { path: '/ola' }, expect: { status: 200, body: { mensagem: 'olá' } } }] },
@@ -73,12 +375,8 @@ const primeirosPassos: Stage = {
 const health: Stage = {
   id: 'health',
   title: 'Health check',
-  statement:
-    '1. Abra src/routes/health.ts: a rota GET / já existe no starter, mas confirme que ela faz await bancoResponde(c.env.db) antes de responder { "status": "ok" }.\n' +
-    '2. Crie src/http.ts, onde ficam os erros da API. problem+json (RFC 9457) é o formato padrão de erro de API: Content-Type application/problem+json, com type, title e status. Escreva: (a) class ErroHttp extends Error, com status, title e extra, para lançar um erro de qualquer lugar; (b) problema(status, title, detail?, extra?), que devolve Response.json({ type: "about:blank", title, status, detail, ...extra }, { status, headers: { "Content-Type": "application/problem+json" } }); (c) deErro(err), que transforma um ErroHttp em problema(...) e qualquer outro erro em problema(500, ...); (d) idDe(texto), que converte o :id da URL em número ou lança ErroHttp 404; (e) achado(valor, nome), que lança ErroHttp 404 quando valor é undefined.\n' +
-    '3. Abra src/index.ts e adicione o 404: no Hono, app.notFound(() => problema(404, "Rota não encontrada")) e app.onError(deErro) para os erros lançados; no fetch puro, devolva problema(404, "Rota não encontrada") no lugar do retorno final e envolva o roteamento em try/catch que devolve deErro(err).\n' +
-    '4. Teste na aba Requisição: GET /health deve responder 200 { "status": "ok" }; GET /nada deve responder 404 com Content-Type application/problem+json.\n' +
-    '5. Clique em Rodar testes.',
+  statement: 'Padronize os erros da API em problem+json: crie src/http.ts e faça toda rota desconhecida responder 404 nesse formato.',
+  steps: PASSOS_HEALTH,
   files: ['src/index.ts', 'src/routes/health.ts', 'src/db/saude.ts', 'src/env.ts', 'src/http.ts', 'migrations/001_init.sql'],
   tests: [
     { name: 'GET /health responde ok', requests: [{ request: { path: '/health' }, expect: { status: 200, body: { status: 'ok' } } }] },

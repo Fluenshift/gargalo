@@ -14,7 +14,7 @@ import {
   starter,
 } from './oficina/projeto/project'
 import { exportFiles, slugOf } from './oficina/projeto/exportar'
-import { forgetClient, loadClient } from './oficina/projeto/http'
+import { forgetClient, loadClient, type Draft } from './oficina/projeto/http'
 import { buildOpenApi, requestsOf } from './oficina/projeto/openapi'
 import { loadSavedResults } from './oficina/progress'
 import { zip } from './oficina/projeto/zip'
@@ -238,6 +238,12 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
   }, [form])
   const [panel, setPanel] = useState<'banco' | 'console'>('banco')
   const [side, setSide] = useState<'requisicao' | 'etapa' | 'openapi'>('etapa')
+  // "Testar agora" in a guided step: the request the Requisição tab opens with and sends once.
+  const [prefill, setPrefill] = useState<Draft>()
+  const pick = (next: typeof side) => {
+    setSide(next)
+    setPrefill(undefined)
+  }
   const [routes, setRoutes] = useState<Route[]>()
   const [logs, setLogs] = useState<ConsoleLine[]>([])
   const [saveFailed, setSaveFailed] = useState(false)
@@ -294,6 +300,11 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     if (file === active && view.current) return moveTo(view.current, line)
     pendingLine.current = line
     open(file)
+  }
+  /** "Abrir <arquivo>" in a guided step: opens it, created empty when it does not exist yet. */
+  const openOrCreate = (path: string) => {
+    if (!Object.hasOwn(files, path)) setFiles((f) => ({ ...f, [path]: '' }))
+    open(path)
   }
   const close = (path: string) => {
     const left = tabs.filter((t) => t !== path)
@@ -458,22 +469,32 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
       {/* The right panel: the HTTP client, or the stage of the course. */}
       <aside className="projeto__side" aria-label="Requisição e etapa">
         <div className="segmented segmented--small" role="group" aria-label="Painel da direita">
-          <button type="button" aria-pressed={side === 'etapa'} onClick={() => setSide('etapa')}>
+          <button type="button" aria-pressed={side === 'etapa'} onClick={() => pick('etapa')}>
             Etapa
           </button>
-          <button type="button" aria-pressed={side === 'requisicao'} onClick={() => setSide('requisicao')}>
+          <button type="button" aria-pressed={side === 'requisicao'} onClick={() => pick('requisicao')}>
             Requisição
           </button>
-          <button type="button" aria-pressed={side === 'openapi'} onClick={() => setSide('openapi')}>
+          <button type="button" aria-pressed={side === 'openapi'} onClick={() => pick('openapi')}>
             OpenAPI
           </button>
         </div>
         {side === 'requisicao' ? (
-          <HttpClient project={project} warming={warming} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
+          <HttpClient project={project} warming={warming} prefill={prefill} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
         ) : side === 'openapi' ? (
           <OpenApi project={project} name={entry.name} routes={routes} />
         ) : (
-          <Etapa project={project} course={courseOf(entry.course)} warming={warming} onGoTo={goTo} />
+          <Etapa
+            project={project}
+            course={courseOf(entry.course)}
+            warming={warming}
+            onGoTo={goTo}
+            onOpenFile={openOrCreate}
+            onTry={(draft) => {
+              setPrefill(draft)
+              setSide('requisicao')
+            }}
+          />
         )}
       </aside>
     </div>

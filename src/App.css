@@ -3725,6 +3725,65 @@ a.levels__map {
   justify-self: start;
 }
 
+/* Guided steps (#137): concept, highlighted example, docs links and the step's own check, inside the same card. */
+.passos__body {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.passos__title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: var(--title-xs);
+  line-height: 1.15;
+}
+
+.passos__example {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.passos__code {
+  background: var(--paper);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+/* What changes in the player's task: set off from the pattern by an accent rule, not a second box. */
+.passos__note {
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--accent);
+}
+
+.passos__docs {
+  font-size: var(--text-sm);
+}
+
+.passos__check {
+  font-size: var(--text-sm);
+}
+
+.passos__check:empty {
+  display: none;
+}
+
+.passos__check.is-ok {
+  color: var(--ok);
+}
+
+.passos__check.is-missing {
+  color: var(--hot);
+}
+
+/* A docs entry opened from a step: the accent rule says which one. */
+.etapa__doc:focus {
+  outline: none;
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--accent);
+}
+
 .etapa__files {
   font-size: var(--text-xs);
   color: var(--ink-soft);
