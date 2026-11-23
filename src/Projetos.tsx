@@ -494,7 +494,9 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           </>
         ) : side === 'openapi' ? (
           <OpenApi project={project} name={entry.name} routes={routes} />
-        ) : (
+        ) : null}
+        {/* Always mounted, only hidden: leaving for Requisição ("Testar agora") must not lose the run, the checks or the hints. */}
+        <div hidden={side !== 'etapa'}>
           <Etapa
             project={project}
             course={courseOf(entry.course)}
@@ -506,7 +508,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
               setSide('requisicao')
             }}
           />
-        )}
+        </div>
       </aside>
     </div>
   )
