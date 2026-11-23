@@ -51,13 +51,28 @@ function openDev(id: string): Promise<PGlite> {
   return dev.pg
 }
 
+// PGlite's idb:// keeps each database in IndexedDB under /pglite/<name>.
+async function dropDev(id: string): Promise<void> {
+  if (dev?.id === id) {
+    const open = dev.pg
+    dev = undefined
+    await open.then((db) => db.close()).catch(() => {})
+  }
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(`/pglite/gargalo-projeto-${id}`)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error ?? new Error('Não foi possível apagar o banco do projeto.'))
+    req.onblocked = () => reject(new Error('Outra aba está com o banco deste projeto aberto. Feche-a e apague de novo.'))
+  })
+}
+
 const post = (out: unknown) => scope.postMessage(out)
 
 self.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
   // The player's code (even its top level) only runs once the network is blocked.
   void pg.then(async (db) => {
     const input = e.data
-    if ('call' in input) post(await answer(input.call, { test: db, dev: openDev }))
+    if ('call' in input) post(await answer(input.call, { test: db, dev: openDev, drop: dropDev }))
     else if ('project' in input) await executeProjectTests(input, db, post)
     else await executeTests(input, pgliteDb(db), post)
   })

@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { TestCase, TestResult } from '../exercise'
 import { loadApp } from './modules'
-import { type Project, loadProject, projectKey, saveProject, starter } from './project'
+import { PROJECTS_KEY, type Project, loadProject, loadProjectList, projectKey, removeProject, saveProject, saveProjectList, starter } from './project'
 import { answer, executeProjectTests, migrationFiles, type ProjectCall, type RequestOutcome } from './runtime'
 
 // Two real in-memory Postgres: the worker's test database and one project's dev database (IndexedDB in the browser).
@@ -12,7 +12,8 @@ beforeAll(async () => {
   ;[test, devPg] = await Promise.all([PGlite.create(), PGlite.create()])
 }, 60_000)
 
-const dbs = { get test() { return test }, dev: async () => devPg }
+const dropped: string[] = []
+const dbs = { get test() { return test }, dev: async () => devPg, drop: async (id: string) => void dropped.push(id) }
 
 async function call(c: ProjectCall): Promise<unknown> {
   const out = await answer(c, dbs)
@@ -41,6 +42,7 @@ describe('loading a project', () => {
       expect(outcome.response).toMatchObject({ status: 200, headers: { 'content-type': expect.stringContaining('application/json') } })
       expect(json(outcome)).toEqual({ status: 'ok' })
       expect(outcome.metrics.queries).toBe(1)
+      expect(outcome.routes).toEqual(framework === 'hono' ? [{ method: 'GET', path: '/health' }] : undefined)
     }
     expect((await send(starter('p', 'fetch'), '/nada')).response?.status).toBe(404)
   })
@@ -211,6 +213,14 @@ describe('migrations', () => {
     expect(await call({ op: 'open', project })).toBeUndefined()
     expect(sync).toHaveBeenCalledOnce()
   })
+
+  it('drops a project’s dev database without opening it', async () => {
+    const dev = vi.spyOn(dbs, 'dev')
+    expect(await answer({ op: 'drop', project: { id: 'm' } }, dbs)).toEqual({ reply: undefined })
+    expect(dropped).toEqual(['m'])
+    expect(dev).not.toHaveBeenCalled()
+    dev.mockRestore()
+  })
 })
 
 describe('saved projects', () => {
@@ -229,5 +239,26 @@ describe('saved projects', () => {
     vi.stubGlobal('localStorage', { getItem: fail, setItem: fail })
     expect(saveProject(starter('x', 'hono'))).toBe(false)
     expect(loadProject('x')).toBeUndefined()
+  })
+
+  it('keeps the list of projects, forgets a removed one and survives storage being off', () => {
+    const data = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v), removeItem: (k: string) => void data.delete(k) })
+    expect(loadProjectList()).toEqual([])
+    const list = [{ id: 'x', name: 'Loja', framework: 'hono' as const }]
+    expect(saveProjectList(list)).toBe(true)
+    expect(loadProjectList()).toEqual(list)
+    data.set(PROJECTS_KEY, '{}')
+    expect(loadProjectList()).toEqual([])
+    saveProject(starter('x', 'hono'))
+    removeProject('x')
+    expect(loadProject('x')).toBeUndefined()
+    const fail = () => {
+      throw new Error('off')
+    }
+    vi.stubGlobal('localStorage', { getItem: fail, setItem: fail, removeItem: fail })
+    expect(saveProjectList(list)).toBe(false)
+    expect(loadProjectList()).toEqual([])
+    expect(() => removeProject('x')).not.toThrow()
   })
 })

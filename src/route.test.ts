@@ -1,6 +1,37 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { navigate, pathOf, screenOf } from './route'
+import { followLink, navigate, oficinaPlace, pathOf, screenOf } from './route'
 import type { Screen } from './route'
+
+describe('followLink', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('goes to the href on a plain click and leaves modified clicks to the browser', () => {
+    const pushState = vi.fn()
+    vi.stubGlobal('location', { pathname: '/oficina', search: '' })
+    vi.stubGlobal('history', { pushState })
+    vi.stubGlobal('dispatchEvent', vi.fn())
+    vi.stubGlobal('PopStateEvent', class {})
+    const click = (extra: object) => {
+      const preventDefault = vi.fn()
+      followLink({ button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, preventDefault, currentTarget: { getAttribute: () => '/oficina/projetos' } as unknown as Element, ...extra })
+      return preventDefault
+    }
+    expect(click({ ctrlKey: true })).not.toHaveBeenCalled()
+    expect(pushState).not.toHaveBeenCalled()
+    expect(click({})).toHaveBeenCalled()
+    expect(pushState).toHaveBeenCalledWith(null, '', '/oficina/projetos')
+  })
+})
+
+describe('oficinaPlace', () => {
+  it('opens the projects list (also for the old exercise paths) or one project', () => {
+    expect(screenOf('/oficina/projetos/abc', '')).toBe('oficina')
+    expect(oficinaPlace('/oficina')).toEqual({})
+    expect(oficinaPlace('/oficina/outra')).toEqual({})
+    expect(oficinaPlace('/oficina/projetos/')).toEqual({})
+    expect(oficinaPlace('/oficina/projetos/a%20b')).toEqual({ project: 'a b' })
+  })
+})
 
 describe('screenOf', () => {
   it('maps each path to its screen and back', () => {

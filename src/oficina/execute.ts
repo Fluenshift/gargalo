@@ -3,7 +3,7 @@
 import { transform } from 'sucrase'
 // With the extension: runner.test.ts loads this file in a plain Node thread, which resolves no extensionless paths.
 import { measured } from './db.ts'
-import type { Ctx, Db, ExpectedResponse, RequestMetrics, RequestSpec, TestCase, TestResult } from './exercise'
+import type { CapturedResponse, Ctx, Db, ExpectedResponse, RequestMetrics, RequestSpec, TestCase, TestResult } from './exercise'
 
 export type Handler = (req: Request, ctx: Ctx) => Promise<Response>
 
@@ -110,50 +110,90 @@ export function buildRequest(spec: Omit<RequestSpec, 'body'> & { body?: string }
   return req
 }
 
-async function readBody(res: Response): Promise<unknown> {
+async function capture(res: Response): Promise<CapturedResponse> {
   const text = await res.text()
+  let body: unknown = text
   try {
-    return JSON.parse(text)
+    body = JSON.parse(text)
   } catch {
-    return text
+    // Not JSON: the text is the body.
   }
+  return { status: res.status, headers: Object.fromEntries(res.headers), body }
 }
 
 /** First difference between what the test expects and the response, or null. */
-async function compareResponse(res: unknown, expect: ExpectedResponse): Promise<Omit<TestResult, 'name' | 'passed'> | null> {
-  if (!(res instanceof Response)) return { message: 'O handler precisa devolver um Response.', received: String(res) }
+function compareResponse(res: CapturedResponse | undefined, expect: ExpectedResponse): Omit<TestResult, 'name' | 'passed'> | null {
+  if (!res) return { message: 'O handler precisa devolver um Response.' }
   if (res.status !== expect.status) return { message: 'Status diferente do esperado.', expected: expect.status, received: res.status }
   for (const [name, value] of Object.entries(expect.headers ?? {})) {
-    if (res.headers.get(name) !== value) return { message: `Cabeçalho ${name} diferente do esperado.`, expected: value, received: res.headers.get(name) }
+    const got = res.headers[name.toLowerCase()] ?? null
+    if (got !== value) return { message: `Cabeçalho ${name} diferente do esperado.`, expected: value, received: got }
   }
   if (expect.body === undefined) return null
-  const body = await readBody(res)
-  return matches(expect.body, body) ? null : { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: body }
+  return matches(expect.body, res.body) ? null : { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: res.body }
+}
+
+const VAR = /\{\{(\w+)\}\}/g
+
+/** `value` with each `{{name}}` replaced by what a step saved; a string that is only `{{name}}` takes the value as is. */
+export function fill<T>(value: T, vars: Record<string, unknown>): T {
+  if (typeof value === 'string') {
+    const whole = /^\{\{(\w+)\}\}$/.exec(value)
+    if (whole && whole[1] in vars) return vars[whole[1]] as T
+    return value.replace(VAR, (m, name: string) => (name in vars ? String(vars[name]) : m)) as T
+  }
+  if (Array.isArray(value)) return value.map((v) => fill(v, vars)) as T
+  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fill(v, vars)])) as T
+  return value
+}
+
+/** The value at `status`, `header.<name>` or `body.<path>` of a response; undefined when it isn't there. */
+export function pick(res: CapturedResponse | undefined, from: string): unknown {
+  if (!res) return undefined
+  if (from === 'status') return res.status
+  if (from.startsWith('header.')) return res.headers[from.slice('header.'.length).toLowerCase()]
+  if (from !== 'body' && !from.startsWith('body.')) return undefined
+  return from
+    .split('.')
+    .slice(1)
+    .reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined), res.body)
 }
 
 export async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestResult> {
   const now = () => test.now ?? DEFAULT_NOW
   const metrics: RequestMetrics[] = test.requests.map(() => ({ queries: 0, rowsRead: 0, handlerMs: 0 }))
-  // Every handler starts before any finishes, so concurrent requests interleave at their awaits. Each has its own meter.
-  const responses = await Promise.all(test.requests.map(async ({ request }, i) => {
+  const responses: (CapturedResponse | undefined)[] = []
+  const vars: Record<string, unknown> = {}
+  const extra = (): Partial<TestResult> => (test.capture ? { responses } : {})
+  const call = async (request: RequestSpec, i: number) => {
     const m = metrics[i]
     const start = performance.now()
     const res = await handler(toRequest(request), { db: measured(db, m), now })
     m.handlerMs = Math.max(0, m.handlerMs + performance.now() - start)
     return res
-  }))
-  for (const [i, { expect }] of test.requests.entries()) {
-    const diff = expect && (await compareResponse(responses[i], expect))
-    if (diff) {
-      const prefix = test.requests.length > 1 ? `Requisição ${i + 1}: ` : ''
-      return { name: test.name, passed: false, ...diff, message: prefix + diff.message, metrics }
+  }
+  // Concurrent: every handler starts before any finishes, so they interleave at their awaits. Each has its own meter.
+  const concurrent = test.sequential ? undefined : await Promise.all(test.requests.map(({ request }, i) => call(request, i)))
+  for (const [i, step] of test.requests.entries()) {
+    const res: unknown = concurrent ? concurrent[i] : await call(fill(step.request, vars), i)
+    const captured = res instanceof Response ? await capture(res) : undefined
+    responses.push(captured)
+    const prefix = test.requests.length > 1 ? `Requisição ${i + 1}: ` : ''
+    const diff = step.expect && compareResponse(captured, fill(step.expect, vars))
+    if (diff) return { name: test.name, passed: false, ...diff, message: prefix + diff.message, metrics, ...extra() }
+    for (const [name, from] of Object.entries(step.save ?? {})) {
+      const value = pick(captured, from)
+      if (value === undefined) return { name: test.name, passed: false, message: `${prefix}a resposta não tem ${from} (para {{${name}}}).`, metrics, ...extra() }
+      vars[name] = value
     }
   }
   if (test.db) {
-    const rows = await db.query(test.db.sql, test.db.params)
-    if (!matches(test.db.rows, rows)) return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows, metrics }
+    const rows = await db.query(test.db.sql, fill(test.db.params, vars))
+    const withRows = test.capture ? { ...extra(), rows } : {}
+    if (test.db.rows !== undefined && !matches(test.db.rows, rows)) return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows, metrics, ...withRows }
+    return { name: test.name, passed: true, metrics, ...withRows }
   }
-  return { name: test.name, passed: true, metrics }
+  return { name: test.name, passed: true, metrics, ...extra() }
 }
 
 /** Runs the tests in order, reporting each result as soon as it is known. */

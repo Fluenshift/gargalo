@@ -75,6 +75,7 @@
   --inspector-width: 380px; /* the right panel over the canvas */
   --piece-width: 184px; /* a piece on the canvas */
   --page-width: 1200px; /* career map and free mode */
+  --tree-width: 200px; /* a project's file tree in the Oficina */
   --duration: 120ms;
 
   /* Layers */
@@ -3180,6 +3181,8 @@ a.levels__map {
 
 .oficina__statement {
   max-width: 72ch;
+  /* Stage texts are written with line breaks: numbered steps, lists and code examples. */
+  white-space: pre-line;
 }
 
 .oficina__editor {
@@ -3276,6 +3279,740 @@ a.levels__map {
   list-style: decimal;
   padding-left: var(--space-20);
   max-width: 72ch;
+}
+
+/* Oficina tabs: Exercícios and Projetos, links styled as the segmented control. */
+.oficina__tabs {
+  margin: 0 0 var(--space-24);
+}
+
+.segmented a {
+  padding: var(--space-6) var(--space-16);
+  border-left: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  text-decoration: none;
+}
+
+.segmented a:first-child {
+  border-left: none;
+}
+
+.segmented a:hover:not([aria-current]) {
+  background: var(--sunk);
+}
+
+.segmented a[aria-current='page'] {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.segmented a:focus-visible {
+  outline-offset: calc(-1 * var(--focus-width));
+}
+
+/* Projetos: the list of projects, then one project open. */
+.projetos {
+  display: grid;
+  gap: var(--space-24);
+  max-width: var(--page-width);
+}
+
+.projetos__new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-10) var(--space-14);
+  padding: var(--space-20) var(--space-24);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+}
+
+.projetos__new h2 {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.projetos__framework {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-14);
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.projetos__framework legend {
+  float: left;
+  margin-right: var(--space-4);
+  color: var(--ink-soft);
+}
+
+.projetos__framework input {
+  accent-color: var(--ink);
+}
+
+.projetos__framework label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.projeto__label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-soft);
+  margin-bottom: var(--space-8);
+}
+
+.projetos__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.projetos__list > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8) var(--space-14);
+  padding: var(--space-12) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.projetos__name {
+  font-family: var(--serif);
+  font-size: var(--title-xs);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+.projetos__actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-left: auto;
+}
+
+.projeto__framework {
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-10);
+}
+
+.projeto__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-6) var(--space-8);
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.projeto__form label {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.free .projeto__form input[type='text'] {
+  flex: 1 1 160px;
+}
+
+.projeto__form-actions {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.projeto__problem {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+  color: var(--hot);
+}
+
+/* One project: the file tree, the editor with Banco and Console under it, and the right panel (Requisição, Etapa). */
+.projeto {
+  display: grid;
+  grid-template-columns: var(--tree-width) minmax(0, 1fr) var(--inspector-width);
+  grid-template-areas:
+    'head head head'
+    'files main side';
+  gap: var(--space-14) var(--space-24);
+  align-items: start;
+}
+
+.projeto__head {
+  grid-area: head;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-8) var(--space-16);
+}
+
+.projeto__files {
+  grid-area: files;
+  display: grid;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+.projeto__file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.projeto__files .btn--small {
+  padding: var(--space-4) var(--space-10);
+}
+
+.projeto__tree {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-xs);
+}
+
+.projeto__tree li {
+  padding-left: calc(var(--depth) * var(--space-12));
+}
+
+.projeto__folder,
+.projeto__tree button {
+  display: block;
+  width: 100%;
+  padding: var(--space-3) var(--space-8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.projeto__folder {
+  color: var(--ink-soft);
+}
+
+.projeto__tree button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+}
+
+.projeto__tree button:hover {
+  background: var(--sunk);
+}
+
+.projeto__tree button[aria-current='true'] {
+  border-color: var(--ink);
+}
+
+.projeto__main {
+  grid-area: main;
+  display: grid;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+.projeto__tabs {
+  display: flex;
+  gap: var(--space-6);
+  overflow-x: auto;
+  padding: var(--space-2);
+}
+
+.projeto__tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+}
+
+.projeto__tab:has(> [aria-pressed='true']) {
+  border-color: var(--ink);
+}
+
+.projeto__tab button {
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: var(--space-4) var(--space-12);
+  font-size: var(--text-xs);
+}
+
+.projeto__tab .projeto__close {
+  padding: var(--space-4) var(--space-10) var(--space-4) 0;
+  color: var(--ink-soft);
+}
+
+.projeto__tab button:hover {
+  color: var(--ink);
+  background: var(--sunk);
+}
+
+.projeto__panel {
+  display: grid;
+  gap: var(--space-10);
+  padding-top: var(--space-10);
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+
+.projeto__panel > .segmented,
+.projeto__back {
+  justify-self: start;
+}
+
+.projeto__side > .segmented {
+  margin-top: 0;
+  justify-self: start;
+}
+
+.projeto__banco,
+.projeto__console {
+  display: grid;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+.projeto__tables {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.projeto__rows {
+  overflow: auto;
+  max-height: 40vh;
+  min-width: 0;
+}
+
+.projeto__sheet {
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.projeto__sheet td:last-child {
+  font-weight: 400;
+}
+
+.projeto__console ol {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-10) var(--space-12);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  font-size: var(--text-xs);
+  max-height: 40vh;
+  overflow: auto;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.projeto__console .btn {
+  justify-self: start;
+}
+
+.projeto__log {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.projeto__level {
+  display: inline-block;
+  min-width: 6ch;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  font-size: var(--text-label);
+  letter-spacing: var(--tracking-caps);
+}
+
+.projeto__log.is-warn .projeto__level {
+  color: var(--warm);
+}
+
+.projeto__log.is-error .projeto__level {
+  color: var(--hot);
+}
+
+.projeto__log .levels__map {
+  font-size: var(--text-xs);
+}
+
+.projeto__side {
+  grid-area: side;
+  display: grid;
+  gap: var(--space-12);
+  padding: var(--space-16) var(--space-20);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  min-width: 0;
+}
+
+.projeto__slot {
+  display: grid;
+  gap: var(--space-10);
+}
+
+/* Etapa panel: the stage of the course beside the editor. */
+.etapa__title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: var(--title-sm);
+  line-height: 1.15;
+}
+
+/* Step card: its own cobalt-tinted surface so the panel is not all one paper colour. Tint mixes tokens, so dark follows. */
+.passos {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.passos__card {
+  display: grid;
+  gap: var(--space-10);
+  padding: var(--space-12) var(--space-14);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--accent) 9%, var(--paper));
+  color: var(--ink);
+}
+
+.passos__text {
+  /* A long step scrolls inside the card so the buttons below it never leave the screen. */
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.passos__count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.passos__dots {
+  display: flex;
+  gap: var(--space-6);
+  list-style: none;
+  padding: 0;
+}
+
+.passos__dots li {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+}
+
+.passos__dots li.is-done {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.passos__dots li.is-current {
+  background: var(--accent);
+}
+
+.passos__toggle {
+  justify-self: start;
+}
+
+/* Guided steps (#137): concept, highlighted example, docs links and the step's own check, inside the same card. */
+.passos__body {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.passos__title {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: var(--title-xs);
+  line-height: 1.15;
+}
+
+.passos__example {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.passos__code {
+  background: var(--paper);
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+/* What changes in the player's task: set off from the pattern by an accent rule, not a second box. */
+.passos__note {
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--accent);
+}
+
+/* The one action of the step: the first thing read, in full ink. */
+.passos__do {
+  margin: 0;
+  padding: var(--space-8) var(--space-10);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.passos__do strong {
+  font-weight: 600;
+}
+
+.passos__why {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.passos__docs {
+  font-size: var(--text-sm);
+}
+
+.passos__check {
+  font-size: var(--text-sm);
+}
+
+.passos__check:empty {
+  display: none;
+}
+
+.passos__check.is-ok {
+  color: var(--ok);
+}
+
+.passos__check.is-missing {
+  color: var(--hot);
+}
+
+/* A docs entry opened from a step: the accent rule says which one. */
+.etapa__doc:focus {
+  outline: none;
+  padding-left: var(--space-10);
+  border-left: 2px solid var(--accent);
+}
+
+.etapa__files {
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.etapa__files span {
+  white-space: nowrap;
+}
+
+.etapa__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+
+.etapa__explain {
+  display: grid;
+  gap: var(--space-6);
+  padding: var(--space-12) var(--space-14);
+  border-left: 1px solid var(--hot);
+}
+
+.etapa__docs summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.projeto__get {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.free .projeto__get input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The project's HTTP client (#109): method + path + send on one line, headers and body below, then the answer. */
+.http {
+  display: grid;
+  gap: var(--space-10);
+  min-width: 0;
+}
+
+.http__form {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.http__line {
+  display: flex;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.http select,
+.http input[type='text'],
+.http textarea {
+  font: inherit;
+  font-size: var(--text-xs);
+  letter-spacing: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: var(--space-6) var(--space-12);
+  min-width: 0;
+}
+
+.http textarea {
+  font-family: var(--mono);
+  border-radius: var(--radius-field);
+  resize: vertical;
+  width: 100%;
+}
+
+.http__line input[type='text'],
+.http__save input[type='text'] {
+  flex: 1;
+}
+
+.http select:focus-visible,
+.http input[type='text']:focus-visible,
+.http textarea:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: 1px;
+}
+
+.http__response {
+  display: grid;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+.http__response .code {
+  max-height: 320px;
+  overflow: auto;
+}
+
+.http__meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.http__status {
+  font-weight: 500;
+}
+
+.http__status.is-ok {
+  color: var(--ok);
+}
+
+.http__status.is-warm {
+  color: var(--warm);
+}
+
+.http__status.is-hot,
+.http__error {
+  color: var(--hot);
+}
+
+.http__headers summary {
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--ink-soft);
+}
+
+.http__save {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.http__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.http__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.http__item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.http__item:hover {
+  background: var(--sunk);
+}
+
+.http__item .http__status {
+  margin-left: auto;
+}
+
+.http__method {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+/* Wide: the step panel stays beside the editor while the page scrolls, with its own scroll (4.5rem clears the sticky top bar). */
+@media (min-width: 1101px) {
+  .projeto__side {
+    position: sticky;
+    top: 4.5rem;
+    max-height: calc(100dvh - 5.5rem);
+    overflow-y: auto;
+  }
+}
+
+/* Below 1100px the right panel moves under the editor; at 900px everything stacks. */
+@media (max-width: 1100px) {
+  .projeto {
+    grid-template-columns: var(--tree-width) minmax(0, 1fr);
+    grid-template-areas:
+      'head head'
+      'files main'
+      'files side';
+  }
+}
+
+@media (max-width: 900px) {
+  .projeto {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'files'
+      'main'
+      'side';
+  }
 }
 
 /* ==========================================================================

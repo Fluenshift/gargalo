@@ -2,7 +2,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { pgliteDb } from './db'
 import type { TestCase, TestResult } from './exercise'
-import { compile, executeTests, matches } from './execute'
+import { compile, executeTests, fill, matches, pick } from './execute'
 
 // One real Postgres for the file, reset before each test like the worker does.
 let pg: PGlite
@@ -108,6 +108,36 @@ describe('executeTests', () => {
     expect(await run(code, [test])).toMatchObject([{ name: 'relógio', passed: true }])
     const [wrong] = await run(code, [{ ...test, db: { sql: 'SELECT saldo FROM contas', rows: [{ saldo: 0 }] } }])
     expect(wrong).toMatchObject({ passed: false, message: 'Estado do banco diferente do esperado.', expected: [{ saldo: 0 }], received: [{ saldo: 100 }] })
+  })
+
+  it('runs a sequential test step by step, carrying saved values into the next request, expect and db params', async () => {
+    const code = `export default async function handler(req: Request, ctx: Ctx): Promise<Response> {
+  const { pathname } = new URL(req.url)
+  if (req.method === 'POST') {
+    const [row] = await ctx.db.query<{ id: number }>('INSERT INTO contas (id, saldo) VALUES (7, 5) RETURNING id')
+    return Response.json({ id: row.id }, { status: 201, headers: { location: '/contas/' + row.id } })
+  }
+  const id = Number(pathname.split('/')[2])
+  const [conta] = await ctx.db.query('SELECT id, saldo FROM contas WHERE id = $1', [id])
+  return conta ? Response.json(conta) : new Response('', { status: 404 })
+}`
+    const test: TestCase = {
+      name: 'cria e lê',
+      sequential: true,
+      capture: true,
+      requests: [
+        { request: { method: 'POST', path: '/contas' }, expect: { status: 201 }, save: { id: 'body.id', onde: 'header.Location' } },
+        { request: { path: '{{onde}}' }, expect: { status: 200, body: { id: '{{id}}', saldo: 5 } } },
+      ],
+      db: { sql: 'SELECT saldo FROM contas WHERE id = $1', params: ['{{id}}'] },
+    }
+    const [ok] = await run(code, [test])
+    expect(ok).toMatchObject({ passed: true, rows: [{ saldo: 5 }], responses: [{ status: 201, body: { id: 7 } }, { status: 200, body: { id: 7, saldo: 5 } }] })
+    const [missing] = await run(code, [{ ...test, requests: [{ ...test.requests[0], save: { x: 'body.nada' } }] }])
+    expect(missing).toMatchObject({ passed: false, message: 'a resposta não tem body.nada (para {{x}}).', responses: [{ status: 201 }] })
+    const [stops] = await run(code, [{ ...test, requests: [{ ...test.requests[0], expect: { status: 200 } }, test.requests[1]] }])
+    expect(stops).toMatchObject({ passed: false, message: 'Requisição 1: Status diferente do esperado.' })
+    expect(stops.responses).toHaveLength(1)
   })
 })
 
@@ -253,5 +283,15 @@ describe('session state between tests', () => {
     // A transaction the handler could not close (a driver-level BEGIN) must not carry into the next test.
     await pg.exec('BEGIN ISOLATION LEVEL SERIALIZABLE')
     expect(await run(show('transaction_isolation'), [probe('limpo', 'transaction_isolation', 'read committed')])).toMatchObject([{ passed: true }])
+  })
+})
+
+describe('fill and pick', () => {
+  it('replaces {{name}} deep inside values, keeping the type when the string is only the variable', () => {
+    expect(fill({ a: '{{n}}', b: ['x-{{n}}-{{s}}', '{{nada}}'], c: 1, d: null }, { n: 3, s: 'oi' })).toEqual({ a: 3, b: ['x-3-oi', '{{nada}}'], c: 1, d: null })
+  })
+  it('reads status, headers and body paths, and nothing else', () => {
+    const res = { status: 201, headers: { location: '/a/1' }, body: { itens: [{ id: 9 }] } }
+    expect([pick(res, 'status'), pick(res, 'header.Location'), pick(res, 'body.itens.0.id'), pick(res, 'body.x.y'), pick(res, 'outra'), pick(undefined, 'status')]).toEqual([201, '/a/1', 9, undefined, undefined, undefined])
   })
 })

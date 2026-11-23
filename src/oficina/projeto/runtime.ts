@@ -37,6 +37,13 @@ export interface RequestOutcome {
   /** Wall time, loading the project's modules included. */
   ms: number
   metrics: RequestMetrics
+  /** A Hono app's registered routes (middleware included), to explain a 404; absent for fetch puro or when the code didn't load. */
+  routes?: Route[]
+}
+
+export interface Route {
+  method: string
+  path: string
 }
 
 export interface TableRows {
@@ -48,10 +55,13 @@ export interface TableRows {
 export interface Databases {
   test: PGlite
   dev(projectId: string): Promise<PGlite>
+  /** Closes the project's dev database and deletes it from IndexedDB. */
+  drop(projectId: string): Promise<void>
 }
 
 export type ProjectCall =
   | { op: 'open' | 'migrate' | 'reset' | 'tables'; project: Project }
+  | { op: 'drop'; project: Pick<Project, 'id'> }
   | { op: 'request'; project: Project; request: ProjectRequest }
   | { op: 'rows'; project: Project; table: string; limit: number }
 
@@ -124,13 +134,17 @@ async function request(pg: PGlite, project: Project, spec: ProjectRequest): Prom
   const logs: LogLine[] = []
   const start = performance.now()
   const restore = captureConsole(logs)
+  let routes: Route[] | undefined
   const done = (rest: Pick<RequestOutcome, 'response' | 'error'>): RequestOutcome => {
     const ms = performance.now() - start
     metrics.handlerMs = Math.max(0, metrics.handlerMs + ms)
-    return { ...rest, logs, ms, metrics }
+    return { ...rest, logs, ms, metrics, ...(routes && { routes }) }
   }
   try {
-    const res: unknown = await loadApp(project.files).fetch(buildRequest(spec), { db: measured(toDb(pg), metrics) })
+    const app = loadApp(project.files)
+    const listed = (app as { routes?: unknown }).routes
+    if (Array.isArray(listed)) routes = listed.map(({ method, path }: Route) => ({ method, path }))
+    const res: unknown = await app.fetch(buildRequest(spec), { db: measured(toDb(pg), metrics) })
     if (!(res instanceof Response)) return done({ error: { message: 'fetch(req, env) precisa devolver um Response.' } })
     return done({ response: { status: res.status, headers: Object.fromEntries(res.headers), body: await res.text() } })
   } catch (err) {
@@ -149,6 +163,7 @@ async function run(call: ProjectCall, dbs: Databases): Promise<unknown> {
   const pg = await dbs.dev(call.project.id)
   switch (call.op) {
     case 'open':
+    case 'drop':
       return undefined
     case 'request':
       return request(pg, call.project, call.request)
@@ -168,6 +183,8 @@ async function run(call: ProjectCall, dbs: Databases): Promise<unknown> {
 /** Runs one call; a failure becomes its message, so the host can show it. */
 export async function answer(call: ProjectCall, dbs: Databases): Promise<CallOutput> {
   try {
+    // Dropping must not open the database it deletes.
+    if (call.op === 'drop') return { reply: await dbs.drop(call.project.id) }
     const reply = await run(call, dbs)
     // PGlite doesn't write a transaction's COMMIT through to IndexedDB (migrations and measured queries run in one),
     // so the dev database is flushed before answering; otherwise closing the tab right after loses the last writes.
