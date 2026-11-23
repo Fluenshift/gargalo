@@ -2,10 +2,11 @@ import { PGlite } from '@electric-sql/pglite'
 import { beforeAll, describe, expect, it } from 'vitest'
 import type { TestResult } from '../exercise'
 import { checkTests } from './checklist'
+import { docsFor } from './docs'
 import type { Project } from './project'
 import { BUGGY_BLOCKS, FIXED_BLOCKS, judgeRevisao, revisaoCourse, revisaoRoutes, revisaoStage, revisaoStarter } from './revisao'
 import { executeProjectTests } from './runtime'
-import { evaluateStage } from './stage'
+import { evaluateStage, missingInFile, stepFor, stepTest } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -48,5 +49,49 @@ describe('revisão de código', () => {
   it.each([0, 1, 2, 3])('corrigir só o bug %i só conserta ele', async (bug) => {
     const { results } = await run(mixed([bug]))
     expect(judgeRevisao(results).map((b) => b.fixed)).toEqual([0, 1, 2, 3].map((k) => k === bug))
+  }, 60_000)
+})
+
+describe('passos guiados', () => {
+  const steps = revisaoStage.steps!.map((s) => stepFor(s, 'fetch'))
+  const ids = new Set(docsFor('fetch').flatMap((d) => d.entries.map((e) => e.id)))
+
+  it('guia cada bug, com resumo curto', () => {
+    expect(steps.length).toBeGreaterThanOrEqual(4)
+    expect(steps.length).toBeLessThanOrEqual(8)
+    expect(revisaoStage.statement.length).toBeLessThan(250)
+  })
+
+  it('toda documentação citada existe e o learn é curto', () => {
+    for (const s of steps) {
+      const linked = [...s.learn.matchAll(/\]\(([\w-]+)\)/g)].map((m) => m[1])
+      for (const id of [...(s.docs ?? []), ...linked]) expect(ids.has(id), s.title + ' → ' + id).toBe(true)
+      expect(s.learn.split(/[.!?](?:\s|$)/).filter((t) => t.trim()).length, s.title).toBeLessThanOrEqual(4)
+    }
+  })
+
+  it('a conferência de arquivo passa na referência e falha no projeto com bugs', () => {
+    for (const s of steps) {
+      if (s.check?.kind !== 'file') continue
+      expect(missingInFile(revisaoStage.reference.fetch, s.check), s.title).toBeUndefined()
+      expect(missingInFile(revisaoStarter.files, s.check), s.title).toBeDefined()
+    }
+  })
+
+  it('a conferência de requisição responde como declarado na referência', async () => {
+    const project: Project = { ...revisaoStarter, files: { ...revisaoStarter.files, ...revisaoStage.reference.fetch } }
+    for (const s of steps) {
+      if (s.check?.kind !== 'request') continue
+      const out: TestResult[] = []
+      await executeProjectTests({ project, tests: [stepTest(s.check)], seed: revisaoStage.seed }, pg, ({ index, result }) => (out[index] = result))
+      expect(out[0], s.title).toMatchObject({ passed: true })
+    }
+  }, 60_000)
+
+  it('o ataque do passo de SQL injection só passa na busca corrigida', async () => {
+    const check = steps.find((s) => s.check?.kind === 'request' && s.check.body !== undefined)!.check as Extract<NonNullable<(typeof steps)[number]['check']>, { kind: 'request' }>
+    const out: TestResult[] = []
+    await executeProjectTests({ project: { ...revisaoStarter, files: { ...revisaoStarter.files, 'src/index.ts': mixed([]) } }, tests: [stepTest(check)], seed: revisaoStage.seed }, pg, ({ index, result }) => (out[index] = result))
+    expect(out[0].passed).toBe(false)
   }, 60_000)
 })

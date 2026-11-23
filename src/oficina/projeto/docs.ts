@@ -213,6 +213,38 @@ export const ENV_DOCS: DocSection = {
   throw err
 }`,
     },
+    {
+      id: 'select-colunas', title: 'Escolher as colunas',
+      text: 'SELECT * devolve toda coluna, inclusive as que forem criadas depois. Listar as colunas faz a consulta dizer o que pode sair.',
+      code: `// devolve tudo da tabela
+await db.query('SELECT * FROM clientes')
+// devolve só o que a API pode mostrar
+await db.query('SELECT id, nome FROM clientes')`,
+    },
+    {
+      id: 'sql-injecao', title: 'SQL injection',
+      text: 'Colar a entrada no texto do SQL deixa quem a enviou escrever SQL. Com $1 e params, o valor chega ao banco separado do comando e nunca é executado.',
+      code: `const nome = "x' OR '1'='1"
+// ERRADO: o OR vira parte do SQL e casa todas as linhas
+await db.query("SELECT id FROM clientes WHERE nome = '" + nome + "'")
+// CERTO: o valor é só dado
+await db.query('SELECT id FROM clientes WHERE nome = $1', [nome])`,
+    },
+    {
+      id: 'n-mais-um', title: 'N+1: uma consulta por linha',
+      text: 'Uma consulta dentro de um laço roda uma vez por linha. Busque tudo de uma vez com ANY($1) e agrupe em memória: o número de consultas deixa de crescer com os dados.',
+      code: `// N+1: 1 consulta para os autores + 1 para cada um
+for (const a of autores) a.livros = await db.query('SELECT titulo FROM livros WHERE autor_id = $1', [a.id])
+
+// 2 consultas, não importa quantos autores
+const livros = await db.query('SELECT autor_id, titulo FROM livros WHERE autor_id = ANY($1)', [autores.map((a) => a.id)])`,
+    },
+    {
+      id: 'update-atomico', title: 'Gravar sem ler antes',
+      text: 'Ler, decidir e gravar deixa uma brecha entre a leitura e a gravação: duas requisições passam juntas. Ponha a condição no próprio UPDATE; o banco a confere e grava numa operação só, e RETURNING diz se alguma linha mudou.',
+      code: `const vendeu = await db.query('UPDATE ingressos SET vagas = vagas - 1 WHERE id = $1 AND vagas > 0 RETURNING id', [id])
+if (!vendeu.length) { /* esgotado */ }`,
+    },
   ],
 }
 
