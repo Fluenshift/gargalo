@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import {
   EMPTY_DRAFT,
   METHODS,
@@ -21,10 +21,10 @@ import type { RequestOutcome } from './oficina/projeto/runtime'
 
 const statusClass = (status: number) => (status < 300 ? 'is-ok' : status < 500 ? 'is-warm' : 'is-hot')
 
-/** The project's HTTP client: compose a request, send it to the dev database, read the answer, keep history and saved requests. */
-export function HttpClient({ project, onSent, warming }: { project: Project; onSent: (draft: Draft, outcome: RequestOutcome) => void; warming: boolean }) {
+/** The project's HTTP client: compose a request, send it to the dev database, read the answer, keep history and saved requests. `prefill` opens with that request and sends it once. */
+export function HttpClient({ project, onSent, warming, prefill }: { project: Project; onSent: (draft: Draft, outcome: RequestOutcome) => void; warming: boolean; prefill?: Draft }) {
   const id = useId()
-  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT)
+  const [draft, setDraft] = useState<Draft>(prefill ?? EMPTY_DRAFT)
   const [state, setState] = useState<ClientState>(() => loadClient(project.id))
   const [outcome, setOutcome] = useState<RequestOutcome | null>(null)
   const [sending, setSending] = useState(false)
@@ -40,8 +40,7 @@ export function HttpClient({ project, onSent, warming }: { project: Project; onS
     setProblem('')
   }
 
-  const send = async (e: FormEvent) => {
-    e.preventDefault()
+  const sendDraft = async (draft: Draft) => {
     const built = toRequest(draft)
     if ('error' in built) return setProblem(built.error)
     setProblem(jsonProblem(draft) ?? '')
@@ -52,6 +51,18 @@ export function HttpClient({ project, onSent, warming }: { project: Project; onS
     onSent(draft, result)
     keep({ ...state, history: addToHistory(state.history, { ...draft, status: result.response?.status, ms: result.ms, at: Date.now() }) })
   }
+  const send = (e: FormEvent) => {
+    e.preventDefault()
+    void sendDraft(draft)
+  }
+  // Once per prefill (only a new one sends): StrictMode runs effects twice, and a new prefill is a new object.
+  const sentPrefill = useRef<Draft>(undefined)
+  useEffect(() => {
+    if (!prefill || sentPrefill.current === prefill) return
+    sentPrefill.current = prefill
+    void sendDraft(prefill)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new prefill sends; sendDraft changes every render
+  }, [prefill])
 
   const save = (e: FormEvent) => {
     e.preventDefault()

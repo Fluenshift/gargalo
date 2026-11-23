@@ -8,7 +8,7 @@ import { checkTests } from './checklist'
 import { COURSES, courseOf } from './courses'
 import type { Project } from './project'
 import { executeProjectTests, type ProjectTestsInput } from './runtime'
-import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, statementSteps, splitStatement, type Stage } from './stage'
+import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, statementSteps, splitStatement, missingInFile, stepFor, stepTest, type Stage } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -199,5 +199,24 @@ describe('statementSteps', () => {
   })
   it('gives every course stage at least one step', () => {
     for (const c of COURSES) for (const s of c.stages) expect(statementSteps(s.statement).length, s.id).toBeGreaterThan(0)
+  })
+})
+
+describe('guided steps', () => {
+  it('a file check ignores spaces and quote style, and says what is missing', () => {
+    const files = { 'src/index.ts': 'app.route( "/ola",ola )' }
+    expect(missingInFile(files, { kind: 'file', path: 'src/index.ts', contains: ["app.route('/ola', ola)"] })).toBeUndefined()
+    expect(missingInFile(files, { kind: 'file', path: 'src/index.ts', contains: ['app.notFound(', 'app.onError('] })).toBe('Em src/index.ts ainda falta: app.notFound( · app.onError(')
+    expect(missingInFile(files, { kind: 'file', path: 'src/http.ts' })).toBe('Falta criar src/http.ts.')
+  })
+
+  it('a request check becomes one acceptance test, GET by default, body only when given', () => {
+    expect(stepTest({ kind: 'request', path: '/nada', status: 404 })).toEqual({ name: 'GET /nada responde 404', requests: [{ request: { method: undefined, path: '/nada' }, expect: { status: 404, body: undefined } }] })
+  })
+
+  it("a step takes its framework's variant over the shared fields", () => {
+    const step = { title: 'T', learn: 'Hono.', docs: ['a'], byFramework: { fetch: { learn: 'Fetch.' } } }
+    expect(stepFor(step, 'fetch')).toMatchObject({ title: 'T', learn: 'Fetch.', docs: ['a'] })
+    expect(stepFor(step, 'hono').learn).toBe('Hono.')
   })
 })

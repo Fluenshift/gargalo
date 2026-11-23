@@ -5,14 +5,58 @@ import type { TestCase, TestResult } from '../exercise'
 import { keepResult } from '../progress'
 import type { StartWorker } from '../runner'
 import { checkTests, evaluateChecklist, type CheckOutcome, type CheckRef } from './checklist'
+import type { Method } from './http'
 import type { Framework, Project } from './project'
 import { runTests } from './runner'
+
+/** What "Conferir passo" looks at: a file (exists, and has these snippets), or one request on a fresh test database. */
+export type StepCheck =
+  | { kind: 'file'; path: string; contains?: string[] }
+  | { kind: 'request'; method?: Method; path: string; status: number; body?: unknown }
+
+/** One guided step: one concept, why it matters, the pattern in code, where the docs explain it, and a way to confirm it. */
+export interface GuidedStep {
+  title: string
+  /** The concept, 2 to 4 short sentences, the why before the how. `[term](doc-id)` links a term to its docs entry. */
+  learn: string
+  /** "Abrir <arquivo>": opens it, created empty when missing. */
+  file?: string
+  /** The pattern, commented line by line; `note` says what changes in the player's task. */
+  example?: { file?: string; code: string; note?: string }
+  /** Ids of docsFor() entries. */
+  docs?: string[]
+  /** A request check also gives "Testar agora", which sends it from the Requisição tab. */
+  check?: StepCheck
+  /** What differs in one framework; the rest is shared. */
+  byFramework?: Partial<Record<Framework, Partial<Omit<GuidedStep, 'title' | 'byFramework'>>>>
+}
+
+/** The step as the player's framework shows it. */
+export const stepFor = (step: GuidedStep, framework: Framework): GuidedStep => ({ ...step, ...step.byFramework?.[framework] })
+
+// Snippets match ignoring spaces and quote style, so "c.json({ a: 1 })" and 'c.json({a:1})' are the same.
+const squash = (code: string) => code.replace(/\s+/g, '').replace(/["`]/g, "'")
+
+/** What a file check finds missing, in Portuguese; undefined when it passes. */
+export function missingInFile(files: Record<string, string>, check: Extract<StepCheck, { kind: 'file' }>): string | undefined {
+  if (!Object.hasOwn(files, check.path)) return `Falta criar ${check.path}.`
+  const code = squash(files[check.path])
+  const missing = (check.contains ?? []).filter((s) => !code.includes(squash(s)))
+  return missing.length ? `Em ${check.path} ainda falta: ${missing.join(' · ')}` : undefined
+}
+
+/** A request check as an acceptance test, so it runs like the stage's own. */
+export const stepTest = (check: Extract<StepCheck, { kind: 'request' }>): TestCase => ({
+  name: `${check.method ?? 'GET'} ${check.path} responde ${check.status}`,
+  requests: [{ request: { method: check.method, path: check.path }, expect: { status: check.status, body: check.body } }],
+})
 
 export interface Stage {
   id: string
   title: string
-  /** What to build, in Portuguese. */
+  /** What to build, in Portuguese; with `steps`, a 1-2 sentence summary, otherwise numbered steps (splitStatement). */
   statement: string
+  steps?: GuidedStep[]
   /** Paths this stage creates or expects, e.g. `src/routes/produtos.ts`, `migrations/002_pedidos.sql`. */
   files: string[]
   /** Acceptance tests; `sequential` ones carry values between requests with `save` and `{{name}}`. */
