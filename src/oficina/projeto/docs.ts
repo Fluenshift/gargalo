@@ -84,6 +84,23 @@ app.onError((err, c) => {
   {
     title: 'Hono: banco',
     entries: [{ id: 'hono-db', title: 'c.env.db', text: 'O banco chega no Env, em c.env.db.', code: `const produtos = await c.env.db.query('SELECT id, nome FROM produtos')` }],
+  },  {
+    title: 'Hono: middleware',
+    entries: [
+      {
+        id: 'hono-middleware', title: 'Middleware',
+        text: "Uma função que roda antes do handler. Se lançar um erro, o handler nem começa e o app.onError responde; com await next(), segue. use('*') vale para todas as rotas do roteador; passado na rota, só para ela.",
+        code: String.raw`import type { MiddlewareHandler } from 'hono'
+
+const registrar: MiddlewareHandler = async (c, next) => {
+  console.log(c.req.method, c.req.path)
+  await next() // segue para o handler
+}
+
+rotas.use('*', registrar)                  // todas as rotas deste roteador
+rotas.post('/', registrar, async (c) => …) // só esta rota`,
+      },
+    ],
   },
 ]
 
@@ -126,6 +143,17 @@ return Response.json({ title: 'Rota não encontrada', status: 404 }, { status: 4
     entries: [
       { id: 'fetch-json', title: 'JSON com status', text: 'Response.json(corpo, { status, headers }); sem status, 200.', code: `return Response.json(produto, { status: 201, headers: { Location: \`/produtos/\${produto.id}\` } })` },
       { id: 'fetch-sem-corpo', title: 'Sem corpo', text: '204 não tem corpo.', code: `return new Response(null, { status: 204 })` },
+    ],
+  },  {
+    title: 'fetch puro: o id no caminho',
+    entries: [
+      {
+        id: 'fetch-param', title: 'Separar o caminho em pedaços',
+        text: "split('/') quebra o caminho: o primeiro pedaço é vazio, o segundo é o recurso e o terceiro, o id (texto, ou undefined). O index escolhe a função pelo recurso e passa o id adiante.",
+        code: String.raw`// '/produtos/7'.split('/') é ['', 'produtos', '7']
+const [, recurso, id] = new URL(req.url).pathname.split('/')
+if (recurso === 'produtos') return await produtos(req, env, id)`,
+      },
     ],
   },
 ]
@@ -248,5 +276,148 @@ if (!vendeu.length) { /* esgotado */ }`,
   ],
 }
 
+/** What the E-commerce stages after Health teach: plain TypeScript, SQL and zod, the same in both frameworks. */
+const PROJETO_DOCS: DocSection[] = [
+  {
+    title: 'API: status e ids',
+    entries: [
+      {
+        id: 'status-http', title: 'Status HTTP da API',
+        text: 'O número diz o resultado. 2xx deu certo, 4xx o cliente errou, 5xx o servidor errou.',
+        code: String.raw`200 OK              leu ou atualizou, com corpo
+201 Created         criou; o cabeçalho Location diz onde o recurso está
+204 No Content      apagou; não leva corpo
+400 Bad Request     a entrada tem forma errada (validação)
+401 Unauthorized    não sei quem é você (sem token, token inválido ou vencido)
+403 Forbidden       sei quem é, mas não pode (papel errado)
+404 Not Found       o recurso não existe
+409 Conflict        bate com algo que já existe (e-mail repetido)
+422 Unprocessable   a forma está certa, mas não dá para processar (produto inexistente)`,
+      },
+      {
+        id: 'achado-404', title: 'Id inexistente vira 404',
+        text: 'O id da URL chega como texto, e uma consulta sem linha dá undefined. Duas funções pequenas lançam o 404 uma vez só, e o app.onError (ou o catch) responde.',
+        code: String.raw`export function idDe(texto: string): number {
+  const id = Number(texto) // Number('abc') é NaN
+  if (!Number.isInteger(id)) throw new ErroHttp(404, 'Recurso não encontrado')
+  return id
+}
+
+export function achado<T>(valor: T | undefined, nome: string): T {
+  if (valor === undefined) throw new ErroHttp(404, nome + ' não encontrado')
+  return valor
+}`,
+      },
+    ],
+  },
+  {
+    title: 'SQL e migrações',
+    entries: [
+      {
+        id: 'db-camada', title: 'Rotas e SQL em arquivos separados',
+        text: 'A rota cuida de HTTP (ler a requisição, escolher o status); o SQL fica em funções de src/db/, que recebem o db. A rota fica curta e o banco, fácil de testar.',
+        code: String.raw`// src/db/categorias.ts: só SQL
+export async function buscarCategoria(db: Db, id: number) { … }
+
+// src/routes/categorias.ts: só HTTP
+const categoria = achado(await buscarCategoria(c.env.db, idDe(id)), 'Categoria')`,
+      },
+      {
+        id: 'db-colunas', title: 'SELECT com colunas por nome',
+        text: 'SELECT * devolve toda coluna, inclusive as que você adicionar depois (uma senha, por exemplo). Liste as colunas que a resposta precisa.',
+        code: String.raw`'SELECT id, nome, preco_centavos FROM produtos WHERE id = $1'`,
+      },
+      {
+        id: 'migracao-sql', title: 'CREATE TABLE e chave estrangeira',
+        text: 'Uma migração é um arquivo SQL em migrations/, aplicado na aba Banco. REFERENCES liga uma coluna à chave de outra tabela: o banco recusa um valor que não existe lá. CHECK e UNIQUE fazem o banco recusar dados ruins.',
+        code: String.raw`CREATE TABLE itens (
+  id serial PRIMARY KEY,
+  pedido_id int NOT NULL REFERENCES pedidos (id), -- precisa existir em pedidos
+  quantidade int NOT NULL CHECK (quantidade > 0), -- nunca 0 nem negativo
+  codigo text NOT NULL UNIQUE                     -- nunca repetido
+);`,
+      },
+      {
+        id: 'on-conflict', title: 'ON CONFLICT DO NOTHING',
+        text: 'Se o INSERT violaria um UNIQUE, em vez de erro ele é ignorado e RETURNING devolve nada: a função devolve undefined e a rota responde 409. É mais seguro que um SELECT antes, que duas requisições simultâneas atravessam juntas.',
+        code: String.raw`const [novo] = await db.query(
+  'INSERT INTO membros (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING id, email',
+  [email],
+)
+if (!novo) throw new ErroHttp(409, 'E-mail já cadastrado')`,
+      },
+      {
+        id: 'paginacao-cursor', title: 'Paginação por cursor',
+        text: 'O cliente guarda o id do último item que viu e pede os seguintes. Leia uma linha a mais que o limite: se ela vier, há próxima página. Limite o tamanho máximo no módulo do banco.',
+        code: String.raw`const limite = Math.min(pedido, 50) // teto
+const linhas = await db.query('SELECT id, texto FROM comentarios WHERE id > $1 ORDER BY id LIMIT $2', [cursor, limite + 1])
+const itens = linhas.slice(0, limite)
+const proximoCursor = linhas.length > limite ? itens[limite - 1].id : null`,
+      },
+      {
+        id: 'filtro-opcional', title: 'Filtro opcional numa consulta só',
+        text: 'Cada filtro é (parâmetro IS NULL OR condição): com null, vale tudo; com valor, filtra. Assim a consulta é uma só, com ou sem filtros.',
+        code: String.raw`'SELECT id, texto FROM comentarios WHERE ($1::text IS NULL OR autor ILIKE $1) ORDER BY id'
+// params: [autor ? '%' + autor + '%' : null]`,
+      },
+    ],
+  },
+  {
+    title: 'Validação com zod',
+    entries: [
+      {
+        id: 'zod-schema', title: 'z.object: a forma da entrada',
+        text: 'zod confere em tempo de execução se um dado tem a forma esperada. Cada campo é um tipo com regras encadeadas.',
+        code: String.raw`import { z } from 'zod'
+
+const categoriaSchema = z.object({
+  nome: z.string().min(1),
+  ordem: z.number().int().min(0),
+  tags: z.array(z.string()).min(1),
+})`,
+      },
+      {
+        id: 'zod-safeparse', title: 'safeParse',
+        text: 'Não lança: devolve { success: true, data } ou { success: false, error }. Os problemas estão em error.issues, cada um com path (onde) e message (o quê).',
+        code: String.raw`const r = categoriaSchema.safeParse(dados)
+if (!r.success) console.log(r.error.issues) // [{ path: ['nome'], message: '…' }]
+else console.log(r.data)                    // já com o tipo do schema`,
+      },
+      {
+        id: 'zod-coerce', title: 'z.coerce: texto vira número',
+        text: 'Tudo que vem na URL é texto. z.coerce.number() converte antes de validar; default dá o valor quando o parâmetro não veio.',
+        code: String.raw`const paginaSchema = z.object({
+  pagina: z.coerce.number().int().min(1).default(1), // '2' vira 2; ausente vira 1
+  busca: z.string().optional(),
+})
+paginaSchema.parse(Object.fromEntries(new URL(req.url).searchParams))`,
+      },
+    ],
+  },
+  {
+    title: 'Senhas e tokens',
+    entries: [
+      {
+        id: 'auth-401-403', title: '401 e 403',
+        text: 'Autenticação responde "quem é você?"; autorização, "o que você pode?". 401: sem token, token inválido ou vencido. 403: token válido, mas o papel não pode.',
+        code: String.raw`if (!token) throw new ErroHttp(401, 'Não autenticado')
+if (sessao.papel !== 'admin') throw new ErroHttp(403, 'Sem permissão')`,
+      },
+      {
+        id: 'hash-senha', title: 'Hash de senha com sal',
+        text: 'Um hash é uma conta de mão única: confere a senha, mas não a recupera. O sal aleatório por usuário faz senhas iguais terem hashes diferentes. Use um algoritmo lento, como PBKDF2, para dificultar a força bruta.',
+        code: String.raw`const chave = await crypto.subtle.importKey('raw', new TextEncoder().encode(senha), 'PBKDF2', false, ['deriveBits'])
+const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: sal, iterations: 100_000 }, chave, 256)`,
+      },
+      {
+        id: 'token-assinado', title: 'Token assinado',
+        text: 'dados.assinatura: os dados (quem é, validade) em base64 e o HMAC deles com um segredo só do servidor. Quem altera os dados não sabe refazer a assinatura. Para conferir, refaça a assinatura e compare; depois confira a validade.',
+        code: String.raw`const dados = btoa(JSON.stringify({ sub: 1, exp: Date.now() + 3_600_000 }))
+const token = dados + '.' + (await assinar(dados)) // enviado em Authorization: Bearer <token>`,
+      },
+    ],
+  },
+]
+
 /** The reference beside the editor: the framework's sections, the API's errors, then the Env. */
-export const docsFor = (framework: Framework): DocSection[] => [...(framework === 'hono' ? HONO : FETCH), ERROS_DOCS, ENV_DOCS]
+export const docsFor = (framework: Framework): DocSection[] => [...(framework === 'hono' ? HONO : FETCH), ERROS_DOCS, ENV_DOCS, ...PROJETO_DOCS]

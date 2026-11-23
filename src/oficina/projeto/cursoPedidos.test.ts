@@ -73,10 +73,12 @@ describe('curso do projeto 1', () => {
 describe('passos guiados', () => {
   const guided = cursoPedidos.stages.filter((s) => s.steps)
   // Where the player starts each stage: the starter, then the previous stage's reference.
-  const before = (framework: Framework, stage: Stage) => (stage.id === 'primeiros-passos' ? starter('antes', framework).files : referencia(framework, cursoPedidos.stages.indexOf(stage) - 1))
+  // Helpers the Health reference already carries (idDe, achado, extra) are taught later: those steps are checked against the starter.
+  const ENSINADOS_DEPOIS = ['idDe e achado em src/http.ts', 'ErroHttp com campos extras']
+  const before = (framework: Framework, stage: Stage, title = '') => (stage.id === 'primeiros-passos' || ENSINADOS_DEPOIS.includes(title) ? starter('antes', framework).files : referencia(framework, cursoPedidos.stages.indexOf(stage) - 1))
 
-  it('pilots Primeiros passos and Health, with a short statement', () => {
-    expect(guided.map((s) => s.id)).toEqual(['primeiros-passos', 'health'])
+  it('guides every stage, with a short statement', () => {
+    expect(guided.map((s) => s.id)).toEqual(cursoPedidos.stages.map((s) => s.id))
     for (const s of guided) expect(s.statement.length, s.id).toBeLessThan(200)
   })
 
@@ -106,7 +108,7 @@ describe('passos guiados', () => {
           for (const s of steps) {
             if (s.check?.kind !== 'file') continue
             expect(missingInFile(stage.reference[framework], s.check), s.title).toBeUndefined()
-            expect(missingInFile(before(framework, stage), s.check), s.title).toBeDefined()
+            expect(missingInFile(before(framework, stage, s.title), s.check), s.title).toBeDefined()
           }
         })
 
