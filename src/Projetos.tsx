@@ -13,7 +13,11 @@ import {
   saveProjectList,
   starter,
 } from './oficina/projeto/project'
-import { forgetClient } from './oficina/projeto/http'
+import { exportFiles, slugOf } from './oficina/projeto/exportar'
+import { forgetClient, loadClient } from './oficina/projeto/http'
+import { buildOpenApi, requestsOf } from './oficina/projeto/openapi'
+import { loadSavedResults } from './oficina/progress'
+import { zip } from './oficina/projeto/zip'
 import { applyMigrations, dropDev, listTables, prewarm, resetDev, tableRows } from './oficina/projeto/runner'
 import { Etapa } from './Etapa'
 import { HttpClient } from './HttpClient'
@@ -326,6 +330,16 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     setLogs((l) => [...l, head, ...outcome.logs, ...error])
   }
 
+  /** "Baixar projeto": a zip that runs outside the browser (see exportar.ts), made here and handed over as a download. */
+  const download = () => {
+    const { history, saved } = loadClient(project.id)
+    const openapi = buildOpenApi({ title: entry.name, routes, requests: requestsOf(history, saved) })
+    const bytes = zip(exportFiles(project, { name: entry.name, course: courseOf(entry.course), results: loadSavedResults(), openapi }))
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/zip' }))
+    Object.assign(document.createElement('a'), { href: url, download: `${slugOf(entry.name)}.zip` }).click()
+    setTimeout(() => URL.revokeObjectURL(url), 0) // revoking in the same tick cancels the download in some browsers
+  }
+
   const rows = treeOf(Object.keys(files))
 
   return (
@@ -336,6 +350,9 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
         </a>
         <h2 className="oficina__title">{entry.name}</h2>
         <span className="projeto__framework">{frameworkName(project.framework)}</span>
+        <button type="button" className="btn btn--ghost btn--small" onClick={download}>
+          Baixar projeto
+        </button>
       </div>
 
       <section className="projeto__files" aria-labelledby="projeto-files">
