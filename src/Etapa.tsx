@@ -133,14 +133,24 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
         {s.docs && (
           <p className="passos__docs">
             Ver na documentação:{' '}
-            {s.docs.map((id, i) => (
+            {s.docs.map((id, i) => {
+              const e = docs.find((d) => d.id === id)
+              return (
               <Fragment key={id}>
+                {e?.url && (
+                  <>
+                    <a className="levels__map" href={e.url} target="_blank" rel="noopener noreferrer">
+                      {e.title} ↗
+                    </a>{' '}
+                  </>
+                )}
                 <button type="button" className="levels__map" onClick={() => onDoc(id)}>
-                  {docs.find((e) => e.id === id)?.title ?? id}
+                  {e?.url ? 'resumo' : (e?.title ?? id)}
                 </button>
                 {i < s.docs!.length - 1 && ' · '}
               </Fragment>
-            ))}
+              )
+            })}
           </p>
         )}
         {(s.file || s.check) && (
@@ -497,6 +507,13 @@ export function Etapa({
                 <p>
                   <strong>{e.title}.</strong> {e.text}
                 </p>
+                {e.url && (
+                  <p>
+                    <a className="levels__map" href={e.url} target="_blank" rel="noopener noreferrer">
+                      Documentação oficial ↗
+                    </a>
+                  </p>
+                )}
                 {e.code && <pre className="code code--wrap">{e.code}</pre>}
               </div>
             ))}

@@ -8,6 +8,8 @@ export interface DocEntry {
   title: string
   text: string
   code?: string
+  /** The official page for exactly this thing; absent for our own helpers. */
+  url?: string
 }
 
 export interface DocSection {
@@ -20,7 +22,7 @@ const HONO: DocSection[] = [
     title: 'Hono: app e rotas',
     entries: [
       {
-        id: 'hono-app', title: 'Criar o app',
+        id: 'hono-app', url: 'https://hono.dev/docs/api/hono', title: 'Criar o app',
         text: 'O app é um Hono com o tipo do Env; src/index.ts exporta ele por padrão.',
         code: `import { Hono } from 'hono'
 import type { Env } from './env'
@@ -29,7 +31,7 @@ const app = new Hono<{ Bindings: Env }>()
 export default app`,
       },
       {
-        id: 'hono-rotas', title: 'Rotas',
+        id: 'hono-rotas', url: 'https://hono.dev/docs/api/routing', title: 'Rotas',
         text: 'Um método por verbo HTTP. O handler recebe o contexto c e devolve uma resposta.',
         code: `app.get('/produtos', (c) => c.json([]))
 app.post('/produtos', async (c) => { … })
@@ -37,7 +39,7 @@ app.put('/produtos/:id', …)
 app.delete('/produtos/:id', …)`,
       },
       {
-        id: 'hono-route', title: 'Rotas em outro arquivo',
+        id: 'hono-route', url: 'https://hono.dev/docs/api/routing#grouping', title: 'Rotas em outro arquivo',
         text: 'Cada arquivo cria um Hono e o index monta ele num prefixo com app.route.',
         code: `// src/routes/produtos.ts
 export const produtos = new Hono<{ Bindings: Env }>()
@@ -52,21 +54,21 @@ app.route('/produtos', produtos)`,
   {
     title: 'Hono: ler a requisição',
     entries: [
-      { id: 'hono-param', title: 'Parâmetro do caminho', text: 'Vem sempre como texto: converta antes de usar.', code: `const id = Number(c.req.param('id'))` },
-      { id: 'hono-query', title: 'Query string', text: 'Texto ou undefined quando não veio.', code: `const limite = Number(c.req.query('limite') ?? 20)` },
-      { id: 'hono-body', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = await c.req.json<{ nome: string }>()` },
-      { id: 'hono-header', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas.', code: `const token = c.req.header('Authorization')` },
+      { id: 'hono-param', url: 'https://hono.dev/docs/api/request#param', title: 'Parâmetro do caminho', text: 'Vem sempre como texto: converta antes de usar.', code: `const id = Number(c.req.param('id'))` },
+      { id: 'hono-query', url: 'https://hono.dev/docs/api/request#query', title: 'Query string', text: 'Texto ou undefined quando não veio.', code: `const limite = Number(c.req.query('limite') ?? 20)` },
+      { id: 'hono-body', url: 'https://hono.dev/docs/api/request#json', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = await c.req.json<{ nome: string }>()` },
+      { id: 'hono-header', url: 'https://hono.dev/docs/api/request#header', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas.', code: `const token = c.req.header('Authorization')` },
     ],
   },
   {
     title: 'Hono: responder',
     entries: [
-      { id: 'hono-json', title: 'JSON com status', text: 'c.json(corpo, status); sem status, 200.', code: `return c.json(produto, 201)` },
-      { id: 'hono-header-resposta', title: 'Cabeçalho na resposta', text: 'Chame c.header antes de devolver.', code: `c.header('Location', \`/produtos/\${produto.id}\`)
+      { id: 'hono-json', url: 'https://hono.dev/docs/api/context#json', title: 'JSON com status', text: 'c.json(corpo, status); sem status, 200.', code: `return c.json(produto, 201)` },
+      { id: 'hono-header-resposta', url: 'https://hono.dev/docs/api/context#header', title: 'Cabeçalho na resposta', text: 'Chame c.header antes de devolver.', code: `c.header('Location', \`/produtos/\${produto.id}\`)
 return c.json(produto, 201)` },
-      { id: 'hono-sem-corpo', title: 'Sem corpo', text: '204 não tem corpo.', code: `return c.body(null, 204)` },
+      { id: 'hono-sem-corpo', url: 'https://hono.dev/docs/api/context#body', title: 'Sem corpo', text: '204 não tem corpo.', code: `return c.body(null, 204)` },
       {
-        id: 'hono-erros', title: 'Erros com HTTPException',
+        id: 'hono-erros', url: 'https://hono.dev/docs/api/exception', title: 'Erros com HTTPException',
         text: 'Lance de qualquer lugar; o Hono responde com o status. app.onError trata todos num lugar só.',
         code: `import { HTTPException } from 'hono/http-exception'
 
@@ -78,7 +80,7 @@ app.onError((err, c) => {
   return c.json({ type: 'about:blank', title: 'Erro interno', status: 500 }, 500, problem)
 })`,
       },
-      { id: 'hono-notfound', title: 'Rota não encontrada', text: 'Sem rota, o Hono responde 404 "404 Not Found"; app.notFound troca essa resposta.', code: `app.notFound((c) => c.json({ title: 'Rota não encontrada', status: 404 }, 404))` },
+      { id: 'hono-notfound', url: 'https://hono.dev/docs/api/hono#not-found', title: 'Rota não encontrada', text: 'Sem rota, o Hono responde 404 "404 Not Found"; app.notFound troca essa resposta.', code: `app.notFound((c) => c.json({ title: 'Rota não encontrada', status: 404 }, 404))` },
     ],
   },
   {
@@ -88,7 +90,7 @@ app.onError((err, c) => {
     title: 'Hono: middleware',
     entries: [
       {
-        id: 'hono-middleware', title: 'Middleware',
+        id: 'hono-middleware', url: 'https://hono.dev/docs/guides/middleware', title: 'Middleware',
         text: "Uma função que roda antes do handler. Se lançar um erro, o handler nem começa e o app.onError responde; com await next(), segue. use('*') vale para todas as rotas do roteador; passado na rota, só para ela.",
         code: String.raw`import type { MiddlewareHandler } from 'hono'
 
@@ -120,7 +122,7 @@ export default {
 }`,
       },
       {
-        id: 'fetch-rotear', title: 'Rotear por método e caminho',
+        id: 'fetch-rotear', url: 'https://developer.mozilla.org/pt-BR/docs/Web/API/URL', title: 'Rotear por método e caminho',
         text: 'Leia o caminho com new URL(req.url) e decida com if; um regex pega o parâmetro.',
         code: `const { pathname, searchParams } = new URL(req.url)
 if (req.method === 'GET' && pathname === '/produtos') return listar(env)
@@ -133,16 +135,16 @@ return Response.json({ title: 'Rota não encontrada', status: 404 }, { status: 4
   {
     title: 'fetch puro: ler a requisição',
     entries: [
-      { id: 'fetch-query', title: 'Query string', text: 'searchParams.get devolve texto ou null.', code: `const limite = Number(searchParams.get('limite') ?? 20)` },
-      { id: 'fetch-body', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = (await req.json()) as { nome: string }` },
-      { id: 'fetch-header', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas; null quando não veio.', code: `const token = req.headers.get('Authorization')` },
+      { id: 'fetch-query', url: 'https://developer.mozilla.org/pt-BR/docs/Web/API/URLSearchParams/get', title: 'Query string', text: 'searchParams.get devolve texto ou null.', code: `const limite = Number(searchParams.get('limite') ?? 20)` },
+      { id: 'fetch-body', url: 'https://developer.mozilla.org/en-US/docs/Web/API/Request/json', title: 'Corpo JSON', text: 'Lança erro se o corpo não for JSON válido.', code: `const body = (await req.json()) as { nome: string }` },
+      { id: 'fetch-header', url: 'https://developer.mozilla.org/en-US/docs/Web/API/Headers/get', title: 'Cabeçalho', text: 'Nome sem diferença de maiúsculas; null quando não veio.', code: `const token = req.headers.get('Authorization')` },
     ],
   },
   {
     title: 'fetch puro: responder',
     entries: [
-      { id: 'fetch-json', title: 'JSON com status', text: 'Response.json(corpo, { status, headers }); sem status, 200.', code: `return Response.json(produto, { status: 201, headers: { Location: \`/produtos/\${produto.id}\` } })` },
-      { id: 'fetch-sem-corpo', title: 'Sem corpo', text: '204 não tem corpo.', code: `return new Response(null, { status: 204 })` },
+      { id: 'fetch-json', url: 'https://developer.mozilla.org/en-US/docs/Web/API/Response/json_static', title: 'JSON com status', text: 'Response.json(corpo, { status, headers }); sem status, 200.', code: `return Response.json(produto, { status: 201, headers: { Location: \`/produtos/\${produto.id}\` } })` },
+      { id: 'fetch-sem-corpo', url: 'https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Reference/Status/204', title: 'Sem corpo', text: '204 não tem corpo.', code: `return new Response(null, { status: 204 })` },
     ],
   },  {
     title: 'fetch puro: o id no caminho',
@@ -163,7 +165,7 @@ export const ERROS_DOCS: DocSection = {
   title: 'Erros da API',
   entries: [
     {
-      id: 'problem-json',
+      id: 'problem-json', url: 'https://www.rfc-editor.org/rfc/rfc9457.html',
       title: 'problem+json',
       text: 'O formato padrão de erro de API (RFC 9457): Content-Type application/problem+json e um corpo com type, title e status (detail é opcional). Um formato só deixa o cliente tratar todo erro do mesmo jeito.',
       code: `return Response.json(
@@ -172,7 +174,7 @@ export const ERROS_DOCS: DocSection = {
 )`,
     },
     {
-      id: 'erro-lancado',
+      id: 'erro-lancado', url: 'https://developer.mozilla.org/pt-BR/docs/Web/JavaScript/Reference/Statements/try...catch',
       title: 'Lançar e capturar um erro',
       text: 'throw interrompe a função e sobe até o primeiro catch. Uma classe que estende Error carrega dados a mais (o status, por exemplo); instanceof diz qual erro chegou.',
       code: `class ErroHttp extends Error {
@@ -190,7 +192,7 @@ try {
 }`,
     },
     {
-      id: 'response-pronta',
+      id: 'response-pronta', url: 'https://developer.mozilla.org/pt-BR/docs/Web/API/Response',
       title: 'Devolver um Response pronto',
       text: 'Response é o tipo padrão da web: o fetch puro sempre devolve um. No Hono, um handler também pode devolver um Response em vez de c.json, então a mesma função de erro serve aos dois.',
       code: `app.get('/x', () => Response.json({ ok: true }, { status: 200 }))`,
@@ -211,14 +213,14 @@ return deErro(err) // no catch, ou em app.onError(deErro)`,
 const fatura = achado(await buscarFatura(db, id), 'Fatura') // ou 404`,
     },
     {
-      id: 'zod-refine',
+      id: 'zod-refine', url: 'https://zod.dev/api#refinements',
       title: 'Zod: regra entre campos',
       text: 'refine roda depois dos campos individuais e recebe o objeto inteiro. O path diz em qual campo o erro aparece.',
       code: `z.object({ origem: z.number(), destino: z.number() })
   .refine((r) => r.origem !== r.destino, { message: 'Devem ser diferentes.', path: ['destino'] })`,
     },
     {
-      id: 'zod-validar',
+      id: 'zod-validar', url: 'https://zod.dev/basics#parsing-data',
       title: 'Zod: safeParse e o 400',
       text: 'safeParse não lança erro: devolve { success, data } ou { success: false, error }. Converta a falha em ErroHttp 400, com a lista de campos no extra, e o deErro a responde em problem+json.',
       code: `const r = cartaoSchema.safeParse(dados)
@@ -252,12 +254,12 @@ export const ENV_DOCS: DocSection = {
 )`,
     },
     {
-      id: 'returning', title: 'RETURNING',
+      id: 'returning', url: 'https://www.postgresql.org/docs/current/dml-returning.html', title: 'RETURNING',
       text: 'INSERT e UPDATE devolvem a linha gravada com RETURNING.',
       code: `const [criado] = await db.query('INSERT INTO produtos (nome) VALUES ($1) RETURNING id, nome', [nome])`,
     },
     {
-      id: 'db-transaction', title: 'db.transaction',
+      id: 'db-transaction', url: 'https://www.postgresql.org/docs/current/tutorial-transactions.html', title: 'db.transaction',
       text: 'Tudo dentro grava junto ou nada grava: um erro desfaz tudo. Use o tx que a função recebe.',
       code: `await db.transaction(async (tx) => {
   const [pedido] = await tx.query<{ id: number }>('INSERT INTO pedidos DEFAULT VALUES RETURNING id')
@@ -265,7 +267,7 @@ export const ENV_DOCS: DocSection = {
 })`,
     },
     {
-      id: 'db-erros', title: 'Erros do banco',
+      id: 'db-erros', url: 'https://www.postgresql.org/docs/current/errcodes-appendix.html', title: 'Erros do banco',
       text: 'O erro tem code do Postgres: 23505 valor repetido, 23502 campo obrigatório nulo, 23503 referência inválida.',
       code: `try { … } catch (err) {
   if ((err as { code?: string }).code === '23505') return c.json({ title: 'Já existe', status: 409 }, 409)
@@ -273,7 +275,7 @@ export const ENV_DOCS: DocSection = {
 }`,
     },
     {
-      id: 'select-colunas', title: 'Escolher as colunas',
+      id: 'select-colunas', url: 'https://www.postgresql.org/docs/current/sql-select.html', title: 'Escolher as colunas',
       text: 'SELECT * devolve toda coluna, inclusive as que forem criadas depois. Listar as colunas faz a consulta dizer o que pode sair.',
       code: `// devolve tudo da tabela
 await db.query('SELECT * FROM clientes')
@@ -299,13 +301,13 @@ for (const a of autores) a.livros = await db.query('SELECT titulo FROM livros WH
 const livros = await db.query('SELECT autor_id, titulo FROM livros WHERE autor_id = ANY($1)', [autores.map((a) => a.id)])`,
     },
     {
-      id: 'update-atomico', title: 'Gravar sem ler antes',
+      id: 'update-atomico', url: 'https://www.postgresql.org/docs/current/sql-update.html', title: 'Gravar sem ler antes',
       text: 'Ler, decidir e gravar deixa uma brecha entre a leitura e a gravação: duas requisições passam juntas. Ponha a condição no próprio UPDATE; o banco a confere e grava numa operação só, e RETURNING diz se alguma linha mudou.',
       code: `const vendeu = await db.query('UPDATE ingressos SET vagas = vagas - 1 WHERE id = $1 AND vagas > 0 RETURNING id', [id])
 if (!vendeu.length) { /* esgotado */ }`,
     },
     {
-      id: 'sql-migracao',
+      id: 'sql-migracao', url: 'https://www.postgresql.org/docs/current/sql-createtable.html',
       title: 'Migração: criar a tabela',
       text: 'Cada arquivo em migrations/ roda uma vez, em ordem de nome. CHECK recusa valores fora da regra; REFERENCES (chave estrangeira) recusa uma linha que aponta para outra inexistente; UNIQUE recusa duplicata.',
       code: `CREATE TABLE faturas (
@@ -316,14 +318,14 @@ if (!vendeu.length) { /* esgotado */ }`,
 );`,
     },
     {
-      id: 'dinheiro-centavos',
+      id: 'dinheiro-centavos', url: 'https://www.postgresql.org/docs/current/datatype-numeric.html',
       title: 'Dinheiro em centavos inteiros',
       text: 'Ponto flutuante não representa 0,10 exatamente, e as somas acumulam erro. Guarde o valor como inteiro de centavos e converta só para exibir.',
       code: `0.1 + 0.2 // 0.30000000000000004
 10 + 20 // 30 centavos: exato`,
     },
     {
-      id: 'corrida-saldo',
+      id: 'corrida-saldo', url: 'https://www.postgresql.org/docs/current/explicit-locking.html',
       title: 'Condição de corrida no saldo',
       text: 'Ler o saldo, conferir no código e gravar depois deixa uma janela: duas requisições leem o mesmo valor e as duas passam. O banco do navegador roda uma transação por vez e não mostra isso; o checklist confere o SQL de forma estática.',
       code: `// leitura e gravação separadas: duas requisições passam juntas
@@ -331,7 +333,7 @@ const [c] = await tx.query('SELECT saldo_centavos FROM contas WHERE id = $1', [i
 if (c.saldo_centavos >= valor) await tx.query('UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2', [valor, id])`,
     },
     {
-      id: 'update-condicional',
+      id: 'update-condicional', url: 'https://www.postgresql.org/docs/current/sql-update.html',
       title: 'UPDATE condicional',
       text: 'Ponha a conferência no próprio UPDATE: o banco confere e grava num comando só. RETURNING vazio significa que nenhuma linha mudou.',
       code: `const [conta] = await tx.query(
@@ -341,13 +343,13 @@ if (c.saldo_centavos >= valor) await tx.query('UPDATE contas SET saldo_centavos 
 if (!conta) { /* a conta não existe ou o saldo não bastou */ }`,
     },
     {
-      id: 'for-update-ordem',
+      id: 'for-update-ordem', url: 'https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS',
       title: 'FOR UPDATE e a ordem dos locks',
       text: 'FOR UPDATE trava as linhas até o fim da transação. Duas transações que travam as mesmas linhas em ordens diferentes podem esperar uma pela outra (deadlock); travar sempre em ordem de id evita isso.',
       code: `await tx.query('SELECT id FROM contas WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[de, para]])`,
     },
     {
-      id: 'idempotencia',
+      id: 'idempotencia', url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Idempotency-Key',
       title: 'Idempotência e Idempotency-Key',
       text: 'Uma operação idempotente repetida tem o mesmo efeito de uma vez. O cliente manda uma chave única no cabeçalho Idempotency-Key: mesma chave e mesmo corpo devolvem a resposta original, mesma chave com corpo diferente é 422.',
       code: `POST /pagamentos
@@ -356,7 +358,7 @@ Idempotency-Key: pedido-42
 { "valor_centavos": 1500 }`,
     },
     {
-      id: 'indice-prefixo',
+      id: 'indice-prefixo', url: 'https://www.postgresql.org/docs/current/indexes-opclass.html',
       title: 'Índice para busca por prefixo',
       text: 'LIKE sobre uma expressão sem índice lê a tabela inteira. Um índice na mesma expressão, com text_pattern_ops, deixa o LIKE de prefixo virar uma busca por intervalo. Busca no meio do texto (%x%) não usa esse índice.',
       code: `CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);
@@ -364,7 +366,7 @@ Idempotency-Key: pedido-42
 SELECT id, nome FROM produtos WHERE lower(nome) LIKE $1 ORDER BY lower(nome) LIMIT 20`,
     },
     {
-      id: 'like-prefixo',
+      id: 'like-prefixo', url: 'https://www.postgresql.org/docs/current/functions-matching.html#FUNCTIONS-LIKE',
       title: 'LIKE: escapar % e _',
       text: 'Em LIKE, % e _ são curingas. Para tratar a entrada como texto, ponha uma barra invertida antes da própria barra, de % e de _; depois acrescente o % final, o único curinga que você quer.',
       code: `const prefixo = termo.trim().toLowerCase().replace(/[\\\\%_]/g, '\\\\$&') + '%'`,
@@ -378,7 +380,7 @@ const PROJETO_DOCS: DocSection[] = [
     title: 'API: status e ids',
     entries: [
       {
-        id: 'status-http', title: 'Status HTTP da API',
+        id: 'status-http', url: 'https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Reference/Status', title: 'Status HTTP da API',
         text: 'O número diz o resultado. 2xx deu certo, 4xx o cliente errou, 5xx o servidor errou.',
         code: String.raw`200 OK              leu ou atualizou, com corpo
 201 Created         criou; o cabeçalho Location diz onde o recurso está
@@ -391,7 +393,7 @@ const PROJETO_DOCS: DocSection[] = [
 422 Unprocessable   a forma está certa, mas não dá para processar (produto inexistente)`,
       },
       {
-        id: 'achado-404', title: 'Id inexistente vira 404',
+        id: 'achado-404', url: 'https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Reference/Status/404', title: 'Id inexistente vira 404',
         text: 'O id da URL chega como texto, e uma consulta sem linha dá undefined. Duas funções pequenas lançam o 404 uma vez só, e o app.onError (ou o catch) responde.',
         code: String.raw`export function idDe(texto: string): number {
   const id = Number(texto) // Number('abc') é NaN
@@ -419,12 +421,12 @@ export async function buscarCategoria(db: Db, id: number) { … }
 const categoria = achado(await buscarCategoria(c.env.db, idDe(id)), 'Categoria')`,
       },
       {
-        id: 'db-colunas', title: 'SELECT com colunas por nome',
+        id: 'db-colunas', url: 'https://www.postgresql.org/docs/current/sql-select.html', title: 'SELECT com colunas por nome',
         text: 'SELECT * devolve toda coluna, inclusive as que você adicionar depois (uma senha, por exemplo). Liste as colunas que a resposta precisa.',
         code: String.raw`'SELECT id, nome, preco_centavos FROM produtos WHERE id = $1'`,
       },
       {
-        id: 'migracao-sql', title: 'CREATE TABLE e chave estrangeira',
+        id: 'migracao-sql', url: 'https://www.postgresql.org/docs/current/ddl-constraints.html', title: 'CREATE TABLE e chave estrangeira',
         text: 'Uma migração é um arquivo SQL em migrations/, aplicado na aba Banco. REFERENCES liga uma coluna à chave de outra tabela: o banco recusa um valor que não existe lá. CHECK e UNIQUE fazem o banco recusar dados ruins.',
         code: String.raw`CREATE TABLE itens (
   id serial PRIMARY KEY,
@@ -434,7 +436,7 @@ const categoria = achado(await buscarCategoria(c.env.db, idDe(id)), 'Categoria')
 );`,
       },
       {
-        id: 'on-conflict', title: 'ON CONFLICT DO NOTHING',
+        id: 'on-conflict', url: 'https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT', title: 'ON CONFLICT DO NOTHING',
         text: 'Se o INSERT violaria um UNIQUE, em vez de erro ele é ignorado e RETURNING devolve nada: a função devolve undefined e a rota responde 409. É mais seguro que um SELECT antes, que duas requisições simultâneas atravessam juntas.',
         code: String.raw`const [novo] = await db.query(
   'INSERT INTO membros (email) VALUES ($1) ON CONFLICT (email) DO NOTHING RETURNING id, email',
@@ -462,7 +464,7 @@ const proximoCursor = linhas.length > limite ? itens[limite - 1].id : null`,
     title: 'Validação com zod',
     entries: [
       {
-        id: 'zod-schema', title: 'z.object: a forma da entrada',
+        id: 'zod-schema', url: 'https://zod.dev/api#objects', title: 'z.object: a forma da entrada',
         text: 'zod confere em tempo de execução se um dado tem a forma esperada. Cada campo é um tipo com regras encadeadas.',
         code: String.raw`import { z } from 'zod'
 
@@ -473,14 +475,14 @@ const categoriaSchema = z.object({
 })`,
       },
       {
-        id: 'zod-safeparse', title: 'safeParse',
+        id: 'zod-safeparse', url: 'https://zod.dev/basics#parsing-data', title: 'safeParse',
         text: 'Não lança: devolve { success: true, data } ou { success: false, error }. Os problemas estão em error.issues, cada um com path (onde) e message (o quê).',
         code: String.raw`const r = categoriaSchema.safeParse(dados)
 if (!r.success) console.log(r.error.issues) // [{ path: ['nome'], message: '…' }]
 else console.log(r.data)                    // já com o tipo do schema`,
       },
       {
-        id: 'zod-coerce', title: 'z.coerce: texto vira número',
+        id: 'zod-coerce', url: 'https://zod.dev/api#coercion', title: 'z.coerce: texto vira número',
         text: 'Tudo que vem na URL é texto. z.coerce.number() converte antes de validar; default dá o valor quando o parâmetro não veio.',
         code: String.raw`const paginaSchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1), // '2' vira 2; ausente vira 1
@@ -494,7 +496,7 @@ paginaSchema.parse(Object.fromEntries(new URL(req.url).searchParams))`,
     title: 'Senhas e tokens',
     entries: [
       {
-        id: 'auth-401-403', title: '401 e 403',
+        id: 'auth-401-403', url: 'https://developer.mozilla.org/pt-BR/docs/Web/HTTP/Reference/Status/401', title: '401 e 403',
         text: 'Autenticação responde "quem é você?"; autorização, "o que você pode?". 401: sem token, token inválido ou vencido. 403: token válido, mas o papel não pode.',
         code: String.raw`if (!token) throw new ErroHttp(401, 'Não autenticado')
 if (sessao.papel !== 'admin') throw new ErroHttp(403, 'Sem permissão')`,
