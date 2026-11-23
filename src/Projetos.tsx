@@ -337,7 +337,7 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
     const bytes = zip(exportFiles(project, { name: entry.name, course: courseOf(entry.course), results: loadSavedResults(), openapi }))
     const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/zip' }))
     Object.assign(document.createElement('a'), { href: url, download: `${slugOf(entry.name)}.zip` }).click()
-    URL.revokeObjectURL(url)
+    setTimeout(() => URL.revokeObjectURL(url), 0) // revoking in the same tick cancels the download in some browsers
   }
 
   const rows = treeOf(Object.keys(files))
