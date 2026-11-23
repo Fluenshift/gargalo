@@ -12,6 +12,7 @@ import {
   saveProject,
   saveProjectList,
   starter,
+  blank,
 } from './oficina/projeto/project'
 import { exportFiles, slugOf } from './oficina/projeto/exportar'
 import { forgetClient, loadClient, type Draft } from './oficina/projeto/http'
@@ -228,8 +229,10 @@ function Banco({ project }: { project: Project }) {
 /** One open project: file tree, editor tabs, the Banco and Console panels, and the slots for the HTTP client and the stage. */
 function ProjectView({ entry }: { entry: ProjectEntry }) {
   const [project, setProject] = useState<Project>(() => loadProject(entry.id) ?? starter(entry.id, entry.framework))
-  const [tabs, setTabs] = useState<string[]>([ENTRY])
-  const [active, setActive] = useState(ENTRY)
+  // A course that starts blank has no src/index.ts yet: open a file that exists.
+  const [first] = useState(() => (ENTRY in project.files ? ENTRY : (Object.keys(project.files)[0] ?? ENTRY)))
+  const [tabs, setTabs] = useState<string[]>([first])
+  const [active, setActive] = useState(first)
   const [form, setForm] = useState<'new' | 'rename' | null>(null)
   // When the name form closes (done, cancelled or Esc), focus goes back to the button that opened it, not to the page.
   const formOpener = useRef<HTMLButtonElement | null>(null)
@@ -480,7 +483,15 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           </button>
         </div>
         {side === 'requisicao' ? (
-          <HttpClient project={project} warming={warming} prefill={prefill} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
+          <>
+            {/* Came from "Testar agora": the way back to the step, where the player was. */}
+            {prefill && (
+              <button type="button" className="btn btn--ghost btn--small projeto__back" onClick={() => pick('etapa')}>
+                ← Voltar ao passo
+              </button>
+            )}
+            <HttpClient project={project} warming={warming} prefill={prefill} onSent={(d, outcome) => record(d.method, d.path, outcome)} />
+          </>
         ) : side === 'openapi' ? (
           <OpenApi project={project} name={entry.name} routes={routes} />
         ) : (
@@ -531,7 +542,7 @@ export function Projetos({ open }: { open?: string }) {
     e.preventDefault()
     const id = crypto.randomUUID().slice(0, 8)
     const first = courseOf(courseId).starter
-    const base = starter(id, framework)
+    const base = courseOf(courseId).blank ? blank(id, framework) : starter(id, framework)
     const created = first ? { ...first, id } : { ...base, files: { ...base.files, ...courseOf(courseId).baseFiles } }
     saveProject(created)
     update([...list, { id, name: name.trim() || `Projeto ${list.length + 1}`, framework: created.framework, course: courseId }])
