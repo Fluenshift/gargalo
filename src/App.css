@@ -3364,6 +3364,27 @@ a.levels__map {
   align-items: baseline;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+.etapa__details {
+  display: grid;
+  gap: var(--space-10);
+}
+
+.etapa__details > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.etapa__details[open] > summary {
+  margin-bottom: var(--space-10);
+}
+
 .projetos__hint {
   color: var(--ink-soft);
 }
@@ -3731,7 +3752,9 @@ a.levels__map {
   display: grid;
   gap: var(--space-10);
   padding: var(--space-12) var(--space-14);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  scroll-margin-top: var(--space-12);
+  /* Inside the bordered side panel the tint alone marks the step: a second border would be a card in a card. */
+  border: none;
   border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--accent) 9%, var(--paper));
   color: var(--ink);
@@ -3781,6 +3804,11 @@ a.levels__map {
   gap: var(--space-6);
 }
 
+/* Focused by code after Voltar/Prosseguir so screen readers land on the new step; it is not a control, so no ring. */
+.passos__title:focus {
+  outline: none;
+}
+
 .passos__title {
   margin: 0;
   font-family: var(--serif);
@@ -3803,8 +3831,9 @@ a.levels__map {
 
 /* What changes in the player's task: set off from the pattern by an accent rule, not a second box. */
 .passos__note {
-  padding-left: var(--space-10);
-  border-left: 2px solid var(--accent);
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
 }
 
 /* The one action of the step: the first thing read, in full ink. */
