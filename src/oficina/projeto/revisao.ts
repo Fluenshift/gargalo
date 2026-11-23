@@ -3,7 +3,7 @@
 
 import type { TestCase, TestResult } from '../exercise'
 import type { Project } from './project'
-import type { ProjectCourse, Stage } from './stage'
+import type { GuidedStep, ProjectCourse, Stage } from './stage'
 
 const MIGRATION = `CREATE TABLE usuarios (id serial PRIMARY KEY, nome text NOT NULL, email text NOT NULL, senha_hash text NOT NULL);
 CREATE TABLE produtos (id serial PRIMARY KEY, nome text NOT NULL, estoque int NOT NULL CHECK (estoque >= 0));
@@ -130,11 +130,120 @@ const tests: TestCase[] = [
 
 const FIXED = revisaoRoutes(...FIXED_BLOCKS)
 
+// --- Guided steps (issue #138): each bug is an investigation, from the easiest to the hardest. The course fixes fetch puro. ---
+// A request check cannot say "no senha_hash" (an expected body only needs its keys to match) nor "at most N queries",
+// so the leak and N+1 fixes are not confirmed by a request: the player reads the answer and the query count in the Requisição tab.
+
+const INJECAO = `/usuarios/busca?nome=${encodeURIComponent("x' OR '1'='1")}`
+
+const PASSOS_REVISAO: GuidedStep[] = [
+  {
+    title: 'Vazamento: veja o que a rota devolve',
+    learn:
+      'Revisar começa por reproduzir: antes de mexer no código, veja o bug acontecer. Clique em Testar agora e leia o corpo da resposta de GET /usuarios, campo por campo. Uma rota que devolve linhas sem escolher as colunas entrega tudo que a tabela tem, inclusive o que ninguém deveria ver.',
+    check: { kind: 'request', path: '/usuarios', status: 200 },
+  },
+  {
+    title: 'Vazamento: escolha as colunas',
+    learn:
+      'SELECT * devolve toda coluna da tabela, e quando alguém acrescentar uma coluna sensível amanhã ela vaza sozinha. Listar as [colunas](select-colunas) faz da consulta uma lista do que pode sair. Depois de corrigir, refaça a requisição do passo anterior e confira que o campo sumiu.',
+    file: 'src/index.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`// Antes: devolve tudo, até a coluna cpf.
+//   await env.db.query('SELECT * FROM clientes ORDER BY id')
+
+// Depois: só o que o cliente da API precisa ver.
+return Response.json(await env.db.query('SELECT id, nome, cidade FROM clientes ORDER BY id'))`,
+      note: 'No seu caso: a tabela é usuarios, e a coluna que não pode sair é senha_hash. Mantenha id, nome e email.',
+    },
+    docs: ['select-colunas'],
+  },
+  {
+    title: 'SQL injection: engane a busca',
+    learn:
+      'A busca monta o SQL juntando texto com o nome que veio na URL. Se o nome contiver aspas, quem pediu passa a escrever pedaço do seu SQL: é uma [SQL injection](sql-injecao). Clique em Testar agora: a busca por um nome que não existe devolve todos os usuários.',
+    check: { kind: 'request', path: INJECAO, status: 200 },
+  },
+  {
+    title: 'SQL injection: passe o nome como parâmetro',
+    learn:
+      'A defesa é nunca colar a entrada no texto do SQL. Escreva $1 onde o valor entra e passe o valor à parte, no segundo argumento de [db.query](db-query): o banco trata aquilo sempre como dado, nunca como comando.',
+    file: 'src/index.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`const cidade = url.searchParams.get('cidade') ?? ''
+
+// Antes: a entrada vira parte do SQL.
+//   "SELECT id, nome FROM clientes WHERE cidade = '" + cidade + "'"
+
+// Depois: $1 marca o lugar e o valor vai em params.
+return Response.json(await env.db.query('SELECT id, nome FROM clientes WHERE cidade = $1', [cidade]))`,
+      note: 'No seu caso: a tabela é usuarios, o filtro é nome e o valor é a variável nome. Mantenha as colunas id, nome e email. Conferir passo repete o ataque do passo anterior: com o conserto, a busca devolve lista vazia.',
+    },
+    docs: ['sql-injecao', 'db-query'],
+    check: { kind: 'request', path: INJECAO, status: 200, body: [] },
+  },
+  {
+    title: 'N+1: conte as consultas',
+    learn:
+      'A lista de pedidos busca os itens de cada pedido com uma consulta dentro de um laço: com 4 pedidos são 5 consultas, com 1000 são 1001. É o [N+1](n-mais-um), e passa em teste de caminho feliz porque a resposta está certa. Clique em Testar agora e leia, junto da resposta, quantas consultas ela custou.',
+    check: { kind: 'request', path: '/pedidos', status: 200 },
+  },
+  {
+    title: 'N+1: busque todos os itens de uma vez',
+    learn:
+      'Troque as N consultas por uma só: peça os itens de todos os pedidos com WHERE coluna = ANY($1), passando a lista de ids, e agrupe o resultado em memória. Dá sempre 2 consultas, não importa quantos pedidos existam.',
+    file: 'src/index.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`const autores = await env.db.query('SELECT id, nome FROM autores ORDER BY id')
+
+// Uma consulta para os livros de todos os autores da lista, não uma por autor.
+// ANY($1) aceita um array: aqui, os ids dos autores.
+const livros = await env.db.query('SELECT autor_id, titulo FROM livros WHERE autor_id = ANY($1)', [autores.map((a) => a.id)])
+
+// Agrupe em memória: cada autor leva os seus livros.
+return Response.json(autores.map((a) => ({ ...a, livros: livros.filter((l) => l.autor_id === a.id) })))`,
+      note: 'No seu caso: pedidos e itens, ligados por pedido_id. A resposta mantém a forma { id, cliente, itens: [{ produto, qtd }] }, sem pedido_id dentro dos itens. Depois, refaça o Testar agora do passo anterior: deve dizer 2 consultas.',
+    },
+    docs: ['n-mais-um', 'db-query'],
+    check: { kind: 'file', path: 'src/index.ts', contains: ['ANY('] },
+  },
+  {
+    title: 'Condição de corrida: ler, esperar, gravar',
+    learn:
+      'A compra lê o estoque, decide e só depois grava. Se duas compras do último item chegam juntas, as duas leem 1, as duas decidem vender e o item é vendido duas vezes. O Testar agora faz uma compra só e não mostra isso: o bug só aparece com dois pedidos ao mesmo tempo, e é o Rodar testes que os envia.',
+    check: { kind: 'request', method: 'POST', path: '/produtos/1/comprar', status: 201 },
+  },
+  {
+    title: 'Condição de corrida: deixe o banco decidir',
+    learn:
+      'Em vez de ler e gravar, faça o banco conferir e gravar numa operação só: UPDATE ... WHERE condição RETURNING. Se a condição falhou, nenhuma linha volta e a compra é recusada. Registre a compra na mesma [transação](db-transaction), para a baixa e o registro andarem juntos.',
+    file: 'src/index.ts',
+    example: {
+      file: 'modelo',
+      code: String.raw`const reservou = await env.db.transaction(async (tx) => {
+  // A condição e a baixa acontecem juntas, dentro do banco.
+  // RETURNING devolve a linha alterada; se nada casou, volta uma lista vazia.
+  const baixa = await tx.query('UPDATE ingressos SET vagas = vagas - 1 WHERE id = $1 AND vagas > 0 RETURNING id', [id])
+  if (!baixa.length) return false // esgotou: nada foi gravado
+  await tx.query('INSERT INTO reservas (ingresso_id) VALUES ($1)', [id])
+  return true
+})`,
+      note: 'No seu caso: a tabela é produtos, a coluna é estoque, e o registro vai em compras (produto_id). Recusado, responda o 409 que a rota já devolve; aceito, o 201. Depois rode os testes da etapa: eles conferem os quatro bugs.',
+    },
+    docs: ['update-atomico', 'returning', 'db-transaction'],
+    check: { kind: 'file', path: 'src/index.ts', contains: ['RETURNING'] },
+  },
+]
+
 export const revisaoStage: Stage = {
   id: 'revisao',
   title: 'Revisão de código',
   statement:
-    'Este projeto já funciona, mas tem quatro bugs plantados: um vazamento de campos, uma SQL injection, uma condição de corrida e um N+1. Leia o código, ache cada um e corrija sem mudar o que a API responde.',
+    'Este projeto já funciona, mas tem quatro bugs plantados: um vazamento de campos, uma SQL injection, um N+1 e uma condição de corrida. Em cada um você reproduz, entende e corrige.',
+  steps: PASSOS_REVISAO,
   files: ['src/index.ts', 'migrations/001_init.sql'],
   tests,
   checklist: [{ id: 'sql-parametrizado' }, { id: 'sem-select-estrela' }, { id: 'sem-vazar-campos', requests: [{ path: '/usuarios' }], fields: ['senha_hash'] }],
