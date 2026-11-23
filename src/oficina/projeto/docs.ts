@@ -195,6 +195,37 @@ try {
       text: 'Response é o tipo padrão da web: o fetch puro sempre devolve um. No Hono, um handler também pode devolver um Response em vez de c.json, então a mesma função de erro serve aos dois.',
       code: `app.get('/x', () => Response.json({ ok: true }, { status: 200 }))`,
     },
+    {
+      id: 'http-helpers',
+      title: 'src/http.ts: ErroHttp, problema e deErro',
+      text: 'ErroHttp(status, title, detail?, extra?) é um Error que carrega o status. problema(...) monta o Response em problem+json. deErro(err) transforma qualquer erro lançado em resposta: ErroHttp vira o status dele, o resto vira 500.',
+      code: `throw new ErroHttp(409, 'Fatura já paga') // de qualquer lugar
+return problema(404, 'Rota não encontrada') // um Response pronto
+return deErro(err) // no catch, ou em app.onError(deErro)`,
+    },
+    {
+      id: 'id-achado',
+      title: 'idDe e achado',
+      text: 'idDe(texto) converte o id da URL em número e lança ErroHttp 400 se não for um inteiro válido. achado(valor, nome) devolve o valor, ou lança 404 "<nome> não encontrada" quando a linha não existe.',
+      code: `const id = idDe('7') // 7; idDe('abc') lança 400
+const fatura = achado(await buscarFatura(db, id), 'Fatura') // ou 404`,
+    },
+    {
+      id: 'zod-refine',
+      title: 'Zod: regra entre campos',
+      text: 'refine roda depois dos campos individuais e recebe o objeto inteiro. O path diz em qual campo o erro aparece.',
+      code: `z.object({ origem: z.number(), destino: z.number() })
+  .refine((r) => r.origem !== r.destino, { message: 'Devem ser diferentes.', path: ['destino'] })`,
+    },
+    {
+      id: 'zod-validar',
+      title: 'Zod: safeParse e o 400',
+      text: 'safeParse não lança erro: devolve { success, data } ou { success: false, error }. Converta a falha em ErroHttp 400, com a lista de campos no extra, e o deErro a responde em problem+json.',
+      code: `const r = cartaoSchema.safeParse(dados)
+if (r.success) return r.data
+const erros = r.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message }))
+throw new ErroHttp(400, 'Dados inválidos', 'Corrija os campos indicados.', { erros })`,
+    },
   ],
 }
 
@@ -272,6 +303,71 @@ const livros = await db.query('SELECT autor_id, titulo FROM livros WHERE autor_i
       text: 'Ler, decidir e gravar deixa uma brecha entre a leitura e a gravação: duas requisições passam juntas. Ponha a condição no próprio UPDATE; o banco a confere e grava numa operação só, e RETURNING diz se alguma linha mudou.',
       code: `const vendeu = await db.query('UPDATE ingressos SET vagas = vagas - 1 WHERE id = $1 AND vagas > 0 RETURNING id', [id])
 if (!vendeu.length) { /* esgotado */ }`,
+    },
+    {
+      id: 'sql-migracao',
+      title: 'Migração: criar a tabela',
+      text: 'Cada arquivo em migrations/ roda uma vez, em ordem de nome. CHECK recusa valores fora da regra; REFERENCES (chave estrangeira) recusa uma linha que aponta para outra inexistente; UNIQUE recusa duplicata.',
+      code: `CREATE TABLE faturas (
+  id serial PRIMARY KEY,
+  cartao int NOT NULL REFERENCES cartoes (id), -- o cartão tem de existir
+  valor_centavos int NOT NULL CHECK (valor_centavos > 0), -- sempre positivo
+  codigo text NOT NULL UNIQUE -- sem repetição
+);`,
+    },
+    {
+      id: 'dinheiro-centavos',
+      title: 'Dinheiro em centavos inteiros',
+      text: 'Ponto flutuante não representa 0,10 exatamente, e as somas acumulam erro. Guarde o valor como inteiro de centavos e converta só para exibir.',
+      code: `0.1 + 0.2 // 0.30000000000000004
+10 + 20 // 30 centavos: exato`,
+    },
+    {
+      id: 'corrida-saldo',
+      title: 'Condição de corrida no saldo',
+      text: 'Ler o saldo, conferir no código e gravar depois deixa uma janela: duas requisições leem o mesmo valor e as duas passam. O banco do navegador roda uma transação por vez e não mostra isso; o checklist confere o SQL de forma estática.',
+      code: `// leitura e gravação separadas: duas requisições passam juntas
+const [c] = await tx.query('SELECT saldo_centavos FROM contas WHERE id = $1', [id])
+if (c.saldo_centavos >= valor) await tx.query('UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2', [valor, id])`,
+    },
+    {
+      id: 'update-condicional',
+      title: 'UPDATE condicional',
+      text: 'Ponha a conferência no próprio UPDATE: o banco confere e grava num comando só. RETURNING vazio significa que nenhuma linha mudou.',
+      code: `const [conta] = await tx.query(
+  'UPDATE contas SET saldo_centavos = saldo_centavos - $1 WHERE id = $2 AND saldo_centavos >= $1 RETURNING saldo_centavos',
+  [valor, id],
+)
+if (!conta) { /* a conta não existe ou o saldo não bastou */ }`,
+    },
+    {
+      id: 'for-update-ordem',
+      title: 'FOR UPDATE e a ordem dos locks',
+      text: 'FOR UPDATE trava as linhas até o fim da transação. Duas transações que travam as mesmas linhas em ordens diferentes podem esperar uma pela outra (deadlock); travar sempre em ordem de id evita isso.',
+      code: `await tx.query('SELECT id FROM contas WHERE id = ANY($1) ORDER BY id FOR UPDATE', [[de, para]])`,
+    },
+    {
+      id: 'idempotencia',
+      title: 'Idempotência e Idempotency-Key',
+      text: 'Uma operação idempotente repetida tem o mesmo efeito de uma vez. O cliente manda uma chave única no cabeçalho Idempotency-Key: mesma chave e mesmo corpo devolvem a resposta original, mesma chave com corpo diferente é 422.',
+      code: `POST /pagamentos
+Idempotency-Key: pedido-42
+
+{ "valor_centavos": 1500 }`,
+    },
+    {
+      id: 'indice-prefixo',
+      title: 'Índice para busca por prefixo',
+      text: 'LIKE sobre uma expressão sem índice lê a tabela inteira. Um índice na mesma expressão, com text_pattern_ops, deixa o LIKE de prefixo virar uma busca por intervalo. Busca no meio do texto (%x%) não usa esse índice.',
+      code: `CREATE INDEX produtos_nome_idx ON produtos (lower(nome) text_pattern_ops);
+
+SELECT id, nome FROM produtos WHERE lower(nome) LIKE $1 ORDER BY lower(nome) LIMIT 20`,
+    },
+    {
+      id: 'like-prefixo',
+      title: 'LIKE: escapar % e _',
+      text: 'Em LIKE, % e _ são curingas. Para tratar a entrada como texto, ponha uma barra invertida antes da própria barra, de % e de _; depois acrescente o % final, o único curinga que você quer.',
+      code: `const prefixo = termo.trim().toLowerCase().replace(/[\\\\%_]/g, '\\\\$&') + '%'`,
     },
   ],
 }
