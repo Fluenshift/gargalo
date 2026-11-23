@@ -594,11 +594,13 @@ export default app
   )
 }
 
-/** The whole project after `stage` (0 to 6). Stage 0 is "primeiros-passos": starter + GET /ola. */
+/** The whole project after `stage` (0 to 6). Stage 0 is "primeiros-passos": starter + GET /ola, without the migration. */
 export function referencia(framework: Framework, stage: number): Record<string, string> {
   if (stage === 0) {
     const hono = framework === 'hono'
     const files = starter('referencia', framework).files
+    // The course starts blank: the produtos table arrives with its stage (2), not with the project.
+    delete files['migrations/001_init.sql']
     files['src/routes/ola.ts'] = hono ? OLA_HONO_ROUTE : OLA_FETCH_ROUTE
     const ligar = hono ? "app.route('/health', health)" : 'return health(env)'
     const registro = hono ? "app.route('/ola', ola)" : "if (req.method === 'GET' && pathname === '/ola') return ola()"
@@ -616,9 +618,9 @@ export function referencia(framework: Framework, stage: number): Record<string, 
     'src/db/saude.ts': base['src/db/saude.ts'],
     'src/env.ts': base['src/env.ts'],
     'src/http.ts': HTTP,
-    'migrations/001_init.sql': base['migrations/001_init.sql'],
   }
   if (stage >= 2) {
+    files['migrations/001_init.sql'] = base['migrations/001_init.sql']
     files['src/routes/produtos.ts'] = hono ? honoProdutos(f) : fetchProdutos(f)
     files['src/db/produtos.ts'] = dbProdutos(f)
   }

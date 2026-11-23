@@ -4,7 +4,7 @@ import type { TestResult } from '../exercise'
 import { cursoPedidos } from './cursoPedidos'
 import { checkTests } from './checklist'
 import { docsFor } from './docs'
-import { starter, type Framework, type Project } from './project'
+import { blank, starter, type Framework, type Project } from './project'
 import { referencia } from './cursoPedidosRef'
 import { executeProjectTests } from './runtime'
 import { evaluateStage, missingInFile, stepFor, stepTest, type Stage, type StageResult } from './stage'
@@ -39,7 +39,7 @@ describe('curso do projeto 1', () => {
   it('has the first steps and the six stages of the spec, each with a reference per framework', () => {
     expect(cursoPedidos.stages.map((s) => s.id)).toEqual(['primeiros-passos', 'health', 'produtos', 'pedidos', 'validacao', 'paginacao', 'auth'])
     for (const s of cursoPedidos.stages) {
-      expect(Object.keys(s.reference.hono).length).toBeGreaterThan(5)
+      expect(Object.keys(s.reference.hono).length).toBeGreaterThanOrEqual(5)
       expect(s.reference.fetch['src/index.ts']).not.toContain('hono')
       expect(s.files.every((f) => f in s.reference.hono && f in s.reference.fetch)).toBe(true)
     }
@@ -75,7 +75,7 @@ describe('passos guiados', () => {
   // Where the player starts each stage: the starter, then the previous stage's reference.
   // Helpers the Health reference already carries (idDe, achado, extra) are taught later: those steps are checked against the starter.
   const ENSINADOS_DEPOIS = ['idDe e achado em src/http.ts', 'ErroHttp com campos extras']
-  const before = (framework: Framework, stage: Stage, title = '') => (stage.id === 'primeiros-passos' || ENSINADOS_DEPOIS.includes(title) ? starter('antes', framework).files : referencia(framework, cursoPedidos.stages.indexOf(stage) - 1))
+  const before = (framework: Framework, stage: Stage, title = '') => (stage.id === 'primeiros-passos' ? blank('antes', framework).files : ENSINADOS_DEPOIS.includes(title) ? starter('antes', framework).files : referencia(framework, cursoPedidos.stages.indexOf(stage) - 1))
 
   it('guides every stage, with a short statement', () => {
     expect(guided.map((s) => s.id)).toEqual(cursoPedidos.stages.map((s) => s.id))
@@ -123,4 +123,31 @@ describe('passos guiados', () => {
       }
     })
   }
+})
+
+describe('primeiros passos, do zero', () => {
+  // A beginner who types every block, in order, on the blank project: each check passes when it is reached, and the stage ends with 3 stars.
+  for (const framework of ['hono', 'fetch'] as Framework[]) {
+    it(framework + ': typing each exact block passes every check and the stage', async () => {
+      const stage = cursoPedidos.stages[0]
+      const files = { ...blank('jogador', framework).files }
+      expect(Object.keys(files)).toEqual(['src/env.ts'])
+      for (const step of stage.steps!.map((s) => stepFor(s, framework))) {
+        if (step.example?.exact) files[step.example.file!] = step.example.code
+        if (step.check?.kind === 'file') expect(missingInFile(files, step.check), step.title).toBeUndefined()
+        if (step.check?.kind === 'request') {
+          const out: TestResult[] = []
+          await executeProjectTests({ project: { id: 'jogador', framework, files }, tests: [stepTest(step.check)] }, pg, ({ index, result }) => (out[index] = result))
+          expect(out[0], step.title).toMatchObject({ passed: true })
+        }
+      }
+      const r = await run({ id: 'jogador', framework, files }, stage)
+      expect(failures(r)).toEqual([])
+      expect(r.stars).toBe(3)
+    }, 60_000)
+  }
+
+  it('every step says what to do now', () => {
+    for (const s of cursoPedidos.stages[0].steps!) expect(s.do, s.title).toBeTruthy()
+  })
 })

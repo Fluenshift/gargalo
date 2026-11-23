@@ -17,12 +17,17 @@ export type StepCheck =
 /** One guided step: one concept, why it matters, the pattern in code, where the docs explain it, and a way to confirm it. */
 export interface GuidedStep {
   title: string
+  /** The one thing to do now, in a sentence ("Abra src/index.ts e digite o código abaixo."). Shown first. */
+  do?: string
   /** The concept, 2 to 4 short sentences, the why before the how. `[term](doc-id)` links a term to its docs entry. */
   learn: string
   /** "Abrir <arquivo>": opens it, created empty when missing. */
   file?: string
-  /** The pattern, commented line by line; `note` says what changes in the player's task. */
-  example?: { file?: string; code: string; note?: string }
+  /**
+   * The pattern, commented line by line; `note` says what changes in the player's task.
+   * `exact`: the whole content of `file` after this step, to type as is (the first stage, built from an empty project).
+   */
+  example?: { file?: string; code: string; note?: string; exact?: boolean }
   /** Ids of docsFor() entries. */
   docs?: string[]
   /** A request check also gives "Testar agora", which sends it from the Requisição tab. */
@@ -78,6 +83,8 @@ export interface ProjectCourse {
   stages: Stage[]
   /** The project a new one of this course starts from; without it, the framework's own starter. */
   starter?: Project
+  /** New projects start from blank() (only src/env.ts) instead of the framework's starter. */
+  blank?: boolean
   /** Files added to the framework's starter, such as helpers the course's hints rely on. */
   baseFiles?: Record<string, string>
 }
