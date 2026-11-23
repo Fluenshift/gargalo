@@ -121,13 +121,25 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
         </p>
         <div className="passos__body" aria-live="polite">
           <h4 className="passos__title">{s.title}</h4>
-          <p className="oficina__statement">{linked(s.learn, onDoc)}</p>
+          {s.do ? (
+            <p className="passos__do">
+              <strong>Faça agora:</strong> {s.do}
+            </p>
+          ) : (
+            <p className="oficina__statement">{linked(s.learn, onDoc)}</p>
+          )}
         </div>
         {s.example && (
           <div className="passos__example">
-            <p className="projeto__label">Exemplo{s.example.file && ` · ${s.example.file}`}</p>
-            <Code code={s.example.code} label={`Exemplo de código: ${s.title}`} />
+            <p className="projeto__label">{s.example.exact ? `Digite em ${s.example.file}` : `Exemplo${s.example.file ? ` · ${s.example.file}` : ''}`}</p>
+            <Code code={s.example.code} label={`${s.example.exact ? 'Código para digitar' : 'Exemplo de código'}: ${s.title}`} />
             {s.example.note && <p className="passos__note">{s.example.note}</p>}
+          </div>
+        )}
+        {s.do && (
+          <div className="passos__why">
+            <p className="projeto__label">Por quê</p>
+            <p className="oficina__statement">{linked(s.learn, onDoc)}</p>
           </div>
         )}
         {s.docs && (

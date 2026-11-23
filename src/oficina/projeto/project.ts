@@ -51,9 +51,13 @@ export function saveProject(project: Project): boolean {
   }
 }
 
-const ENV = `export interface Env {
+// Player-facing, so commented in Portuguese like the guided examples.
+const ENV = `// O que o jogo entrega para a sua API: o banco Postgres, em env.db (no Hono, c.env.db).
+export interface Env {
   db: {
+    // Roda um SQL e devolve as linhas. params preenche $1, $2…: nunca cole texto do usuário no SQL.
     query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
+    // Várias consultas como uma só: ou todas valem, ou nenhuma.
     transaction<R>(fn: (tx: Env['db']) => Promise<R>): Promise<R>
   }
 }
@@ -130,6 +134,9 @@ export async function bancoResponde(db: Env['db']): Promise<void> {
     'migrations/001_init.sql': INIT,
   },
 }
+
+/** A project with only src/env.ts (how the game hands over the database), for a course that builds everything else. */
+export const blank = (id: string, framework: Framework): Project => ({ id, framework, files: { 'src/env.ts': ENV } })
 
 /** A new project with a health route and one migration. */
 export const starter = (id: string, framework: Framework): Project => ({ id, framework, files: { ...STARTERS[framework] } })

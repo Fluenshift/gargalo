@@ -34,181 +34,273 @@ const itensDe = (...ids: number[]) => ids.map((id) => ({ id, nome: 'Produto ' + 
 
 const HEALTH_OK: StepCheck = { kind: 'request', path: '/health', status: 200, body: { status: 'ok' } }
 
-const PASSOS_OLA: GuidedStep[] = [
-  {
-    title: 'Conheça a tela',
-    learn:
-      'À esquerda ficam os arquivos do projeto; embaixo, o Banco (tabelas e migrações) e o Console (o que sua API registrou). Aqui à direita, a aba Requisição chama sua API como um navegador faria, e Rodar testes confere a etapa e dá até 3 estrelas. O projeto já responde GET /health: clique em Testar agora para ver.',
-    check: HEALTH_OK,
-  },
-  {
-    title: 'A porta de entrada: src/index.ts',
-    learn:
-      'Toda requisição entra por src/index.ts. Lá, new Hono() cria o [app](hono-app) e app.route liga cada caminho ao arquivo que cuida dele. Um arquivo por recurso deixa o index curto e fácil de ler.',
-    file: 'src/index.ts',
-    example: {
-      file: 'src/index.ts',
-      code: String.raw`import { Hono } from 'hono'
+// Primeiros passos starts from an empty project (only src/env.ts): every file is typed by the player, whole, in order.
+// cursoPedidos.test.ts replays these blocks on blank() and expects every check and the stage to pass.
+const INDEX_APP = String.raw`import { Hono } from 'hono'
 import type { Env } from './env'
-import { health } from './routes/health' // o roteador de /health, em outro arquivo
 
 // O app recebe toda requisição. Env diz o que chega de fora: o banco.
 const app = new Hono<{ Bindings: Env }>()
 
-// Tudo que começa com /health vai para o roteador health.
-app.route('/health', health)
-
 // O servidor usa o que o arquivo exporta por padrão.
-export default app`,
-    },
-    docs: ['hono-app', 'hono-route'],
-    byFramework: {
-      fetch: {
-        learn:
-          'Toda requisição entra por src/index.ts, que exporta um objeto com [fetch(req, env)](fetch-app): o servidor chama essa função e espera um Response de volta. Lá, um if por rota olha o método e o caminho e chama a função certa.',
-        example: {
-          file: 'src/index.ts',
-          code: String.raw`import type { Env } from './env'
-import { health } from './routes/health' // a função de /health, em outro arquivo
+export default app
+`
+const INDEX_APP_FETCH = String.raw`import type { Env } from './env'
 
 export default {
-  // Chamada a cada requisição; precisa devolver um Response.
+  // O servidor chama fetch a cada requisição e espera um Response de volta.
   async fetch(req: Request, env: Env): Promise<Response> {
-    // Só o caminho da URL: '/health', sem domínio nem ?query.
+    // Só o caminho da URL: '/ola', sem domínio nem ?query.
     const { pathname } = new URL(req.url)
-    // Uma rota é um if: método, caminho e a função que responde.
-    if (req.method === 'GET' && pathname === '/health') return health(env)
-    // Nenhum if casou.
+    // Nenhuma rota ainda: tudo responde 404.
     return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })
   },
-}`,
-        },
-        docs: ['fetch-app', 'fetch-rotear'],
-      },
-    },
+}
+`
+const INDEX_INLINE = String.raw`import { Hono } from 'hono'
+import type { Env } from './env'
+
+const app = new Hono<{ Bindings: Env }>()
+
+// novo: GET /ola responde este JSON. c é o contexto da requisição.
+app.get('/ola', (c) => c.json({ mensagem: 'olá' }))
+
+export default app
+`
+const INDEX_INLINE_FETCH = String.raw`import type { Env } from './env'
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(req.url)
+    // novo: uma rota é um if com o método e o caminho.
+    if (req.method === 'GET' && pathname === '/ola') return Response.json({ mensagem: 'olá' })
+    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })
   },
-  {
-    title: 'Leia a rota /health',
-    learn:
-      'Uma rota recebe a requisição e devolve uma resposta. Repare que o SQL não está aqui: a rota chama src/db/saude.ts. Rotas cuidam de HTTP e src/db/ cuida do banco; os testes conferem essa separação.',
-    file: 'src/routes/health.ts',
-    example: {
-      file: 'src/routes/health.ts',
-      code: String.raw`import { Hono } from 'hono'
+}
+`
+const OLA = String.raw`import { Hono } from 'hono'
+import type { Env } from '../env'
+
+// Um roteador só para /ola; quem escolhe o prefixo é o index.
+export const ola = new Hono<{ Bindings: Env }>()
+
+// '/' aqui quer dizer a raiz do roteador: no app, vira GET /ola.
+ola.get('/', (c) => c.json({ mensagem: 'olá' }))
+`
+const OLA_FETCH = String.raw`// Exportada com nome, para o index importar. Sem banco, nada a esperar: sem async.
+export function ola(): Response {
+  return Response.json({ mensagem: 'olá' })
+}
+`
+const INDEX_ROUTE = String.raw`import { Hono } from 'hono'
+import type { Env } from './env'
+import { ola } from './routes/ola' // novo: importa o roteador
+
+const app = new Hono<{ Bindings: Env }>()
+
+// novo: tudo que começa com /ola vai para o roteador ola (a linha app.get saiu).
+app.route('/ola', ola)
+
+export default app
+`
+const INDEX_ROUTE_FETCH = String.raw`import type { Env } from './env'
+import { ola } from './routes/ola' // novo: importa a função
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(req.url)
+    // novo: o if agora só chama a função de src/routes/ola.ts.
+    if (req.method === 'GET' && pathname === '/ola') return ola()
+    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })
+  },
+}
+`
+const SAUDE = String.raw`import type { Env } from '../env'
+
+// Todo SQL do projeto mora em src/db/; as rotas só chamam funções como esta.
+export async function bancoResponde(db: Env['db']): Promise<void> {
+  // A consulta mais simples que existe: se o banco responde, não lança erro.
+  await db.query('SELECT 1')
+}
+`
+const HEALTH_ROUTE = String.raw`import { Hono } from 'hono'
 import { bancoResponde } from '../db/saude'
 import type { Env } from '../env'
 
-// Um roteador só para /health; o index escolhe o prefixo.
 export const health = new Hono<{ Bindings: Env }>()
 
-// GET na raiz do roteador = GET /health. c é o contexto da requisição.
+// async porque a rota espera o banco (await) antes de responder.
 health.get('/', async (c) => {
-  // O SQL fica em src/db/; a rota só chama. c.env.db é o banco.
-  await bancoResponde(c.env.db)
-  // c.json responde JSON, com status 200.
+  await bancoResponde(c.env.db) // c.env.db é o banco que o jogo entrega
   return c.json({ status: 'ok' })
-})`,
-      note: 'A sua rota /ola tem a mesma forma, mais simples: não usa o banco, então não precisa de async nem de await.',
-    },
-    docs: ['hono-rotas', 'hono-json'],
-    byFramework: {
-      fetch: {
-        example: {
-          file: 'src/routes/health.ts',
-          code: String.raw`import { bancoResponde } from '../db/saude'
+})
+`
+const HEALTH_ROUTE_FETCH = String.raw`import { bancoResponde } from '../db/saude'
 import type { Env } from '../env'
 
-// Uma função por rota: o index chama quando o caminho casa.
+// async porque a rota espera o banco (await) antes de responder.
 export async function health(env: Env): Promise<Response> {
-  // O SQL fica em src/db/; a rota só chama. env.db é o banco.
-  await bancoResponde(env.db)
-  // Response.json responde JSON, com status 200.
+  await bancoResponde(env.db) // env.db é o banco que o jogo entrega
   return Response.json({ status: 'ok' })
-}`,
-          note: 'A sua rota /ola tem a mesma forma, mais simples: não usa o banco, então não precisa de async, await nem env.',
-        },
-        docs: ['fetch-json'],
+}
+`
+const INDEX_FULL = String.raw`import { Hono } from 'hono'
+import type { Env } from './env'
+import { health } from './routes/health' // novo
+import { ola } from './routes/ola'
+
+const app = new Hono<{ Bindings: Env }>()
+
+app.route('/health', health) // novo
+app.route('/ola', ola)
+
+export default app
+`
+const INDEX_FULL_FETCH = String.raw`import type { Env } from './env'
+import { health } from './routes/health' // novo
+import { ola } from './routes/ola'
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const { pathname } = new URL(req.url)
+    if (req.method === 'GET' && pathname === '/health') return health(env) // novo
+    if (req.method === 'GET' && pathname === '/ola') return ola()
+    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })
+  },
+}
+`
+const DIGITE = 'Os comentários (// …) explicam o código: digitá-los é opcional.'
+
+const PASSOS_OLA: GuidedStep[] = [
+  {
+    title: 'Um projeto vazio',
+    do: 'Clique em Abrir src/env.ts e leia o arquivo: é o único que já vem pronto.',
+    learn:
+      'Você vai escrever esta API do zero, um arquivo por vez, e este painel diz o que fazer em cada passo. O src/env.ts só descreve o [Env](env): o que o jogo entrega para sua API, que é o banco Postgres em db. Sem ele, o TypeScript não saberia o que db.query aceita.',
+    file: 'src/env.ts',
+  },
+  {
+    title: 'Crie o app: src/index.ts',
+    do: 'Clique em Abrir src/index.ts (o arquivo é criado vazio) e digite o código abaixo.',
+    learn:
+      'Toda requisição entra por src/index.ts. new Hono() cria o [app](hono-app), e o servidor usa o que o arquivo exporta por padrão. Por enquanto o app não tem rota nenhuma.',
+    file: 'src/index.ts',
+    example: { file: 'src/index.ts', code: INDEX_APP, exact: true, note: DIGITE },
+    docs: ['hono-app'],
+    check: { kind: 'file', path: 'src/index.ts', contains: ['new Hono<{ Bindings: Env }>()', 'export default app'] },
+    byFramework: {
+      fetch: {
+        learn:
+          'Toda requisição entra por src/index.ts, que exporta um objeto com [fetch(req, env)](fetch-app). O servidor chama essa função a cada requisição e espera um Response de volta. Por enquanto, tudo responde 404.',
+        example: { file: 'src/index.ts', code: INDEX_APP_FETCH, exact: true, note: DIGITE },
+        docs: ['fetch-app'],
+        check: { kind: 'file', path: 'src/index.ts', contains: ['async fetch(req: Request, env: Env)', 'new URL(req.url)'] },
       },
     },
   },
   {
-    title: 'Crie src/routes/ola.ts',
+    title: 'Sua primeira rota: GET /ola',
+    do: 'Em src/index.ts, acrescente a linha marcada com "novo". Depois clique em Testar agora.',
     learn:
-      'Cada recurso ganha seu arquivo em src/routes/. O arquivo cria um roteador (outro new Hono) e exporta com nome; quem decide o caminho completo é o index.',
-    file: 'src/routes/ola.ts',
-    example: {
-      file: 'modelo',
-      code: String.raw`import { Hono } from 'hono'
-import type { Env } from '../env'
-
-// Exportado com nome, para o index importar: import { versao } from './routes/versao'
-export const versao = new Hono<{ Bindings: Env }>()
-
-// Sem banco, a resposta sai na hora: sem async, sem await.
-versao.get('/', (c) => c.json({ versao: '1.0' }))`,
-      note: "No seu caso: o arquivo é src/routes/ola.ts, o roteador se chama ola e o objeto é { mensagem: 'olá' }.",
-    },
+      'Uma rota liga um método e um caminho a uma função que responde. [app.get](hono-rotas) registra um GET, e [c.json](hono-json) responde JSON com status 200. Testar agora chama sua API e mostra a resposta na aba Requisição.',
+    file: 'src/index.ts',
+    example: { file: 'src/index.ts', code: INDEX_INLINE, exact: true },
     docs: ['hono-rotas', 'hono-json'],
+    check: { kind: 'request', path: '/ola', status: 200, body: { mensagem: 'olá' } },
+    byFramework: {
+      fetch: {
+        learn:
+          'No fetch puro, uma rota é um if: método e caminho. [Response.json](fetch-json) responde JSON com status 200. Testar agora chama sua API e mostra a resposta na aba Requisição.',
+        example: { file: 'src/index.ts', code: INDEX_INLINE_FETCH, exact: true },
+        docs: ['fetch-rotear', 'fetch-json'],
+      },
+    },
+  },
+  {
+    title: 'Uma rota por arquivo: src/routes/ola.ts',
+    do: 'Clique em Abrir src/routes/ola.ts e digite o código abaixo.',
+    learn:
+      'Com dezenas de rotas, o index viraria uma lista enorme. Por isso cada recurso ganha seu arquivo em src/routes/, com um roteador próprio exportado com nome. O index só escolhe o prefixo.',
+    file: 'src/routes/ola.ts',
+    example: { file: 'src/routes/ola.ts', code: OLA, exact: true, note: DIGITE },
+    docs: ['hono-route'],
     check: { kind: 'file', path: 'src/routes/ola.ts', contains: ['export const ola', "ola.get('/'"] },
     byFramework: {
       fetch: {
-        learn: 'Cada recurso ganha seu arquivo em src/routes/. O arquivo exporta com nome uma função que devolve o Response; quem decide o caminho é o index.',
-        example: {
-          file: 'modelo',
-          code: String.raw`// Exportada com nome, para o index importar: import { versao } from './routes/versao'
-// Sem banco, nada a esperar: sem async, devolve o Response direto.
-export function versao(): Response {
-  return Response.json({ versao: '1.0' })
-}`,
-          note: "No seu caso: o arquivo é src/routes/ola.ts, a função se chama ola e o objeto é { mensagem: 'olá' }.",
-        },
+        learn:
+          'Com dezenas de rotas, o index viraria uma lista enorme. Por isso cada rota ganha seu arquivo em src/routes/, com uma função exportada com nome que devolve o Response. O index só decide quando chamar.',
+        example: { file: 'src/routes/ola.ts', code: OLA_FETCH, exact: true, note: DIGITE },
         docs: ['fetch-json'],
         check: { kind: 'file', path: 'src/routes/ola.ts', contains: ['export function ola', 'Response.json('] },
       },
     },
   },
   {
-    title: 'Registre a rota no index',
+    title: 'Ligue o arquivo no index',
+    do: 'Deixe src/index.ts igual ao código abaixo: importe ola e troque a linha app.get por app.route. Depois clique em Testar agora.',
     learn:
-      "O roteador só responde depois de montado no app: app.route('/ola', ola) soma o prefixo /ola ao '/' do roteador. Esquecer esse passo é a causa mais comum de 404.",
+      "O roteador só responde depois de montado no app: [app.route](hono-route)('/ola', ola) soma o prefixo /ola ao '/' do roteador. Esquecer esse passo é a causa mais comum de 404.",
     file: 'src/index.ts',
-    example: {
-      file: 'src/index.ts',
-      code: String.raw`import { health } from './routes/health'
-import { versao } from './routes/versao' // 1. importe o roteador
-
-const app = new Hono<{ Bindings: Env }>()
-
-app.route('/health', health)
-app.route('/versao', versao) // 2. monte no prefixo: agora GET /versao responde`,
-      note: "Faça o mesmo com ola: importe de './routes/ola' e monte em '/ola'.",
-    },
+    example: { file: 'src/index.ts', code: INDEX_ROUTE, exact: true },
     docs: ['hono-route'],
-    check: { kind: 'file', path: 'src/index.ts', contains: ["from './routes/ola'", "app.route('/ola', ola)"] },
+    check: { kind: 'request', path: '/ola', status: 200, body: { mensagem: 'olá' } },
     byFramework: {
       fetch: {
-        learn: 'O index só chama a sua função quando um if casa o método e o caminho. Ponha o if novo antes do return do fim: depois dele, nada mais roda.',
-        example: {
-          file: 'src/index.ts',
-          code: String.raw`import { health } from './routes/health'
-import { versao } from './routes/versao' // 1. importe a função
-
-// … dentro de fetch(req, env):
-    if (req.method === 'GET' && pathname === '/health') return health(env)
-    if (req.method === 'GET' && pathname === '/versao') return versao() // 2. um if por rota
-    return Response.json({ erro: 'Rota não encontrada.' }, { status: 404 })`,
-          note: "Faça o mesmo com ola: importe de './routes/ola' e escreva o if de GET /ola.",
-        },
+        do: 'Deixe src/index.ts igual ao código abaixo: importe ola e faça o if chamar ola(). Depois clique em Testar agora.',
+        learn: 'O index só chama a sua função quando o if casa o método e o caminho. Esquecer o import ou o if é a causa mais comum de 404.',
+        example: { file: 'src/index.ts', code: INDEX_ROUTE_FETCH, exact: true },
         docs: ['fetch-rotear'],
-        check: { kind: 'file', path: 'src/index.ts', contains: ["from './routes/ola'", "pathname === '/ola'"] },
       },
     },
   },
   {
-    title: 'Teste a sua rota',
+    title: 'O banco: src/db/saude.ts',
+    do: 'Clique em Abrir src/db/saude.ts e digite o código abaixo.',
     learn:
-      'Teste à mão antes dos testes automáticos: o erro aparece mais cedo e mais claro. 404 quer dizer que a rota não foi registrada; 500, que o código lançou um erro (veja o Console). Com 200 e a mensagem, rode os testes da etapa.',
-    check: { kind: 'request', path: '/ola', status: 200, body: { mensagem: 'olá' } },
+      'Agora uma rota que usa o banco. O SQL não fica na rota: fica em src/db/, numa função que recebe o banco. Assim a rota cuida só de HTTP, e os testes conferem essa separação.',
+    file: 'src/db/saude.ts',
+    example: { file: 'src/db/saude.ts', code: SAUDE, exact: true, note: DIGITE },
+    docs: ['db-query'],
+    check: { kind: 'file', path: 'src/db/saude.ts', contains: ['export async function bancoResponde', "db.query('SELECT 1')"] },
+  },
+  {
+    title: 'A rota /health',
+    do: 'Clique em Abrir src/routes/health.ts e digite o código abaixo.',
+    learn:
+      'Toda API tem um GET /health: balanceadores o chamam para saber se a instância está viva. Esta rota espera o banco responder antes de dizer ok, e se o banco cair, ela falha junto.',
+    file: 'src/routes/health.ts',
+    example: { file: 'src/routes/health.ts', code: HEALTH_ROUTE, exact: true, note: DIGITE },
+    docs: ['hono-rotas', 'env'],
+    check: { kind: 'file', path: 'src/routes/health.ts', contains: ['export const health', 'await bancoResponde(c.env.db)'] },
+    byFramework: {
+      fetch: {
+        example: { file: 'src/routes/health.ts', code: HEALTH_ROUTE_FETCH, exact: true, note: DIGITE },
+        docs: ['fetch-json', 'env'],
+        check: { kind: 'file', path: 'src/routes/health.ts', contains: ['export async function health', 'await bancoResponde(env.db)'] },
+      },
+    },
+  },
+  {
+    title: 'Ligue /health no index',
+    do: 'Acrescente as duas linhas marcadas com "novo" em src/index.ts. Depois clique em Testar agora.',
+    learn: 'É o mesmo movimento do /ola: importar e montar no prefixo. Repare que o index continua curto, só ligando caminhos a arquivos.',
+    file: 'src/index.ts',
+    example: { file: 'src/index.ts', code: INDEX_FULL, exact: true },
+    docs: ['hono-route'],
+    check: HEALTH_OK,
+    byFramework: {
+      fetch: {
+        learn: 'É o mesmo movimento do /ola: importar e escrever o if. A diferença é que health precisa do env, que o fetch recebe e repassa.',
+        example: { file: 'src/index.ts', code: INDEX_FULL_FETCH, exact: true },
+        docs: ['fetch-rotear'],
+      },
+    },
+  },
+  {
+    title: 'Rode os testes da etapa',
+    do: 'Clique em Rodar testes, logo abaixo deste quadro.',
+    learn:
+      'Os testes chamam GET /ola e GET /health num banco novo e conferem as respostas. Se algum falhar, a mensagem diz o que veio e o que era esperado. 404 quer dizer rota não ligada, e 500, erro no código (veja o Console).',
   },
 ]
 
@@ -216,7 +308,7 @@ const PASSOS_HEALTH: GuidedStep[] = [
   {
     title: 'Por que existe o /health',
     learn:
-      'Balanceadores e orquestradores chamam GET /health de tempos em tempos para saber se a instância está viva. A rota faz await bancoResponde(...) antes de responder: se o banco cair, ela falha junto e a instância sai de circulação. O starter já tem essa rota; confirme que ela responde.',
+      'Balanceadores e orquestradores chamam GET /health de tempos em tempos para saber se a instância está viva. A rota faz await bancoResponde(...) antes de responder: se o banco cair, ela falha junto e a instância sai de circulação. Você escreveu essa rota na etapa anterior; confirme que ela ainda responde.',
     file: 'src/routes/health.ts',
     docs: ['db-query'],
     check: HEALTH_OK,
@@ -353,9 +445,29 @@ export default app // os ganchos vêm antes do export`,
 
 const PASSOS_PRODUTOS: GuidedStep[] = [
   {
+    title: 'Crie a tabela produtos',
+    do: 'Clique em Abrir migrations/001_init.sql, digite o SQL abaixo e clique em Aplicar migrações, no painel Banco.',
+    learn:
+      'Uma [migração](sql-migracao) é um arquivo SQL que muda o banco, aplicado uma vez e em ordem pelo número do nome. Preço fica em centavos, num inteiro: dinheiro em número com vírgula erra nas contas. O CHECK faz o próprio banco recusar preço negativo.',
+    file: 'migrations/001_init.sql',
+    example: {
+      file: 'migrations/001_init.sql',
+      exact: true,
+      code: String.raw`CREATE TABLE produtos (
+  id serial PRIMARY KEY,           -- o banco numera sozinho: 1, 2, 3…
+  nome text NOT NULL,
+  preco_centavos int NOT NULL CHECK (preco_centavos >= 0)
+);
+`,
+      note: 'Os comentários (-- …) explicam o SQL: digitá-los é opcional.',
+    },
+    docs: ['sql-migracao'],
+    check: { kind: 'file', path: 'migrations/001_init.sql', contains: ['CREATE TABLE produtos', 'preco_centavos int NOT NULL'] },
+  },
+  {
     title: 'O que é um CRUD',
     learn:
-      'CRUD são as quatro operações de um recurso: criar, ler, atualizar e apagar. Cada uma é um verbo HTTP mais um caminho, e o [status](status-http) conta o resultado: 201 criou, 204 apagou, 404 não achou. Aqui o recurso é o produto, e a tabela produtos já existe desde o início.',
+      'CRUD são as quatro operações de um recurso: criar, ler, atualizar e apagar. Cada uma é um verbo HTTP mais um caminho, e o [status](status-http) conta o resultado: 201 criou, 204 apagou, 404 não achou. Aqui o recurso é o produto, guardado na tabela produtos.',
     example: {
       code: String.raw`// Recurso de exemplo: categorias.
 // POST   /categorias      cria uma           -> 201, com o cabeçalho Location
@@ -1297,17 +1409,17 @@ export async function reservas(req: Request, env: Env, id?: string): Promise<Res
 const primeirosPassos: Stage = {
   id: 'primeiros-passos',
   title: 'Primeiros passos',
-  statement: 'Conheça a tela e o projeto inicial, depois crie sua primeira rota: GET /ola, que responde 200 com { "mensagem": "olá" }.',
+  statement: 'Do zero: crie o app, a rota GET /ola, que responde { "mensagem": "olá" }, e o GET /health, que confere o banco.',
   steps: PASSOS_OLA,
-  files: ['src/index.ts', 'src/routes/ola.ts', 'src/env.ts', 'migrations/001_init.sql'],
+  files: ['src/index.ts', 'src/routes/ola.ts', 'src/routes/health.ts', 'src/db/saude.ts', 'src/env.ts'],
   tests: [
     { name: 'GET /ola responde 200 com a mensagem', requests: [{ request: { path: '/ola' }, expect: { status: 200, body: { mensagem: 'olá' } } }] },
     { name: 'GET /health continua respondendo ok', requests: [{ request: { path: '/health' }, expect: { status: 200, body: { status: 'ok' } } }] },
   ],
   checklist: [{ id: 'camadas' }],
   hints: [
-    'Abra src/routes/health.ts: sua rota nova é parecida. Crie src/routes/ola.ts e registre-a em src/index.ts.',
-    'Em src/routes/ola.ts exporte um roteador com uma rota GET na raiz que responde JSON; em src/index.ts, app.route("/ola", ola). No fetch puro, um if para o caminho /ola.',
+    'Siga os passos ao lado na ordem: cada um traz o código inteiro do arquivo. Confira cada passo antes de prosseguir.',
+    'Em src/routes/ola.ts exporte um roteador com uma rota GET na raiz que responde JSON; em src/index.ts, app.route("/ola", ola) e app.route("/health", health). No fetch puro, um if para cada caminho.',
     'Hono: export const ola = new Hono<{ Bindings: Env }>() e ola.get("/", (c) => c.json({ mensagem: "olá" })). Fetch puro: Response.json({ mensagem: "olá" }).',
   ],
   explanation:
@@ -1320,14 +1432,14 @@ const health: Stage = {
   title: 'Health check',
   statement: 'Padronize os erros da API em problem+json: crie src/http.ts e faça toda rota desconhecida responder 404 nesse formato.',
   steps: PASSOS_HEALTH,
-  files: ['src/index.ts', 'src/routes/health.ts', 'src/db/saude.ts', 'src/env.ts', 'src/http.ts', 'migrations/001_init.sql'],
+  files: ['src/index.ts', 'src/routes/health.ts', 'src/db/saude.ts', 'src/env.ts', 'src/http.ts'],
   tests: [
     { name: 'GET /health responde ok', requests: [{ request: { path: '/health' }, expect: { status: 200, body: { status: 'ok' } } }] },
     { name: 'rota que não existe responde 404', requests: [{ request: { path: '/nada' }, expect: { status: 404, body: { status: 404 } } }] },
   ],
   checklist: [{ id: 'camadas' }, { id: 'problem-json', request: { path: '/nada' } }],
   hints: [
-    'O starter já responde /health. O que falta é o 404: toda rota desconhecida cai no mesmo lugar.',
+    'O /health da etapa anterior já responde. O que falta é o 404: toda rota desconhecida cai no mesmo lugar.',
     'No Hono, app.notFound(() => …) e app.onError(…) cuidam das respostas de erro; no fetch puro, o fim do roteador devolve o 404.',
     "Monte o erro numa função só: Response.json({ type: 'about:blank', title, status }, { status, headers: { 'Content-Type': 'application/problem+json' } }).",
   ],
@@ -1342,7 +1454,7 @@ const produtos: Stage = {
   statement:
     'Crie o CRUD de produtos: o SQL em src/db/produtos.ts e as rotas em src/routes/produtos.ts, com 201 e Location ao criar, 204 ao apagar e 404 para o que não existe.',
   steps: PASSOS_PRODUTOS,
-  files: [...health.files, 'src/routes/produtos.ts', 'src/db/produtos.ts'],
+  files: [...health.files, 'migrations/001_init.sql', 'src/routes/produtos.ts', 'src/db/produtos.ts'],
   seed: PRODUTOS_SEED,
   tests: [
     {
@@ -1615,4 +1727,5 @@ export const cursoPedidos: ProjectCourse = {
   id: 'ecommerce',
   title: 'API de pedidos do E-commerce',
   stages: [primeirosPassos, health, produtos, pedidos, validacao, paginacao, auth],
+  blank: true,
 }

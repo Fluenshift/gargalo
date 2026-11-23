@@ -25,7 +25,8 @@ export default function Oficina() {
     <>
     <TopBar screen="oficina" />
     <div className="career free oficina">
-      <header className="career__head">
+      {/* An open project needs the whole height for the editor and the step beside it: the title stays for screen readers. */}
+      <header className={place.project ? 'sr-only' : 'career__head'}>
         <h1 ref={heading} tabIndex={-1}>
           Oficina
         </h1>
