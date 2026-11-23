@@ -875,5 +875,6 @@ export const cursoBusca: ProjectCourse = {
   baseFiles: { 'src/http.ts': HTTP },
   id: 'busca',
   title: 'Busca e paginação',
+  summary: 'Depois do básico: listas grandes com paginação por cursor e busca por texto com índice.',
   stages: [listagem, paginacao, busca],
 }
