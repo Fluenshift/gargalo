@@ -31,9 +31,9 @@ A change is done when `npx oxlint --deny-warnings && npm run test:coverage && np
 
 ## Git
 
-- One branch and PR per issue; the PR body is Portuguese and ends with `Closes #N`. No "Generated with Claude Code" footer.
-- The owner merges PRs. Parallel agents work in separate worktrees under `../gargalo-wt/<name>` (each runs its own `npm ci`), each on its own dev-server port.
-- GitHub keeps merged branches: once the PR is merged, delete its branch locally and on `origin`, and `git worktree remove` its worktree.
+- Before you create a branch, commit or open a PR, read `docs/CONTRIBUTING.md`: branch names, commit messages, the PR, cleanup after merge, and what each push triggers in CI and Vercel. Where a generic commit or PR skill says otherwise, that file wins.
+- PRs carry no "Generated with Claude Code" footer.
+- Parallel agents work in separate worktrees under `../gargalo-wt/<name>` (each runs its own `npm ci`), each on its own dev-server port.
 
 ## Dev servers
 
