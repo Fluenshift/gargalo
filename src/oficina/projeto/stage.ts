@@ -115,6 +115,8 @@ export interface Stage {
   reference: Record<Framework, Record<string, string>>
   /** SQL run after the migrations, before each test. */
   seed?: string
+  /** A code review's planted bugs, judged from the results of `tests` (`judgeRevisao`): after a run, the panel says which are still there. */
+  bugs?: (tests: TestResult[]) => { title: string; fixed: boolean }[]
 }
 
 export interface ProjectCourse {

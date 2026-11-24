@@ -179,7 +179,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { expect } from 'vitest'
 import type { Env } from '../src/env'
 import app from '../src/index'
-import { pgliteBanco, type Banco } from '../src/infra/banco'
+import { pgliteBanco, type Banco, type Db } from '../src/infra/banco'
 import { migrar } from '../src/infra/migrar'
 
 export interface Pedido {
@@ -190,7 +190,8 @@ export interface Pedido {
 }
 export interface Passo {
   request: Pedido
-  expect?: { status: number; headers?: Record<string, string>; body?: unknown }
+  /** absent: keys the body must not have, at any depth. maxQueries: the most queries the request may make. */
+  expect?: { status: number; headers?: Record<string, string>; body?: unknown; absent?: string[]; maxQueries?: number }
   /** Name to where its value is in the response: status, header.<name> or body.<path>. Later steps use it as {{name}}. */
   save?: Record<string, string>
 }
@@ -205,6 +206,8 @@ interface Resposta {
   status: number
   headers: Record<string, string>
   body: unknown
+  /** Queries the request made, transactions included. */
+  consultas: number
 }
 
 export async function abrirBanco(): Promise<Banco> {
@@ -239,6 +242,30 @@ function preencher<T>(valor: T, vars: Record<string, unknown>): T {
   return valor
 }
 
+/** The first key of the value that is one of these (in any case), at any depth; undefined when there is none. */
+function chaveProibida(valor: unknown, chaves: string[]): string | undefined {
+  if (Array.isArray(valor)) return valor.map((v) => chaveProibida(v, chaves)).find(Boolean)
+  if (valor === null || typeof valor !== 'object') return undefined
+  for (const [k, v] of Object.entries(valor)) {
+    if (chaves.some((c) => c.toLowerCase() === k.toLowerCase())) return k
+    const dentro = chaveProibida(v, chaves)
+    if (dentro) return dentro
+  }
+  return undefined
+}
+
+/** The database one request sees: the same one, counting its queries. */
+function contando(db: Db, conta: { consultas: number }): Db {
+  return {
+    query: <T>(sql: string, params?: unknown[]) => {
+      conta.consultas++
+      return db.query<T>(sql, params)
+    },
+    exec: (sql) => db.exec(sql),
+    transaction: (fn) => db.transaction((tx) => fn(contando(tx, conta))),
+  }
+}
+
 function escolher(res: Resposta, de: string): unknown {
   if (de === 'status') return res.status
   if (de.startsWith('header.')) return res.headers[de.slice(7).toLowerCase()]
@@ -252,7 +279,8 @@ async function chamar(banco: Banco, pedido: Pedido): Promise<Resposta> {
   const headers = new Headers(pedido.headers)
   if (pedido.body !== undefined && !headers.has('content-type')) headers.set('content-type', 'application/json')
   const req = new Request(new URL(pedido.path, 'http://localhost'), { method: pedido.method ?? 'GET', headers, body: pedido.body === undefined ? undefined : JSON.stringify(pedido.body) })
-  const env: Env = { db: banco }
+  const conta = { consultas: 0 }
+  const env: Env = { db: contando(banco, conta) }
   const res = await (app as { fetch(req: Request, env: Env): Response | Promise<Response> }).fetch(req, env)
   const texto = await res.text()
   let body: unknown = texto
@@ -261,7 +289,7 @@ async function chamar(banco: Banco, pedido: Pedido): Promise<Resposta> {
   } catch {
     // Not JSON: the text is the body.
   }
-  return { status: res.status, headers: Object.fromEntries(res.headers), body }
+  return { status: res.status, headers: Object.fromEntries(res.headers), body, consultas: conta.consultas }
 }
 
 export async function rodar(banco: Banco, caso: Caso) {
@@ -275,6 +303,9 @@ export async function rodar(banco: Banco, caso: Caso) {
       expect(res.status, onde + 'status ' + JSON.stringify(res.body)).toBe(esperado.status)
       for (const [nome, valor] of Object.entries(esperado.headers ?? {})) expect(res.headers[nome.toLowerCase()] ?? null, onde + 'cabeçalho ' + nome).toBe(valor)
       if (esperado.body !== undefined) expect(casa(esperado.body, res.body), onde + 'corpo diferente do esperado. Esperado ' + JSON.stringify(esperado.body) + ', recebido ' + JSON.stringify(res.body)).toBe(true)
+      const vazou = esperado.absent && chaveProibida(res.body, esperado.absent)
+      expect(vazou, onde + 'a resposta traz o campo ' + vazou + ', que não pode sair').toBeFalsy()
+      if (esperado.maxQueries !== undefined) expect(res.consultas, onde + 'consultas ao banco').toBeLessThanOrEqual(esperado.maxQueries)
     }
     for (const [nome, de] of Object.entries(passo.save ?? {})) {
       const valor = escolher(res, de)

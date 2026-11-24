@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -9,6 +9,7 @@ import { cursoPedidos } from './cursoPedidos'
 import { exportFiles, importedPackages, slugOf, type ExportContext } from './exportar'
 import { buildOpenApi } from './openapi'
 import { starter, type Project } from './project'
+import { BUGGY_BLOCKS, revisaoCourse, revisaoRoutes, revisaoStage, revisaoStarter } from './revisao'
 import { stageResultId } from './stage'
 import { unzip, zip } from './zip'
 
@@ -191,4 +192,49 @@ describe('the exported database adapter', () => {
         expect((await db.query('SELECT name FROM _migrations ORDER BY name')).map((r) => r.name)).toEqual(['002_a.sql', '010_b.sql'])
       })
     })
+})
+
+// A downloaded project's tests/suporte.ts, run here as it is: the Revisão cases catch the leak and the N+1 there too.
+describe('the exported acceptance runner', () => {
+  type Caso = (typeof revisaoStage.tests)[number]
+  type Banco = { exec(sql: string): Promise<void>; close(): Promise<void> }
+  type Suporte = { abrirBanco(): Promise<Banco>; rodar(banco: Banco, caso: Caso): Promise<void> }
+  const dirs: string[] = []
+  afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })))
+
+  /** The exported project in a folder of its own (node_modules linked, so its imports resolve), and a database ready for one case. */
+  async function exported(index: string) {
+    const project: Project = { ...revisaoStarter, files: { ...revisaoStarter.files, 'src/index.ts': index } }
+    const passed = { [stageResultId(revisaoCourse.id, revisaoStage.id)]: { stars: 3, cost: 0, p99Ms: 0, availability: 1 } }
+    const files = exportFiles(project, ctx({ name: 'Revisão', course: revisaoCourse, results: passed }))
+    const dir = mkdtempSync(join(tmpdir(), 'gargalo-suporte-'))
+    dirs.push(dir)
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true })
+      writeFileSync(join(dir, path), text)
+    }
+    symlinkSync(join(process.cwd(), 'node_modules'), join(dir, 'node_modules'), 'dir')
+    const suporte = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'tests/suporte.ts')).href)) as Suporte
+    const { migrar } = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'src/infra/migrar.ts')).href)) as { migrar(db: Banco, pasta: string): Promise<string[]> }
+    const banco = await suporte.abrirBanco()
+    // What preparar() does, with the migrations folder spelled out (it reads ./migrations from where npm test runs).
+    const rodar = async (caso: Caso) => {
+      await banco.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public')
+      await migrar(banco, join(dir, 'migrations'))
+      await banco.exec(revisaoStage.seed!)
+      await suporte.rodar(banco, caso)
+    }
+    return { rodar, close: () => banco.close() }
+  }
+
+  it('fails the leak and the N+1 of the buggy project, and passes every case once they are fixed', async () => {
+    const [vazamento, , , nMaisUm] = revisaoStage.tests
+    const buggy = await exported(revisaoRoutes(...BUGGY_BLOCKS))
+    await expect(buggy.rodar(vazamento)).rejects.toThrow(/a resposta traz o campo senha_hash, que não pode sair/)
+    await expect(buggy.rodar(nMaisUm)).rejects.toThrow(/consultas ao banco/)
+    await buggy.close()
+    const fixed = await exported(revisaoStage.reference.fetch['src/index.ts'])
+    for (const caso of revisaoStage.tests) await fixed.rodar(caso)
+    await fixed.close()
+  }, 60_000)
 })

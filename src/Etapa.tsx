@@ -386,6 +386,23 @@ export function Etapa({
         {status || (warming ? 'Carregando o Postgres do navegador…' : '')}
       </p>
 
+      {run && stage.bugs && (
+        <section aria-labelledby="etapa-bugs" className="projeto__slot">
+          <h4 id="etapa-bugs" className="projeto__label">
+            Bugs plantados
+          </h4>
+          <ol className="oficina__results">
+            {stage.bugs(run.result.tests).map((b) => (
+              <li key={b.title} className={b.fixed ? 'is-passed' : 'is-failed'}>
+                <p className="oficina__test">
+                  <span>{b.fixed ? 'Corrigido' : 'Ainda presente'}</span> {b.title}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {run && (
         <section aria-labelledby="etapa-results" className="projeto__slot">
           <h4 id="etapa-results" className="projeto__label">
