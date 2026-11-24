@@ -1,10 +1,13 @@
 name: Quality Gate
 
+# A change that only touches documentation skips the gate (docs/CONTRIBUTING.md).
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', '.claude/**', 'docs/**']
   pull_request:
     branches: [main]
+    paths-ignore: ['**.md', '.claude/**', 'docs/**']
 
 concurrency:
   group: quality-gate-${{ github.ref }}
