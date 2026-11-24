@@ -78,7 +78,8 @@ const Profile = lazy(() => import('./Profile').then((m) => ({ default: m.Profile
 
 const nodeTypes = { component: NodeCard, region: RegionArea }
 const DELETE_KEYS = ['Backspace', 'Delete']
-const FIT_VIEW = { maxZoom: 1, padding: 0.3 }
+/** 11.5% a side: the framing `padding: 0.3` gave before React Flow 13, which reads bare numbers as pixels. */
+const FIT_VIEW: FitViewOptions = { maxZoom: 1, padding: '11.5%' }
 /** On a wide screen the brief floats over the left of the canvas: the first fit leaves room for it. */
 const firstFit = (): FitViewOptions =>
   typeof window !== 'undefined' && window.matchMedia('(min-width: 641px)').matches
@@ -786,7 +787,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
     const added = nodes.find((n) => n.id === pendingFit.current)
     if (!added?.measured?.width) return
     pendingFit.current = null
-    fitView({ padding: 0.3, maxZoom: 1, duration: prefersReducedMotion() ? 0 : 250 })
+    fitView({ ...FIT_VIEW, duration: prefersReducedMotion() ? 0 : 250 })
   }, [nodes, fitView])
 
   useEffect(() => {
@@ -1457,6 +1458,8 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
               onClickConnectEnd={onClickConnectEnd}
               autoPanOnNodeDrag={false}
               selectNodesOnDrag={false}
+              // React Flow 13 lifts a selected link above the label layer, which would cover its × button.
+              elevateEdgesOnSelect={false}
               isValidConnection={isValidConnection}
               nodesConnectable={editable}
               nodesDraggable={editable}
