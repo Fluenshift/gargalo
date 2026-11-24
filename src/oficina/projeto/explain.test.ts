@@ -112,4 +112,11 @@ describe('explain', () => {
     expect(explain({ name: 't', passed: false, message: 'error: column "x" does not exist', file: 'src/db.ts', line: 4 })?.title).toBe('Coluna não existe')
     expect(explain({ name: 't', passed: false })?.title).toBe('Erro no código')
   })
+
+  it('explains a field that must not leave and a request over its queries, with what to do', () => {
+    const leak = explain({ name: 't', passed: false, message: 'Requisição 2 (POST /login): A resposta traz o campo senha_hash, que não pode sair.' })
+    expect(leak).toMatchObject({ title: 'Campo que não pode sair', detail: expect.stringContaining('senha_hash'), next: expect.stringContaining('SELECT *') })
+    expect(explain({ name: 't', passed: false, message: 'A requisição fez 5 consultas ao banco; o máximo é 2.' })).toMatchObject({ title: 'Consultas demais', next: expect.stringContaining('ANY($1)') })
+    expect(explain({ name: 't', passed: false, message: 'A requisição fez 1 consulta ao banco; o máximo é 0.' })?.title).toBe('Consultas demais')
+  })
 })

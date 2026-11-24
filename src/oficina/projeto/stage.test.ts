@@ -1,14 +1,33 @@
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { RESULTS_KEY, XP_PER_LEVEL, XP_PER_STAR, totalXp } from '../../score'
-import type { TestResult } from '../exercise'
+import type { TestResult, TestStep } from '../exercise'
 import { loadSavedResults } from '../progress'
 import { prewarm, type StartWorker, type WorkerMessage } from '../runner'
 import { checkTests } from './checklist'
 import { COURSES, courseOf } from './courses'
 import type { Project } from './project'
 import { executeProjectTests, type ProjectTestsInput } from './runtime'
-import { evaluateStage, resumeStage, runStage, saveStageResult, stagePassed, stageResultId, stageStars, statementSteps, splitStatement, missingInFile, stepFor, stepTest, type Stage } from './stage'
+import {
+  checkStep,
+  evaluateStage,
+  missingInFile,
+  missingInResponse,
+  resumeStage,
+  runStage,
+  saveStageResult,
+  stagePassed,
+  stageResultId,
+  stageStars,
+  statementSteps,
+  splitStatement,
+  stepFor,
+  stepRequest,
+  stepTest,
+  type RequestCheck,
+  type RunTests,
+  type Stage,
+} from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -210,8 +229,57 @@ describe('guided steps', () => {
     expect(missingInFile(files, { kind: 'file', path: 'src/http.ts' })).toBe('Falta criar src/http.ts.')
   })
 
-  it('a request check becomes one acceptance test, GET by default, body only when given', () => {
-    expect(stepTest({ kind: 'request', path: '/nada', status: 404 })).toEqual({ name: 'GET /nada responde 404', requests: [{ request: { method: undefined, path: '/nada' }, expect: { status: 404, body: undefined } }] })
+  it('a request check becomes one sequential acceptance test: its steps before, then its request, GET by default', () => {
+    expect(stepTest({ kind: 'request', path: '/nada', status: 404 })).toEqual({ name: 'GET /nada responde 404', sequential: true, requests: [{ request: { method: undefined, path: '/nada' }, expect: { status: 404 } }] })
+    const login: TestStep = { request: { method: 'POST', path: '/login', body: { email: 'a@b.c' } }, save: { token: 'body.token' } }
+    const check: RequestCheck = {
+      kind: 'request',
+      method: 'POST',
+      path: '/pedidos',
+      send: { body: { itens: [] }, headers: { Authorization: 'Bearer {{token}}' } },
+      status: 201,
+      body: { id: 1 },
+      absent: ['senha'],
+      maxQueries: 2,
+      before: [login],
+    }
+    expect(stepRequest(check)).toEqual({ method: 'POST', path: '/pedidos', body: { itens: [] }, headers: { Authorization: 'Bearer {{token}}' } })
+    expect(stepTest(check).requests).toEqual([login, { request: stepRequest(check), expect: { status: 201, body: { id: 1 }, absent: ['senha'], maxQueries: 2 } }])
+  })
+
+  /** What the worker does for "Conferir passo", here on the file's Postgres. */
+  const onPg: RunTests = async (p, tests, seed) => {
+    const out: TestResult[] = []
+    await executeProjectTests({ project: p, tests, seed }, pg, ({ index, result }) => (out[index] = result))
+    return out
+  }
+
+  it('checkStep reads a file check from the files and runs a request check, saying what came back wrong', async () => {
+    const p = project('SELECT id, nome', PROBLEM)
+    expect(await checkStep(p, { kind: 'file', path: 'src/index.ts', contains: ['RETURNING'] })).toBeUndefined()
+    expect(await checkStep(p, { kind: 'file', path: 'src/nada.ts' })).toBe('Falta criar src/nada.ts.')
+    // Create, keep the id it answers, then read that product: one query, and no key it must not have.
+    const flow: RequestCheck = {
+      kind: 'request',
+      path: '/produtos/{{id}}',
+      status: 200,
+      body: { nome: 'Caneta' },
+      absent: ['senha'],
+      maxQueries: 1,
+      before: [{ request: { method: 'POST', path: '/produtos', body: { nome: 'Caneta' } }, expect: { status: 201 }, save: { id: 'body.id' } }],
+    }
+    expect(await checkStep(p, flow, undefined, onPg)).toBeUndefined()
+    expect(await checkStep(p, { ...flow, absent: ['NOME'] }, undefined, onPg)).toBe('Requisição 2 (GET /produtos/1): A resposta traz o campo nome, que não pode sair.')
+    expect(await checkStep(p, { ...flow, maxQueries: 0 }, undefined, onPg)).toBe('Requisição 2 (GET /produtos/1): A requisição fez 1 consulta ao banco; o máximo é 0.')
+    expect(await checkStep(p, { ...flow, before: [{ ...flow.before![0], expect: { status: 200 } }] }, undefined, onPg)).toBe(
+      'Requisição 1 (POST /produtos): Status diferente do esperado. Esperado 200, veio 201.',
+    )
+    expect(await checkStep(p, { kind: 'request', path: '/produtos/99', status: 200 }, undefined, onPg)).toBe('Status diferente do esperado. Esperado 200, veio 404.')
+  })
+
+  it('a failed result without a message still says something', () => {
+    expect(missingInResponse({ name: 't', passed: true })).toBeUndefined()
+    expect(missingInResponse({ name: 't', passed: false })).toBe('Resposta diferente do esperado.')
   })
 
   it("a step takes its framework's variant over the shared fields", () => {

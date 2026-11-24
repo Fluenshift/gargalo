@@ -8,10 +8,9 @@ import { info, type CheckInfo, type Verdict } from './oficina/projeto/checklist'
 import { buildContext } from './oficina/projeto/context'
 import { docsFor } from './oficina/projeto/docs'
 import { explain } from './oficina/projeto/explain'
-import type { Draft } from './oficina/projeto/http'
+import type { Prefill } from './oficina/projeto/http'
 import type { Project } from './oficina/projeto/project'
-import { runTests } from './oficina/projeto/runner'
-import { missingInFile, resumeStage, runStage, saveStageResult, splitStatement, stagePassed, stepFor, stepTest, type ProjectCourse, type Stage, type StageResult } from './oficina/projeto/stage'
+import { checkStep, missingInFile, resumeStage, runStage, saveStageResult, splitStatement, stagePassed, stepFor, stepRequest, type ProjectCourse, type Stage, type StageResult } from './oficina/projeto/stage'
 
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2))
 
@@ -74,7 +73,7 @@ interface GuidedProps {
   project: Project
   runRef: RefObject<HTMLButtonElement | null>
   onOpenFile: (path: string) => void
-  onTry: (draft: Draft) => void
+  onTry: (prefill: Prefill) => void
   onDoc: (id: string) => void
 }
 
@@ -116,8 +115,7 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
     if (c.kind === 'file') return done(missingInFile(project.files, c) ?? true)
     setChecking(true)
     try {
-      const [r] = await runTests(project, [stepTest(c)], stage.seed)
-      done(r.passed || `${r.message ?? 'Resposta diferente do esperado.'}${'expected' in r ? ` Esperado ${JSON.stringify(r.expected)}, veio ${JSON.stringify(r.received)}.` : ''}`)
+      done((await checkStep(project, c, stage.seed)) ?? true)
     } catch (err) {
       done(`Não deu para conferir: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
@@ -193,7 +191,7 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
               </button>
             )}
             {request && (
-              <button type="button" className="btn btn--ghost btn--small" onClick={() => onTry({ method: request.method ?? 'GET', path: request.path, headers: '', body: '' })}>
+              <button type="button" className="btn btn--ghost btn--small" onClick={() => onTry({ request: stepRequest(request), before: request.before })}>
                 Testar agora
               </button>
             )}
@@ -296,7 +294,7 @@ export function Etapa({
   warming: boolean
   onGoTo: (file: string, line?: number) => void
   onOpenFile: (path: string) => void
-  onTry: (draft: Draft) => void
+  onTry: (prefill: Prefill) => void
 }) {
   const [saved, setSaved] = useState(loadSavedResults)
   const [index, setIndex] = useState(() => resumeStage(course, loadSavedResults()))
@@ -387,6 +385,23 @@ export function Etapa({
       <p className="oficina__status" role="status" aria-live="polite">
         {status || (warming ? 'Carregando o Postgres do navegador…' : '')}
       </p>
+
+      {run && stage.bugs && (
+        <section aria-labelledby="etapa-bugs" className="projeto__slot">
+          <h4 id="etapa-bugs" className="projeto__label">
+            Bugs plantados
+          </h4>
+          <ol className="oficina__results">
+            {stage.bugs(run.result.tests).map((b) => (
+              <li key={b.title} className={b.fixed ? 'is-passed' : 'is-failed'}>
+                <p className="oficina__test">
+                  <span>{b.fixed ? 'Corrigido' : 'Ainda presente'}</span> {b.title}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {run && (
         <section aria-labelledby="etapa-results" className="projeto__slot">

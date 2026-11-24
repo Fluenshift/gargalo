@@ -1064,7 +1064,15 @@ export async function lerEntrada<S extends z.ZodType>(req: Request, schema: S): 
     learn:
       'Na aba Requisição, mande POST /produtos com { "nome": "", "preco_centavos": -1 }: deve vir 400 citando os dois campos em erros. Sem corpo nenhum também dá 400, e um corpo válido continua dando 201. Se vier 500, a validação ainda não roda antes do banco.',
     docs: ['problem-json'],
-    check: { kind: 'request', method: 'POST', path: '/produtos', status: 400, body: { status: 400 } },
+    check: {
+      kind: 'request',
+      method: 'POST',
+      path: '/produtos',
+      send: { body: { nome: '', preco_centavos: -1 } },
+      status: 400,
+      body: { status: 400 },
+      before: [{ request: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }), expect: { status: 201 } }],
+    },
   },
 ]
 
@@ -1332,7 +1340,15 @@ membros.post('/', async (c) => {
       note: "No seu caso: dois roteadores em src/routes/usuarios.ts, usuarios (POST /usuarios) e login (POST /login: buscarCredenciais, confereSenha, criarToken; qualquer falha é ErroHttp(401, 'Credenciais inválidas')). Antes, escreva cadastroSchema (z.email() e senha z.string().min(8)) e loginSchema em src/validacao.ts; depois registre usuarios e login no index.",
     },
     docs: ['hono-route', 'on-conflict', 'zod-schema'],
-    check: { kind: 'request', method: 'POST', path: '/login', status: 400, body: { status: 400 } },
+    check: {
+      kind: 'request',
+      method: 'POST',
+      path: '/login',
+      send: { body: { email: 'ana@loja.com', senha: 'segredo123' } },
+      status: 200,
+      absent: ['senha', 'senha_hash'],
+      before: [{ request: cadastro('ana@loja.com'), expect: { status: 201, body: { email: 'ana@loja.com', papel: 'admin' }, absent: ['senha', 'senha_hash'] } }],
+    },
     byFramework: {
       fetch: {
         example: {
@@ -1377,7 +1393,22 @@ reservas.use('*', async (c, next) => {
       note: "No seu caso: em src/routes/produtos.ts, soAdmin no POST, PUT e DELETE; em src/routes/pedidos.ts, o use('*') com exigir(c.req.raw). Importe exigir de '../auth'.",
     },
     docs: ['hono-middleware', 'auth-401-403'],
-    check: { kind: 'request', path: '/pedidos/1', status: 401, body: { status: 401 } },
+    // Ends on a write to produtos with the admin's token: on the dev database "Testar agora" uses, Ana is the first user
+    // when the course is followed, while products 1 and 2 (which an order needs) may not exist there.
+    check: {
+      kind: 'request',
+      method: 'POST',
+      path: '/produtos',
+      send: { body: { nome: 'Lápis', preco_centavos: 150 }, headers: bearer('token') },
+      status: 201,
+      body: { nome: 'Lápis', preco_centavos: 150 },
+      before: [
+        { request: cadastro('ana@loja.com'), expect: { status: 201 } },
+        { request: login('ana@loja.com'), expect: { status: 200 }, save: { token: 'body.token' } },
+        { request: post('/pedidos', PEDIDO), expect: { status: 401 } },
+        { request: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }), expect: { status: 401 } },
+      ],
+    },
     byFramework: {
       fetch: {
         learn:

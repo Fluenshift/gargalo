@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HISTORY_MAX, addToHistory, jsonProblem, loadClient, parseHeaders, prettyBody, removeSaved, saveClient, saveRequest, toRequest, type Draft, type Sent } from './http'
+import { HISTORY_MAX, addToHistory, captured, draftOf, jsonProblem, loadClient, parseHeaders, prettyBody, removeSaved, saveClient, saveRequest, toRequest, type Draft, type Sent } from './http'
 
 const draft = (d: Partial<Draft> = {}): Draft => ({ method: 'GET', path: '/health', headers: '', body: '', ...d })
 const sent = (d: Partial<Sent> = {}): Sent => ({ ...draft(), ms: 3, at: 1, ...d })
@@ -35,6 +35,21 @@ describe('toRequest', () => {
   })
   it('passes the headers error on', () => {
     expect(toRequest(draft({ headers: 'ruim' }))).toHaveProperty('error')
+  })
+})
+
+describe('Testar agora: a step request in the form, and its answer as a step sees it', () => {
+  it('puts a test request in the form: method, one header per line and the JSON body indented', () => {
+    expect(draftOf({ path: '/usuarios' })).toEqual(draft({ path: '/usuarios' }))
+    const login = draftOf({ method: 'post', path: '/pedidos', headers: { Authorization: 'Bearer abc', 'X-A': '1' }, body: { itens: [{ id: 1 }] } })
+    expect(login).toEqual({ method: 'POST', path: '/pedidos', headers: 'Authorization: Bearer abc\nX-A: 1', body: '{\n  "itens": [\n    {\n      "id": 1\n    }\n  ]\n}' })
+    // Back through the form, it is the request the step describes.
+    expect(toRequest(login)).toEqual({ request: { method: 'POST', path: '/pedidos', headers: { authorization: 'Bearer abc', 'x-a': '1', 'content-type': 'application/json' }, body: login.body } })
+  })
+  it('parses a JSON answer so a save can pick from it, and keeps any other text as is', () => {
+    expect(captured({ status: 200, headers: { 'content-type': 'application/json' }, body: '{"token":"t1"}' })).toEqual({ status: 200, headers: { 'content-type': 'application/json' }, body: { token: 't1' } })
+    expect(captured({ status: 204, headers: {}, body: '' })).toEqual({ status: 204, headers: {}, body: '' })
+    expect(captured(undefined)).toBeUndefined()
   })
 })
 

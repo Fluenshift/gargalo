@@ -15,7 +15,7 @@ import {
   blank,
 } from './oficina/projeto/project'
 import { exportFiles, slugOf } from './oficina/projeto/exportar'
-import { forgetClient, loadClient, type Draft } from './oficina/projeto/http'
+import { forgetClient, loadClient, type Prefill } from './oficina/projeto/http'
 import { buildOpenApi, requestsOf } from './oficina/projeto/openapi'
 import { loadSavedResults } from './oficina/progress'
 import { zip } from './oficina/projeto/zip'
@@ -241,8 +241,8 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
   }, [form])
   const [panel, setPanel] = useState<'banco' | 'console'>('banco')
   const [side, setSide] = useState<'requisicao' | 'etapa' | 'openapi'>('etapa')
-  // "Testar agora" in a guided step: the request the Requisição tab opens with and sends once.
-  const [prefill, setPrefill] = useState<Draft>()
+  // "Testar agora" in a guided step: what the Requisição tab sends once (the step's earlier requests, then the one it opens with).
+  const [prefill, setPrefill] = useState<Prefill>()
   const pick = (next: typeof side) => {
     setSide(next)
     setPrefill(undefined)
@@ -503,8 +503,8 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
             warming={warming}
             onGoTo={goTo}
             onOpenFile={openOrCreate}
-            onTry={(draft) => {
-              setPrefill(draft)
+            onTry={(next) => {
+              setPrefill(next)
               setSide('requisicao')
             }}
           />

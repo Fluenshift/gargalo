@@ -117,6 +117,22 @@ const RULES: Rule[] = [
     }),
   ],
   [
+    /A resposta traz o campo (\S+), que não pode sair\.$/,
+    (m) => ({
+      title: 'Campo que não pode sair',
+      detail: `A resposta traz ${m[1]}. O que a API devolve qualquer cliente lê, e um campo interno não pode ir junto.`,
+      next: 'Escolha o que sai: liste as colunas no SELECT, sem SELECT *, ou monte o objeto da resposta campo a campo.',
+    }),
+  ],
+  [
+    /A requisição fez \d+ consultas? ao banco; o máximo é \d+\.$/,
+    () => ({
+      title: 'Consultas demais',
+      detail: 'Cada consulta é uma ida ao banco. Uma consulta por item da lista (N+1) faz a requisição crescer junto com a tabela.',
+      next: 'Procure uma consulta dentro de um laço e busque tudo de uma vez, com WHERE … = ANY($1) ou um JOIN; depois monte a resposta em memória.',
+    }),
+  ],
+  [
     /SyntaxError:.*JSON|JSON\.parse:|Malformed JSON/,
     () => ({
       title: 'JSON inválido no corpo',

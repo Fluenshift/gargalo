@@ -1,7 +1,7 @@
 // The good-practice checklist of a project stage (decision 8 of docs/specs/oficina-projetos.md): each item is checked
 // by reading the project's files (static) or by requests against the test database (behaviour), or both.
 
-import type { CapturedResponse, RequestSpec, TestCase, TestResult, TestStep } from '../exercise'
+import { findKey, type CapturedResponse, type RequestSpec, type TestCase, type TestResult, type TestStep } from '../exercise'
 
 export type CheckKind = 'static' | 'behaviour' | 'both'
 
@@ -264,17 +264,6 @@ const label = (req: RequestSpec) => `${req.method ?? 'GET'} ${req.path}`
 const fail = (message: string): Verdict => ({ passed: false, message })
 const pass = (message: string): Verdict => ({ passed: true, message })
 
-function hasKey(value: unknown, keys: Set<string>): string | undefined {
-  if (Array.isArray(value)) return value.map((v) => hasKey(v, keys)).find(Boolean)
-  if (value === null || typeof value !== 'object') return undefined
-  for (const [k, v] of Object.entries(value)) {
-    if (keys.has(k.toLowerCase())) return k
-    const inner = hasKey(v, keys)
-    if (inner) return inner
-  }
-  return undefined
-}
-
 const CHECKS: { [I in CheckId]: CheckDef<I> } = {
   'sql-parametrizado': {
     title: 'SQL parametrizado',
@@ -396,10 +385,9 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
     behaviour: {
       steps: (ref) => ref.requests.map((request) => ({ request })),
       judge: (ref, responses) => {
-        const keys = new Set(ref.fields.map((f) => f.toLowerCase()))
         for (const [i, res] of responses.entries()) {
           if (!res) return fail(`${label(ref.requests[i])} não respondeu.`)
-          const leaked = hasKey(res.body, keys)
+          const leaked = findKey(res.body, ref.fields)
           if (leaked) return fail(`${label(ref.requests[i])} devolve o campo ${leaked}.`)
         }
         return pass('Nenhum campo interno nas respostas.')

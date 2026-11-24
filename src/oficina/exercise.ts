@@ -1,5 +1,5 @@
 // What an Oficina exercise is made of, and the contract the player's handler is written against.
-// Everything here is plain data so it crosses postMessage into the worker.
+// The types are plain data so they cross postMessage into the worker; the helpers at the end read them on either side and import nothing.
 
 export interface Db {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>
@@ -26,6 +26,10 @@ export interface ExpectedResponse {
   status: number
   headers?: Record<string, string>
   body?: unknown
+  /** Keys the body must not have at any depth, arrays included (`senha_hash`), in any case. */
+  absent?: string[]
+  /** The most queries the request may make (what `RequestMetrics.queries` counts): an N+1 goes over it. */
+  maxQueries?: number
 }
 
 /** One request of a test. In a sequential test, `save` keeps values of its response for the next steps. */
@@ -102,4 +106,48 @@ export interface RequestMetrics {
   rowsRead: number
   /** Handler wall time in ms, without the time spent measuring. Concurrent requests include waiting for each other. */
   handlerMs: number
+}
+
+// --- Read by the worker's tests and by the page's "Testar agora", which replays a step's requests on the dev database. ---
+
+const VAR = /\{\{(\w+)\}\}/g
+
+/** `value` with each `{{name}}` replaced by what a step saved; a string that is only `{{name}}` takes the value as is. */
+export function fill<T>(value: T, vars: Record<string, unknown>): T {
+  if (typeof value === 'string') {
+    const whole = /^\{\{(\w+)\}\}$/.exec(value)
+    if (whole && whole[1] in vars) return vars[whole[1]] as T
+    return value.replace(VAR, (m, name: string) => (name in vars ? String(vars[name]) : m)) as T
+  }
+  if (Array.isArray(value)) return value.map((v) => fill(v, vars)) as T
+  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fill(v, vars)])) as T
+  return value
+}
+
+/** The value at `status`, `header.<name>` or `body.<path>` of a response; undefined when it isn't there. */
+export function pick(res: CapturedResponse | undefined, from: string): unknown {
+  if (!res) return undefined
+  if (from === 'status') return res.status
+  if (from.startsWith('header.')) return res.headers[from.slice('header.'.length).toLowerCase()]
+  if (from !== 'body' && !from.startsWith('body.')) return undefined
+  return from
+    .split('.')
+    .slice(1)
+    .reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined), res.body)
+}
+
+/** The first key of `value` that is one of `keys` (in any case), at any depth, arrays included; undefined when there is none. */
+export function findKey(value: unknown, keys: string[]): string | undefined {
+  const wanted = new Set(keys.map((k) => k.toLowerCase()))
+  const find = (v: unknown): string | undefined => {
+    if (Array.isArray(v)) return v.map(find).find(Boolean)
+    if (v === null || typeof v !== 'object') return undefined
+    for (const [k, inner] of Object.entries(v)) {
+      if (wanted.has(k.toLowerCase())) return k
+      const deep = find(inner)
+      if (deep) return deep
+    }
+    return undefined
+  }
+  return find(value)
 }

@@ -1,7 +1,7 @@
 // A guided project is a course of stages; each stage has acceptance tests, a good-practice checklist, hints and a reference.
 
 import { XP_PER_LEVEL, XP_PER_STAR, PROJETO_PREFIX, type LevelResult, type Results } from '../../score'
-import type { TestCase, TestResult } from '../exercise'
+import type { RequestSpec, TestCase, TestResult, TestStep } from '../exercise'
 import { keepResult } from '../progress'
 import type { StartWorker } from '../runner'
 import { checkTests, evaluateChecklist, type CheckOutcome, type CheckRef } from './checklist'
@@ -9,10 +9,29 @@ import type { Method } from './http'
 import type { Framework, Project } from './project'
 import { runTests } from './runner'
 
-/** What "Conferir passo" looks at: a file (exists, and has these snippets), or one request on a fresh test database. */
-export type StepCheck =
-  | { kind: 'file'; path: string; contains?: string[] }
-  | { kind: 'request'; method?: Method; path: string; status: number; body?: unknown }
+/** What "Conferir passo" looks at: a file (exists, and has these snippets), or a request on a fresh test database. */
+export type StepCheck = { kind: 'file'; path: string; contains?: string[] } | RequestCheck
+
+/** A request and what its answer must be. "Testar agora" sends the same requests to the dev database. */
+export interface RequestCheck {
+  kind: 'request'
+  method?: Method
+  path: string
+  /** What else the request carries: a body, sent as JSON, and headers (`{ Authorization: 'Bearer {{token}}' }`). */
+  send?: { body?: unknown; headers?: Record<string, string> }
+  status: number
+  /** The response body, matched like an acceptance test's: an object needs only these keys. */
+  body?: unknown
+  /** Keys the response body must not have, at any depth (`senha_hash`). */
+  absent?: string[]
+  /** The most database queries the request may make: an N+1 goes over it. */
+  maxQueries?: number
+  /**
+   * Requests sent first, in order, on the same database (sign up, log in…), like a checklist item's `before`:
+   * their `expect` is checked too, and what they `save` fills `{{name}}` in the requests after them.
+   */
+  before?: TestStep[]
+}
 
 /** One guided step: one concept, why it matters, the pattern in code, where the docs explain it, and a way to confirm it. */
 export interface GuidedStep {
@@ -30,7 +49,7 @@ export interface GuidedStep {
   example?: { file?: string; code: string; note?: string; exact?: boolean }
   /** Ids of docsFor() entries. */
   docs?: string[]
-  /** A request check also gives "Testar agora", which sends it from the Requisição tab. */
+  /** A request check also gives "Testar agora", which sends its requests (`before`, then its own) from the Requisição tab. */
   check?: StepCheck
   /** What differs in one framework; the rest is shared. */
   byFramework?: Partial<Record<Framework, Partial<Omit<GuidedStep, 'title' | 'byFramework'>>>>
@@ -50,11 +69,32 @@ export function missingInFile(files: Record<string, string>, check: Extract<Step
   return missing.length ? `Em ${check.path} ainda falta: ${missing.join(' · ')}` : undefined
 }
 
-/** A request check as an acceptance test, so it runs like the stage's own. */
-export const stepTest = (check: Extract<StepCheck, { kind: 'request' }>): TestCase => ({
+/** The request a request check sends, after its `before` steps. */
+export const stepRequest = (check: RequestCheck): RequestSpec => ({ method: check.method, path: check.path, ...check.send })
+
+/** A request check as an acceptance test, so it runs like the stage's own: the `before` steps, then the request, one after the other. */
+export const stepTest = (check: RequestCheck): TestCase => ({
   name: `${check.method ?? 'GET'} ${check.path} responde ${check.status}`,
-  requests: [{ request: { method: check.method, path: check.path }, expect: { status: check.status, body: check.body } }],
+  sequential: true,
+  requests: [...(check.before ?? []), { request: stepRequest(check), expect: { status: check.status, body: check.body, absent: check.absent, maxQueries: check.maxQueries } }],
 })
+
+/** What a request check's test found wrong, in Portuguese; undefined when it passed. */
+export function missingInResponse(result: TestResult): string | undefined {
+  if (result.passed) return undefined
+  const diff = 'expected' in result ? ` Esperado ${JSON.stringify(result.expected)}, veio ${JSON.stringify(result.received)}.` : ''
+  return (result.message ?? 'Resposta diferente do esperado.') + diff
+}
+
+/** Runs tests on a fresh test database each, one result per test in order: `runTests` in the worker, or the tests' own Postgres. */
+export type RunTests = (project: Project, tests: TestCase[], seed?: string) => Promise<TestResult[]>
+
+/** "Conferir passo": undefined when the step's check passes, otherwise what is missing, in Portuguese. */
+export async function checkStep(project: Project, check: StepCheck, seed?: string, run: RunTests = runTests): Promise<string | undefined> {
+  if (check.kind === 'file') return missingInFile(project.files, check)
+  const [result] = await run(project, [stepTest(check)], seed)
+  return missingInResponse(result)
+}
 
 export interface Stage {
   id: string
@@ -75,6 +115,8 @@ export interface Stage {
   reference: Record<Framework, Record<string, string>>
   /** SQL run after the migrations, before each test. */
   seed?: string
+  /** A code review's planted bugs, judged from the results of `tests` (`judgeRevisao`): after a run, the panel says which are still there. */
+  bugs?: (tests: TestResult[]) => { title: string; fixed: boolean }[]
 }
 
 export interface ProjectCourse {

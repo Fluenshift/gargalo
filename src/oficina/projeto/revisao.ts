@@ -3,7 +3,7 @@
 
 import type { TestCase, TestResult } from '../exercise'
 import type { Project } from './project'
-import type { GuidedStep, ProjectCourse, Stage } from './stage'
+import { stepTest, type GuidedStep, type ProjectCourse, type RequestCheck, type Stage, type StepCheck } from './stage'
 
 const MIGRATION = `CREATE TABLE usuarios (id serial PRIMARY KEY, nome text NOT NULL, email text NOT NULL, senha_hash text NOT NULL);
 CREATE TABLE produtos (id serial PRIMARY KEY, nome text NOT NULL, estoque int NOT NULL CHECK (estoque >= 0));
@@ -80,61 +80,55 @@ export const FIXED_BLOCKS = [
       return Response.json(pedidos.map((p: any) => ({ ...p, itens: itens.filter((i: any) => i.pedido_id === p.id).map(({ produto, qtd }: any) => ({ produto, qtd })) })))`,
 ] as const
 
+/** GET /pedidos once the N+1 is gone: the orders, then the items of all of them at once. */
+export const REVISAO_MAX_QUERIES = 2
+
 /** The bugs, in the order the stage's tests prove them. `test` is the name of that test. */
 export const REVISAO_BUGS = [
   { id: 'vazamento', title: 'Vazamento de campos', test: 'a lista de usuários não expõe senha_hash' },
   { id: 'sql-injection', title: 'SQL injection', test: 'a busca não deixa o nome virar SQL' },
   { id: 'corrida', title: 'Condição de corrida', test: 'duas compras do último item não vendem duas vezes' },
-  { id: 'n-mais-um', title: 'N+1', test: 'os pedidos vêm com seus itens' },
+  { id: 'n-mais-um', title: 'N+1', test: `os pedidos vêm com seus itens em até ${REVISAO_MAX_QUERIES} consultas` },
 ] as const
 
 export type RevisaoBugId = (typeof REVISAO_BUGS)[number]['id']
 
-/** The leak and N+1 tests pass either way; what shows the bug is a `senha_hash` in the answer, and how many queries it took. */
-export const REVISAO_MAX_QUERIES = 2
+const INJECAO = `/usuarios/busca?nome=${encodeURIComponent("x' OR '1'='1")}`
+
+const PEDIDOS_COM_ITENS = [
+  { id: 1, cliente: 'Ana', itens: [{ produto: 'Caneta', qtd: 2 }, { produto: 'Lápis', qtd: 1 }] },
+  { id: 2, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 1 }] },
+  { id: 3, cliente: 'Ana', itens: [{ produto: 'Lápis', qtd: 4 }] },
+  { id: 4, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 3 }] },
+]
+
+/**
+ * What shows each bug fixed: the "Conferir passo" of the step that fixes it. The race needs two purchases at once, which one
+ * request can't send, so its step reads the file and the stage's own test proves it; the other three are also the stage's tests.
+ */
+export const REVISAO_FIX_CHECKS = {
+  vazamento: { kind: 'request', path: '/usuarios', status: 200, absent: ['senha_hash'] },
+  'sql-injection': { kind: 'request', path: INJECAO, status: 200, body: [] },
+  corrida: { kind: 'file', path: 'src/index.ts', contains: ['RETURNING'] },
+  'n-mais-um': { kind: 'request', path: '/pedidos', status: 200, body: PEDIDOS_COM_ITENS, maxQueries: REVISAO_MAX_QUERIES },
+} satisfies Record<RevisaoBugId, StepCheck>
+
+const bugTest = (check: RequestCheck, name: string): TestCase => ({ ...stepTest(check), name })
 
 const tests: TestCase[] = [
-  {
-    name: REVISAO_BUGS[0].test,
-    // Extra keys pass an `expect`, so the leak is judged in code from the captured answer (see judgeRevisao).
-    requests: [{ request: { path: '/usuarios' }, expect: { status: 200 } }],
-    capture: true,
-  },
-  {
-    name: REVISAO_BUGS[1].test,
-    requests: [{ request: { path: `/usuarios/busca?nome=${encodeURIComponent("x' OR '1'='1")}` }, expect: { status: 200, body: [] } }],
-  },
+  bugTest(REVISAO_FIX_CHECKS.vazamento, REVISAO_BUGS[0].test),
+  bugTest(REVISAO_FIX_CHECKS['sql-injection'], REVISAO_BUGS[1].test),
   {
     name: REVISAO_BUGS[2].test,
     requests: [{ request: { method: 'POST', path: '/produtos/1/comprar' } }, { request: { method: 'POST', path: '/produtos/1/comprar' } }],
     db: { sql: 'SELECT count(*)::int AS n FROM compras', rows: [{ n: 1 }] },
   },
-  {
-    name: REVISAO_BUGS[3].test,
-    requests: [
-      {
-        request: { path: '/pedidos' },
-        expect: {
-          status: 200,
-          body: [
-            { id: 1, cliente: 'Ana', itens: [{ produto: 'Caneta', qtd: 2 }, { produto: 'Lápis', qtd: 1 }] },
-            { id: 2, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 1 }] },
-            { id: 3, cliente: 'Ana', itens: [{ produto: 'Lápis', qtd: 4 }] },
-            { id: 4, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 3 }] },
-          ],
-        },
-      },
-    ],
-  },
+  bugTest(REVISAO_FIX_CHECKS['n-mais-um'], REVISAO_BUGS[3].test),
 ]
 
 const FIXED = revisaoRoutes(...FIXED_BLOCKS)
 
 // --- Guided steps (issue #138): each bug is an investigation, from the easiest to the hardest. The course fixes fetch puro. ---
-// A request check cannot say "no senha_hash" (an expected body only needs its keys to match) nor "at most N queries",
-// so the leak and N+1 fixes are not confirmed by a request: the player reads the answer and the query count in the Requisição tab.
-
-const INJECAO = `/usuarios/busca?nome=${encodeURIComponent("x' OR '1'='1")}`
 
 const PASSOS_REVISAO: GuidedStep[] = [
   {
@@ -146,7 +140,7 @@ const PASSOS_REVISAO: GuidedStep[] = [
   {
     title: 'Vazamento: escolha as colunas',
     learn:
-      'SELECT * devolve toda coluna da tabela, e quando alguém acrescentar uma coluna sensível amanhã ela vaza sozinha. Listar as [colunas](select-colunas) faz da consulta uma lista do que pode sair. Depois de corrigir, refaça a requisição do passo anterior e confira que o campo sumiu.',
+      'SELECT * devolve toda coluna da tabela, e quando alguém acrescentar uma coluna sensível amanhã ela vaza sozinha. Listar as [colunas](select-colunas) faz da consulta uma lista do que pode sair. Depois de corrigir, clique em Testar agora e confira que o campo sumiu.',
     file: 'src/index.ts',
     example: {
       file: 'modelo',
@@ -158,6 +152,7 @@ return Response.json(await env.db.query('SELECT id, nome, cidade FROM clientes O
       note: 'No seu caso: a tabela é usuarios, e a coluna que não pode sair é senha_hash. Mantenha id, nome e email.',
     },
     docs: ['select-colunas'],
+    check: REVISAO_FIX_CHECKS.vazamento,
   },
   {
     title: 'SQL injection: engane a busca',
@@ -182,7 +177,7 @@ return Response.json(await env.db.query('SELECT id, nome FROM clientes WHERE cid
       note: 'No seu caso: a tabela é usuarios, o filtro é nome e o valor é a variável nome. Mantenha as colunas id, nome e email. Conferir passo repete o ataque do passo anterior: com o conserto, a busca devolve lista vazia.',
     },
     docs: ['sql-injecao', 'db-query'],
-    check: { kind: 'request', path: INJECAO, status: 200, body: [] },
+    check: REVISAO_FIX_CHECKS['sql-injection'],
   },
   {
     title: 'N+1: conte as consultas',
@@ -205,10 +200,10 @@ const livros = await env.db.query('SELECT autor_id, titulo FROM livros WHERE aut
 
 // Agrupe em memória: cada autor leva os seus livros.
 return Response.json(autores.map((a) => ({ ...a, livros: livros.filter((l) => l.autor_id === a.id) })))`,
-      note: 'No seu caso: pedidos e itens, ligados por pedido_id. A resposta mantém a forma { id, cliente, itens: [{ produto, qtd }] }, sem pedido_id dentro dos itens. Depois, refaça o Testar agora do passo anterior: deve dizer 2 consultas.',
+      note: 'No seu caso: pedidos e itens, ligados por pedido_id. A resposta mantém a forma { id, cliente, itens: [{ produto, qtd }] }, sem pedido_id dentro dos itens. Depois, clique em Testar agora: deve dizer 2 consultas.',
     },
     docs: ['n-mais-um', 'db-query'],
-    check: { kind: 'file', path: 'src/index.ts', contains: ['ANY('] },
+    check: REVISAO_FIX_CHECKS['n-mais-um'],
   },
   {
     title: 'Condição de corrida: ler, esperar, gravar',
@@ -234,7 +229,7 @@ return Response.json(autores.map((a) => ({ ...a, livros: livros.filter((l) => l.
       note: 'No seu caso: a tabela é produtos, a coluna é estoque, e o registro vai em compras (produto_id). Recusado, responda o 409 que a rota já devolve; aceito, o 201. Depois rode os testes da etapa: eles conferem os quatro bugs.',
     },
     docs: ['update-atomico', 'returning', 'db-transaction'],
-    check: { kind: 'file', path: 'src/index.ts', contains: ['RETURNING'] },
+    check: REVISAO_FIX_CHECKS.corrida,
   },
 ]
 
@@ -256,6 +251,7 @@ export const revisaoStage: Stage = {
     'Os quatro bugs passam em teste de caminho feliz. Quem escolhe as colunas escolhe o que sai; entrada do usuário nunca vira SQL, só parâmetro; ler e depois gravar precisa ser uma operação atômica; e uma consulta por linha vira milhares sob carga.',
   reference: { hono: { 'src/index.ts': FIXED }, fetch: { 'src/index.ts': FIXED } },
   seed: SEED,
+  bugs: judgeRevisao,
 }
 
 /** The buggy project the player starts from. */
@@ -274,12 +270,7 @@ export interface BugVerdict {
   fixed: boolean
 }
 
-/** Which bugs are fixed, from the results of `revisaoStage.tests` run through `runTests`/`runStage` (the N+1 one reads their metrics). */
+/** Which bugs are fixed: each one's test in `revisaoStage.tests` (same order) passed, from what `runTests`/`runStage` return. */
 export function judgeRevisao(results: TestResult[]): BugVerdict[] {
-  return REVISAO_BUGS.map((bug, i) => {
-    const r = results[i]
-    const leaks = bug.id === 'vazamento' && JSON.stringify(r?.responses?.[0]?.body ?? 'senha_hash').includes('senha_hash')
-    const slow = bug.id === 'n-mais-um' && (r?.metrics?.[0]?.queries ?? Infinity) > REVISAO_MAX_QUERIES
-    return { id: bug.id, title: bug.title, fixed: !!r?.passed && !leaks && !slow }
-  })
+  return REVISAO_BUGS.map((bug, i) => ({ id: bug.id, title: bug.title, fixed: !!results[i]?.passed }))
 }

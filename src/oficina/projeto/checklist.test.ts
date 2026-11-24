@@ -254,7 +254,7 @@ export default app`,
     expect(await check(ref, auth(403, 403))).toMatchObject({ passed: false, message: 'Sem credencial, GET /admin respondeu 403; esperado 401.' })
     expect(await check(ref, auth(401, 401))).toMatchObject({ passed: false, message: 'Sem permissão, GET /admin respondeu 401; esperado 403.' })
     // The login step fails: nothing to judge, the test's own message says why.
-    expect(await check(ref, app('return new Response(null, { status: 404 })'))).toMatchObject({ passed: false, message: 'Requisição 1: Status diferente do esperado.' })
+    expect(await check(ref, app('return new Response(null, { status: 404 })'))).toMatchObject({ passed: false, message: 'Requisição 1 (POST /login): Status diferente do esperado.' })
   })
 
   it('reports a crash and a missing result instead of judging', async () => {

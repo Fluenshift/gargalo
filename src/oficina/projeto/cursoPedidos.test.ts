@@ -7,7 +7,7 @@ import { docsFor } from './docs'
 import { blank, starter, type Framework, type Project } from './project'
 import { referencia } from './cursoPedidosRef'
 import { executeProjectTests } from './runtime'
-import { evaluateStage, missingInFile, stepFor, stepTest, type Stage, type StageResult } from './stage'
+import { checkStep, evaluateStage, missingInFile, stepFor, stepTest, type RunTests, type Stage, type StageResult } from './stage'
 
 let pg: PGlite
 beforeAll(async () => {
@@ -122,6 +122,60 @@ describe('passos guiados', () => {
         }, 60_000)
       }
     })
+  }
+})
+
+describe('conferências com corpo, cabeçalho e fluxo (#147)', () => {
+  const onPg: RunTests = async (project, tests, seed) => {
+    const out: TestResult[] = []
+    await executeProjectTests({ project, tests, seed }, pg, ({ index, result }) => (out[index] = result))
+    return out
+  }
+  const step = (stageId: string, title: string) => {
+    const stage = cursoPedidos.stages.find((s) => s.id === stageId)!
+    return { stage, check: stage.steps!.find((s) => s.title === title)!.check! }
+  }
+  // The auth reference with exigir() letting everyone through: the routes before "Proteja as rotas".
+  const semProtecao = (files: Record<string, string>) => {
+    const assinatura = "export async function exigir(req: Request, papel?: 'admin'): Promise<{ sub: number; papel: string }> {"
+    expect(files['src/auth.ts']).toContain(assinatura)
+    return { ...files, 'src/auth.ts': files['src/auth.ts'].replace(assinatura, assinatura + "\n  return { sub: 1, papel: 'admin' }") }
+  }
+  // Orders protected, product writes forgotten (no soAdmin, no exigir(req, 'admin')).
+  const semAdmin = (files: Record<string, string>) => {
+    const rotas = files['src/routes/produtos.ts'].replaceAll('soAdmin, ', '').replaceAll("    await exigir(req, 'admin')\n", '')
+    expect(rotas).not.toBe(files['src/routes/produtos.ts'])
+    return { ...files, 'src/routes/produtos.ts': rotas }
+  }
+
+  for (const framework of ['hono', 'fetch'] as Framework[]) {
+    const project = (files: Record<string, string>): Project => ({ id: 'passo', framework, files })
+
+    it(framework + ': validação manda um corpo válido (201) e o inválido do texto (400); sem validação, ele chega ao banco (500)', async () => {
+      const { stage, check } = step('validacao', 'Teste e rode os testes')
+      expect(check).toMatchObject({ method: 'POST', send: { body: { nome: '', preco_centavos: -1 } }, status: 400 })
+      expect(await checkStep(project(stage.reference[framework]), check, stage.seed, onPg)).toBeUndefined()
+      expect(await checkStep(project(referencia(framework, 3)), check, stage.seed, onPg)).toBe('Requisição 2 (POST /produtos): Status diferente do esperado. Esperado 400, veio 500.')
+    }, 60_000)
+
+    it(framework + ': cadastro e login fazem o fluxo de verdade, sem devolver a senha', async () => {
+      const { stage, check } = step('auth', 'Rotas de cadastro e login')
+      expect(await checkStep(project(stage.reference[framework]), check, stage.seed, onPg)).toBeUndefined()
+      // Where the step starts: no users yet. And the answer can't carry the hash.
+      expect(await checkStep(project(referencia(framework, 5)), check, stage.seed, onPg)).toBe('Requisição 1 (POST /usuarios): Status diferente do esperado. Esperado 201, veio 404.')
+      const vaza = { ...stage.reference[framework], 'src/db/usuarios.ts': stage.reference[framework]['src/db/usuarios.ts'].replace('RETURNING id, email, papel', 'RETURNING id, email, papel, senha_hash') }
+      expect(await checkStep(project(vaza), check, stage.seed, onPg)).toBe('Requisição 1 (POST /usuarios): A resposta traz o campo senha_hash, que não pode sair.')
+    }, 60_000)
+
+    it(framework + ': as rotas protegidas recusam sem token (401) e aceitam o token do admin (201); sem proteção, falha', async () => {
+      const { stage, check } = step('auth', 'Proteja as rotas e teste')
+      expect(check).toMatchObject({ method: 'POST', path: '/produtos', send: { headers: { Authorization: 'Bearer {{token}}' } }, status: 201 })
+      expect(await checkStep(project(stage.reference[framework]), check, stage.seed, onPg)).toBeUndefined()
+      expect(await checkStep(project(semProtecao(stage.reference[framework])), check, stage.seed, onPg)).toBe('Requisição 3 (POST /pedidos): Status diferente do esperado. Esperado 401, veio 201.')
+      expect(await checkStep(project(semAdmin(stage.reference[framework])), check, stage.seed, onPg)).toBe('Requisição 4 (POST /produtos): Status diferente do esperado. Esperado 401, veio 201.')
+      // The previous step's check still passes there: protecting the routes is all this step adds.
+      expect(await checkStep(project(semProtecao(stage.reference[framework])), step('auth', 'Rotas de cadastro e login').check, stage.seed, onPg)).toBeUndefined()
+    }, 60_000)
   }
 })
 

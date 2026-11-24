@@ -3,6 +3,7 @@
 import { transform } from 'sucrase'
 // With the extension: runner.test.ts loads this file in a plain Node thread, which resolves no extensionless paths.
 import { measured } from './db.ts'
+import { fill, findKey, pick } from './exercise.ts'
 import type { CapturedResponse, Ctx, Db, ExpectedResponse, RequestMetrics, RequestSpec, TestCase, TestResult } from './exercise'
 
 export type Handler = (req: Request, ctx: Ctx) => Promise<Response>
@@ -129,34 +130,15 @@ function compareResponse(res: CapturedResponse | undefined, expect: ExpectedResp
     const got = res.headers[name.toLowerCase()] ?? null
     if (got !== value) return { message: `Cabeçalho ${name} diferente do esperado.`, expected: value, received: got }
   }
-  if (expect.body === undefined) return null
-  return matches(expect.body, res.body) ? null : { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: res.body }
+  if (expect.body !== undefined && !matches(expect.body, res.body)) return { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: res.body }
+  const leaked = expect.absent && findKey(res.body, expect.absent)
+  return leaked ? { message: `A resposta traz o campo ${leaked}, que não pode sair.` } : null
 }
 
-const VAR = /\{\{(\w+)\}\}/g
-
-/** `value` with each `{{name}}` replaced by what a step saved; a string that is only `{{name}}` takes the value as is. */
-export function fill<T>(value: T, vars: Record<string, unknown>): T {
-  if (typeof value === 'string') {
-    const whole = /^\{\{(\w+)\}\}$/.exec(value)
-    if (whole && whole[1] in vars) return vars[whole[1]] as T
-    return value.replace(VAR, (m, name: string) => (name in vars ? String(vars[name]) : m)) as T
-  }
-  if (Array.isArray(value)) return value.map((v) => fill(v, vars)) as T
-  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fill(v, vars)])) as T
-  return value
-}
-
-/** The value at `status`, `header.<name>` or `body.<path>` of a response; undefined when it isn't there. */
-export function pick(res: CapturedResponse | undefined, from: string): unknown {
-  if (!res) return undefined
-  if (from === 'status') return res.status
-  if (from.startsWith('header.')) return res.headers[from.slice('header.'.length).toLowerCase()]
-  if (from !== 'body' && !from.startsWith('body.')) return undefined
-  return from
-    .split('.')
-    .slice(1)
-    .reduce<unknown>((v, key) => (v !== null && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined), res.body)
+/** Over `maxQueries`: what the request's own meter counted, said in Portuguese. */
+function tooManyQueries(m: RequestMetrics, max: number | undefined): Omit<TestResult, 'name' | 'passed'> | null {
+  if (max === undefined || m.queries <= max) return null
+  return { message: `A requisição fez ${m.queries} consulta${m.queries > 1 ? 's' : ''} ao banco; o máximo é ${max}.` }
 }
 
 export async function runTest(handler: Handler, test: TestCase, db: Db): Promise<TestResult> {
@@ -175,11 +157,14 @@ export async function runTest(handler: Handler, test: TestCase, db: Db): Promise
   // Concurrent: every handler starts before any finishes, so they interleave at their awaits. Each has its own meter.
   const concurrent = test.sequential ? undefined : await Promise.all(test.requests.map(({ request }, i) => call(request, i)))
   for (const [i, step] of test.requests.entries()) {
-    const res: unknown = concurrent ? concurrent[i] : await call(fill(step.request, vars), i)
+    const request = concurrent ? step.request : fill(step.request, vars)
+    const res: unknown = concurrent ? concurrent[i] : await call(request, i)
     const captured = res instanceof Response ? await capture(res) : undefined
     responses.push(captured)
-    const prefix = test.requests.length > 1 ? `Requisição ${i + 1}: ` : ''
-    const diff = step.expect && compareResponse(captured, fill(step.expect, vars))
+    // Which request, as tests/suporte.ts says it in an exported project: a flow's failure names the one that broke.
+    const prefix = test.requests.length > 1 ? `Requisição ${i + 1} (${request.method ?? 'GET'} ${request.path}): ` : ''
+    const expect = step.expect && fill(step.expect, vars)
+    const diff = expect && (compareResponse(captured, expect) ?? tooManyQueries(metrics[i], expect.maxQueries))
     if (diff) return { name: test.name, passed: false, ...diff, message: prefix + diff.message, metrics, ...extra() }
     for (const [name, from] of Object.entries(step.save ?? {})) {
       const value = pick(captured, from)
