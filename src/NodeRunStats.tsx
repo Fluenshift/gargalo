@@ -8,7 +8,7 @@ interface Props {
   ticks: TickResult[]
   nodeId: string
   kind: Kind
-  /** How many simulated seconds are on screen (the "rever o segundo" position). */
+  /** How many simulated seconds are on screen (the "Rever o momento" position). */
   shown: number
 }
 
