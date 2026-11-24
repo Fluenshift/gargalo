@@ -1,8 +1,8 @@
 import { PGlite } from '@electric-sql/pglite'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { pgliteDb } from './db'
-import type { TestCase, TestResult } from './exercise'
-import { compile, executeTests, fill, matches, pick } from './execute'
+import { fill, findKey, pick, type ExpectedResponse, type TestCase, type TestResult } from './exercise'
+import { compile, executeTests, matches } from './execute'
 
 // One real Postgres for the file, reset before each test like the worker does.
 let pg: PGlite
@@ -90,7 +90,7 @@ describe('executeTests', () => {
 }`
     // Each request's queries are counted on its own: a read and a write each.
     expect(stable(await run(naive, [oneSucceeds]))).toEqual([
-      { name: 'dois saques ao mesmo tempo', passed: false, message: 'Requisição 2: Status diferente do esperado.', expected: 409, received: 200, metrics: [{ queries: 2, rowsRead: 2 }, { queries: 2, rowsRead: 2 }] },
+      { name: 'dois saques ao mesmo tempo', passed: false, message: 'Requisição 2 (POST /saques): Status diferente do esperado.', expected: 409, received: 200, metrics: [{ queries: 2, rowsRead: 2 }, { queries: 2, rowsRead: 2 }] },
     ])
 
     const conditional = `export default async function handler(req: Request, ctx: Ctx) {
@@ -136,8 +136,31 @@ describe('executeTests', () => {
     const [missing] = await run(code, [{ ...test, requests: [{ ...test.requests[0], save: { x: 'body.nada' } }] }])
     expect(missing).toMatchObject({ passed: false, message: 'a resposta não tem body.nada (para {{x}}).', responses: [{ status: 201 }] })
     const [stops] = await run(code, [{ ...test, requests: [{ ...test.requests[0], expect: { status: 200 } }, test.requests[1]] }])
-    expect(stops).toMatchObject({ passed: false, message: 'Requisição 1: Status diferente do esperado.' })
+    expect(stops).toMatchObject({ passed: false, message: 'Requisição 1 (POST /contas): Status diferente do esperado.' })
     expect(stops.responses).toHaveLength(1)
+    // The request is named as it was sent, with the saved values in it.
+    const [later] = await run(code, [{ ...test, requests: [test.requests[0], { ...test.requests[1], expect: { status: 404 } }] }])
+    expect(later).toMatchObject({ passed: false, message: 'Requisição 2 (GET /contas/7): Status diferente do esperado.' })
+  })
+
+  it('refuses a key the body must not have, at any depth and in any case, and a request over its queries', async () => {
+    // One query for the accounts, then one per account: an N+1.
+    const code = `export default async function handler(req: Request, ctx: Ctx) {
+  const contas = await ctx.db.query<{ id: number }>('SELECT id FROM contas')
+  for (const c of contas) Object.assign(c, (await ctx.db.query('SELECT saldo FROM contas WHERE id = $1', [c.id]))[0])
+  return Response.json({ contas: contas.map((c) => ({ ...c, dono: { Senha_Hash: 'h1' } })) })
+}`
+    const test = (expect: ExpectedResponse): TestCase => ({ name: 'contas', requests: [{ request: { path: '/contas' }, expect }] })
+    const [leak] = await run(code, [test({ status: 200, absent: ['senha_hash'] })])
+    expect(leak).toMatchObject({ passed: false, message: 'A resposta traz o campo Senha_Hash, que não pode sair.' })
+    expect(leak).not.toHaveProperty('expected')
+    expect(await run(code, [test({ status: 200, maxQueries: 1 })])).toMatchObject([{ passed: false, message: 'A requisição fez 2 consultas ao banco; o máximo é 1.' }])
+    expect(await run(`export default async (req: Request, ctx: Ctx) => Response.json(await ctx.db.query('SELECT 1 AS um'))`, [test({ status: 200, maxQueries: 0 })])).toMatchObject([
+      { passed: false, message: 'A requisição fez 1 consulta ao banco; o máximo é 0.' },
+    ])
+    // A wrong body is said first; within the limits, the test passes.
+    expect(await run(code, [test({ status: 200, body: { contas: [] }, absent: ['senha_hash'] })])).toMatchObject([{ passed: false, message: 'Corpo da resposta diferente do esperado.' }])
+    expect(await run(code, [test({ status: 200, absent: ['senha'], maxQueries: 2 })])).toMatchObject([{ passed: true }])
   })
 })
 
@@ -293,5 +316,10 @@ describe('fill and pick', () => {
   it('reads status, headers and body paths, and nothing else', () => {
     const res = { status: 201, headers: { location: '/a/1' }, body: { itens: [{ id: 9 }] } }
     expect([pick(res, 'status'), pick(res, 'header.Location'), pick(res, 'body.itens.0.id'), pick(res, 'body.x.y'), pick(res, 'outra'), pick(undefined, 'status')]).toEqual([201, '/a/1', 9, undefined, undefined, undefined])
+  })
+  it('finds the first forbidden key at any depth, in arrays too, ignoring case', () => {
+    expect(findKey([{ id: 1, dono: { nome: 'Ana', SENHA_HASH: 'h' } }], ['senha', 'senha_hash'])).toBe('SENHA_HASH')
+    expect(findKey({ itens: [1, 'x', null, [{ senha: 's' }]] }, ['Senha'])).toBe('senha')
+    expect([findKey({ senhas: 1 }, ['senha']), findKey('senha', ['senha']), findKey(null, ['senha'])]).toEqual([undefined, undefined, undefined])
   })
 })
