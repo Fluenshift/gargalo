@@ -1,6 +1,7 @@
 // The HTTP client of a project: what a request draft is, how it becomes a ProjectRequest, its history and saved requests.
 
-import type { ProjectRequest } from './runtime'
+import type { CapturedResponse, RequestSpec, TestStep } from '../exercise'
+import type { ProjectRequest, RequestOutcome } from './runtime'
 
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 export type Method = (typeof METHODS)[number]
@@ -73,6 +74,34 @@ export function jsonProblem(draft: Pick<Draft, 'method' | 'body'>): string | und
   } catch (e) {
     return `O corpo parece JSON mas não é válido: ${(e as Error).message}`
   }
+}
+
+/** "Testar agora" of a guided step: the client sends `before` in order (what they `save` fills `{{name}}`), then opens with `request` and sends it. */
+export interface Prefill {
+  request: RequestSpec
+  before?: TestStep[]
+}
+
+/** A test's request as the client's form holds it: one header per line, the JSON body indented. */
+export const draftOf = (spec: RequestSpec): Draft => ({
+  method: (spec.method ?? 'GET').toUpperCase() as Method,
+  path: spec.path,
+  headers: Object.entries(spec.headers ?? {})
+    .map(([name, value]) => `${name}: ${value}`)
+    .join('\n'),
+  body: spec.body === undefined ? '' : JSON.stringify(spec.body, null, 2),
+})
+
+/** A response as a test step sees it, the body parsed when it is JSON, so a step's `save` can pick from it. */
+export function captured(response: RequestOutcome['response']): CapturedResponse | undefined {
+  if (!response) return undefined
+  let body: unknown = response.body
+  try {
+    body = JSON.parse(response.body)
+  } catch {
+    // Not JSON: the text is the body.
+  }
+  return { status: response.status, headers: response.headers, body }
 }
 
 /** JSON responses indented; anything else as it came. */
