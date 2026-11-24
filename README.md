@@ -1,13 +1,13 @@
 # gargalo
 
-Jogo de system design: monte uma arquitetura (CDN, load balancer, servidores, cache, banco) e veja se ela aguenta o tráfego e as falhas de cada fase. A pontuação usa disponibilidade, latência p99 e custo mensal.
+Jogo de backend e system design. Na carreira, monte uma arquitetura (CDN, load balancer, servidores, cache, banco) e veja se ela aguenta o tráfego e as falhas de cada fase. A pontuação usa disponibilidade, latência p99 e custo mensal. Na Oficina, escreva a API em TypeScript (Hono ou fetch puro) contra um Postgres de verdade (PGlite), no navegador.
 
 ## Rodar
 
 ```bash
 npm install
 npm run dev    # http://localhost:5173
-npm test       # testes do motor de simulação
+npm test       # testes do motor de simulação e da Oficina
 ```
 
 ## Como a simulação funciona

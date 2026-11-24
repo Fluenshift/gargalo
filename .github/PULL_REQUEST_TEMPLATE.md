@@ -10,4 +10,4 @@
 - [ ] Mudança visível: telas conferidas com `verify-ui` a 1440, 1280 e 390 px
 - [ ] Mecânica nova: conceito e tradeoffs em `src/concepts.ts`
 - [ ] Nenhuma dependência nova sem motivo; Dependency Review verde
-- [ ] Textos da interface em português, código e comentários em inglês
+- [ ] Textos da interface em português; código e comentários em inglês, exceto o código mostrado ao jogador, que é em português
