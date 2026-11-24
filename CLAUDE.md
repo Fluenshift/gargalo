@@ -1,6 +1,6 @@
 # gargalo
 
-A browser game for learning system design: the player wires pieces (CDN, load balancer, servers, cache, database…) on a canvas and a simulation scores the architecture on availability, p99 latency and monthly cost. Roadmap: issue #25.
+A browser game for learning backend and system design. In the career, the player wires pieces (CDN, load balancer, servers, cache, database…) on a canvas and a simulation scores the architecture on availability, p99 latency and monthly cost. In the Oficina, the player writes a real API in TypeScript (Hono or plain fetch) against Postgres (PGlite), in the browser. Read `PRODUCT.md` before any product or copy decision: it says who the player is (a backend beginner) and what the game promises. Approved feature specs live in `docs/specs/`.
 
 ## Done means green
 
@@ -12,9 +12,14 @@ A change is done when `npx oxlint --deny-warnings && npm run test:coverage && np
 - Every level has a reference design that must pass and a naive one that must fail, in `src/sim/engine.test.ts`. Any change to engine numbers or piece specs keeps those outcomes; to add or retune a level, use the `add-level` skill.
 - Runs are deterministic for a seed; tests rely on it.
 
+## Oficina
+
+- Every course stage (`src/oficina/projeto/`) has a reference solution for each framework the course offers, which passes its tests with the full checklist, and naive code that fails, in the course's test file. Every step check passes on the reference, and file checks fail on the code the player starts from. Any change to a course, a check or the project runtime keeps those outcomes.
+- The Oficina teaches through its docs: a step links each new term to its entry in `src/oficina/projeto/docs.ts`, and the entry links to the official page (`url`), except for the course's own helpers.
+
 ## Product voice
 
-- UI copy is Brazilian Portuguese, sentence case, plain verbs. Code, identifiers and comments are English.
+- UI copy is Brazilian Portuguese, sentence case, plain verbs. Code, identifiers and comments are English, except code the player sees (Oficina starters, reference solutions, doc examples), which is Portuguese, names and comments alike.
 - The look is a transit map on cool paper (graphite at night): serif headings at weight 400, mono for everything else, 1px hairlines, pill controls, no shadows; line icons in `src/KindIcon.tsx` (24×24, stroke 1.5). Each colour has one meaning: cobalt is the single primary action, each company has a line colour (`data-company`), green/amber/red are load state, and code is syntax-coloured in the Oficina. Read `DESIGN.md` before any visual change; tokens live on `:root` in `src/App.css`.
 - The game teaches: a new mechanic arrives with its concept and tradeoffs in `src/concepts.ts`, and what the player learns should change something in the simulation.
 
@@ -27,9 +32,12 @@ A change is done when `npx oxlint --deny-warnings && npm run test:coverage && np
 ## Git
 
 - One branch and PR per issue; the PR body is Portuguese and ends with `Closes #N`. No "Generated with Claude Code" footer.
-- The owner merges PRs. Parallel agents work in separate worktrees under `../gargalo-wt/<name>`, each on its own dev-server port.
+- The owner merges PRs. Parallel agents work in separate worktrees under `../gargalo-wt/<name>` (each runs its own `npm ci`), each on its own dev-server port.
+- GitHub keeps merged branches: once the PR is merged, delete its branch locally and on `origin`, and `git worktree remove` its worktree.
 
-## Windows machine gotchas
+## Dev servers
 
-- Stopping a background shell leaves the `node`/vite process alive and holding its port. Kill it by port when done: `Get-NetTCPConnection -State Listen -LocalPort <port> | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }` (PowerShell).
-- Memory is tight: run one dev server per agent and stop it as soon as the check is done. Port 5173 is the owner's own server; leave it alone.
+- Memory is tight: run one dev server per agent and stop it as soon as the check is done. Port 5173 is the human's own server; leave it alone.
+- Stopping a background shell can leave the `node`/vite process alive and holding its port. Kill it by port when done:
+  - Linux and macOS: `kill $(lsof -ti tcp:<port> -sTCP:LISTEN)`
+  - Windows (PowerShell): `Get-NetTCPConnection -State Listen -LocalPort <port> | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
