@@ -1605,7 +1605,12 @@ ul {
   min-height: 100vh;
   padding: var(--space-32) var(--space-40) var(--space-48);
   position: relative;
-  overflow: hidden;
+  /*
+   * Clip, not hidden: the glow below sticks out on the right, and a hidden overflow can still be scrolled
+   * by code (scrollIntoView, focus), which slid the whole page sideways. Clip also lets sticky children
+   * (the Oficina's side panel) stick to the page scroll.
+   */
+  overflow: clip;
   isolation: isolate;
 }
 
@@ -3726,6 +3731,13 @@ textarea::placeholder {
   padding: var(--space-16) var(--space-20);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
+  min-width: 0;
+  /* Compact JSON in a test's "Esperado … Recebido …" is one long word: it breaks instead of widening the page. */
+  overflow-wrap: anywhere;
+}
+
+/* Grid items grow to their longest word by default; here they stay as wide as the column. */
+.projeto__side > * {
   min-width: 0;
 }
 
