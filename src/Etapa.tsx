@@ -1,6 +1,6 @@
 import { javascript } from '@codemirror/lang-javascript'
 import { highlightCode } from '@lezer/highlight'
-import { Fragment, useState, type ReactNode, type RefObject, useRef } from 'react'
+import { Fragment, useEffect, useState, type ReactNode, type RefObject, useRef } from 'react'
 import { Stars } from './Stars'
 import { highlight } from './oficina/editor'
 import { loadSavedResults, revealedHints } from './oficina/progress'
@@ -87,6 +87,24 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
   const [checked, setChecked] = useState<Record<number, true | string>>({})
   const [checking, setChecking] = useState(false)
   const s = steps[step]
+  const card = useRef<HTMLElement>(null)
+  const title = useRef<HTMLHeadingElement>(null)
+  const moved = useRef(false)
+  // After Voltar/Prosseguir the panel keeps its scroll: bring the new step's title into view and give it focus, not on first render.
+  useEffect(() => {
+    if (!moved.current) {
+      moved.current = true
+      return
+    }
+    const el = card.current
+    const panel = el?.closest<HTMLElement>('.projeto__side')
+    // Wide screens: the sticky panel scrolls on its own, so move only it (the editor stays put). Narrow: the page scrolls.
+    if (el && panel && panel.scrollHeight > panel.clientHeight) {
+      const top = el.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - 12
+      panel.scrollTo({ top, behavior: 'smooth' })
+    } else el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    title.current?.focus({ preventScroll: true })
+  }, [step])
   const docs = docsFor(project.framework).flatMap((d) => d.entries)
   const result = checked[step]
   const request = s.check?.kind === 'request' ? s.check : undefined
@@ -115,12 +133,14 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
   return (
     <div className="passos">
       <p className="oficina__statement">{stage.statement}</p>
-      <section className="passos__card" aria-label="Passo a passo">
+      <section ref={card} className="passos__card" aria-label="Passo a passo">
         <p className="passos__count">
           Passo {step + 1} de {steps.length}
         </p>
         <div className="passos__body" aria-live="polite">
-          <h4 className="passos__title">{s.title}</h4>
+          <h4 ref={title} tabIndex={-1} className="passos__title">
+            {s.title}
+          </h4>
           {s.do ? (
             <p className="passos__do">
               <strong>Faça agora:</strong> {s.do}
@@ -203,8 +223,8 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
               Prosseguir
             </button>
           ) : (
-            <button type="button" className="btn btn--primary btn--small" onClick={() => runRef.current?.focus()}>
-              Último passo: rodar os testes
+            <button type="button" className="btn btn--primary btn--small" onClick={() => runRef.current?.click()}>
+              Rodar os testes da etapa
             </button>
           )}
         </div>
@@ -296,7 +316,8 @@ export function Etapa({
   const explanation = failure && explain(failure)
   const visibleHints = revealedHints(stage.hints, failed[stage.id] ?? 0, revealed[stage.id] ?? 0)
   // Before a run, what the checklist asks; after, how the code did.
-  const checks: (CheckInfo & Partial<Verdict>)[] = run?.result.checklist ?? stage.checklist.map((c) => info(c.id))
+  // Verdicts only once the tests pass: an empty project "passing" a practice is a false signal, and stars need passing tests anyway.
+  const checks: (CheckInfo & Partial<Verdict>)[] = run?.result.passed ? run.result.checklist : stage.checklist.map((c) => info(c.id))
 
   const go = (i: number) => {
     setIndex(i)
@@ -314,10 +335,10 @@ export function Etapa({
         const kept = saveStageResult(course.id, stage.id, result)
         setSaved(kept.results)
         xp = kept.xp
-      } else setFailed((f) => ({ ...f, [stage.id]: (f[stage.id] ?? 0) + 1 }))
+      } else if (!stage.steps) setFailed((f) => ({ ...f, [stage.id]: (f[stage.id] ?? 0) + 1 }))
       setRun({ result, xp })
       const count = `${result.tests.filter((t) => t.passed).length} de ${stage.tests.length} testes passaram.`
-      const newHint = !result.passed && (failed[stage.id] ?? 0) < stage.hints.length
+      const newHint = !result.passed && !stage.steps && (failed[stage.id] ?? 0) < stage.hints.length
       setStatus(result.passed ? `${count} ${result.stars} de 3 estrelas.` : `${count}${newHint ? ' Uma dica nova foi liberada.' : ''}`)
     } catch (err) {
       setStatus(`Os testes não rodaram: ${err instanceof Error ? err.message : String(err)}`)
@@ -355,7 +376,8 @@ export function Etapa({
         <Passos key={`${course.id}:${stage.id}`} course={course.id} stageId={stage.id} statement={stage.statement} runRef={runRef} />
       )}
       <div className="etapa__actions">
-        <button type="button" ref={runRef} className="btn btn--primary btn--small" onClick={start} disabled={running}>
+        {/* With guided steps the card holds the one primary action (Prosseguir, then "Rodar os testes da etapa"). */}
+        <button type="button" ref={runRef} className={`btn ${stage.steps ? 'btn--ghost' : 'btn--primary'} btn--small`} onClick={start} disabled={running}>
           Rodar testes
         </button>
         <button type="button" className="btn btn--ghost btn--small" onClick={copy}>
@@ -364,24 +386,6 @@ export function Etapa({
       </div>
       <p className="oficina__status" role="status" aria-live="polite">
         {status || (warming ? 'Carregando o Postgres do navegador…' : '')}
-      </p>
-
-      <p className="etapa__files">
-        Arquivos:{' '}
-        {stage.files.map((f, i) => (
-          <Fragment key={f}>
-            <span>
-              {Object.hasOwn(project.files, f) ? (
-                <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
-                  {f}
-                </button>
-              ) : (
-                `${f} (falta)`
-              )}
-              {i < stage.files.length - 1 && ','}
-            </span>{' '}
-          </Fragment>
-        ))}
       </p>
 
       {run && (
@@ -442,6 +446,28 @@ export function Etapa({
         </section>
       )}
 
+      {/* With guided steps the stage's details stay one click away, so the current step is what the panel shows. */}
+      {stage.steps ? (
+        <details className="etapa__details">
+          <summary>Detalhes da etapa: arquivos, boas práticas e dicas</summary>
+      <p className="etapa__files">
+        Arquivos:{' '}
+        {stage.files.map((f, i) => (
+          <Fragment key={f}>
+            <span>
+              {Object.hasOwn(project.files, f) ? (
+                <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
+                  {f}
+                </button>
+              ) : (
+                `${f} (falta)`
+              )}
+              {i < stage.files.length - 1 && ','}
+            </span>{' '}
+          </Fragment>
+        ))}
+      </p>
+
       {stage.checklist.length > 0 && (
         <section aria-labelledby="etapa-checklist" className="projeto__slot">
           <h4 id="etapa-checklist" className="projeto__label">
@@ -482,6 +508,69 @@ export function Etapa({
         </section>
       )}
 
+        </details>
+      ) : (
+        <>
+      <p className="etapa__files">
+        Arquivos:{' '}
+        {stage.files.map((f, i) => (
+          <Fragment key={f}>
+            <span>
+              {Object.hasOwn(project.files, f) ? (
+                <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
+                  {f}
+                </button>
+              ) : (
+                `${f} (falta)`
+              )}
+              {i < stage.files.length - 1 && ','}
+            </span>{' '}
+          </Fragment>
+        ))}
+      </p>
+
+      {stage.checklist.length > 0 && (
+        <section aria-labelledby="etapa-checklist" className="projeto__slot">
+          <h4 id="etapa-checklist" className="projeto__label">
+            Boas práticas
+          </h4>
+          <ol className="oficina__results">
+            {checks.map((c) => (
+              <li key={c.id} className={c.passed === undefined ? undefined : c.passed ? 'is-passed' : 'is-failed'}>
+                <p className="oficina__test">
+                  {c.passed !== undefined && <span>{c.passed ? 'Cumprida' : 'Falta'}</span>} {c.title}
+                </p>
+                <p>{c.passed === undefined ? c.why : c.passed ? c.message : `${c.message} ${c.fix}`}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {visibleHints.length > 0 && (
+        <section aria-labelledby="etapa-hints" className="projeto__slot">
+          <h4 id="etapa-hints" className="projeto__label">
+            Dica {visibleHints.length} de {stage.hints.length}
+          </h4>
+          <ol className="oficina__hints">
+            {visibleHints.map((h) => (
+              <li key={h}>{h}</li>
+            ))}
+          </ol>
+          {visibleHints.length < stage.hints.length && (
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}
+            >
+              Ver próxima dica
+            </button>
+          )}
+        </section>
+      )}
+
+        </>
+      )}
       {passed && (
         <section aria-labelledby="etapa-explanation" className="projeto__slot">
           <h4 id="etapa-explanation" className="projeto__label">

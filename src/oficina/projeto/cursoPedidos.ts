@@ -174,7 +174,7 @@ const DIGITE = 'Os comentários (// …) explicam o código: digitá-los é opci
 const PASSOS_OLA: GuidedStep[] = [
   {
     title: 'Um projeto vazio',
-    do: 'Clique em Abrir src/env.ts e leia o arquivo: é o único que já vem pronto.',
+    do: 'Leia o src/env.ts, aberto no editor: é o único arquivo que já vem pronto. Depois clique em Prosseguir.',
     learn:
       'Você vai escrever esta API do zero, um arquivo por vez, e este painel diz o que fazer em cada passo. O src/env.ts só descreve o [Env](env): o que o jogo entrega para sua API, que é o banco Postgres em db. Sem ele, o TypeScript não saberia o que db.query aceita.',
     file: 'src/env.ts',
@@ -1726,6 +1726,7 @@ const auth: Stage = {
 export const cursoPedidos: ProjectCourse = {
   id: 'ecommerce',
   title: 'API de pedidos do E-commerce',
+  summary: 'Para começar: um projeto vazio, guiado passo a passo, da primeira rota a pedidos, validação e login.',
   stages: [primeirosPassos, health, produtos, pedidos, validacao, paginacao, auth],
   blank: true,
 }

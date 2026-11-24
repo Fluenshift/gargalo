@@ -142,7 +142,7 @@ describe('saveStageResult', () => {
 })
 
 describe('resumeStage', () => {
-  const course = { id: 'c', title: 'C', stages: [stage, { ...stage, id: 'b' }, { ...stage, id: 'z' }] }
+  const course = { id: 'c', title: 'C', summary: '', stages: [stage, { ...stage, id: 'b' }, { ...stage, id: 'z' }] }
   const won = (...ids: string[]) => Object.fromEntries(ids.map((id) => [stageResultId('c', id), { stars: 1, cost: 0, p99Ms: 0, availability: 1 }]))
 
   it('opens the first stage not passed, and the last once all are', () => {

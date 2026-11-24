@@ -904,5 +904,6 @@ export const cursoBanco: ProjectCourse = {
   baseFiles: { 'src/http.ts': HTTP },
   id: 'banco',
   title: 'API do Banco',
+  summary: 'Depois do básico: contas e transferências que não perdem dinheiro, com transações e concorrência.',
   stages: [contas, transferencias, pagamentos],
 }
