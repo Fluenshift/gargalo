@@ -213,7 +213,8 @@ describe('the exported acceptance runner', () => {
       mkdirSync(dirname(join(dir, path)), { recursive: true })
       writeFileSync(join(dir, path), text)
     }
-    symlinkSync(join(process.cwd(), 'node_modules'), join(dir, 'node_modules'), 'dir')
+    // 'junction' needs no admin rights on Windows; elsewhere Node ignores the type and makes a plain symlink.
+    symlinkSync(join(process.cwd(), 'node_modules'), join(dir, 'node_modules'), 'junction')
     const suporte = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'tests/suporte.ts')).href)) as Suporte
     const { migrar } = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'src/infra/migrar.ts')).href)) as { migrar(db: Banco, pasta: string): Promise<string[]> }
     const banco = await suporte.abrirBanco()
