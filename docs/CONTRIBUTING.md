@@ -47,7 +47,7 @@ Pronto quando: `git branch -a` e `git worktree list` não mostram mais a branch.
 | Push | Quality Gate | Dependency Review | Vercel |
 |---|---|---|---|
 | PR para a `main` | roda, salvo se o PR só muda `**.md`, `.claude/**` e `docs/**` | roda | preview, salvo branch `docs/*` |
-| Merge na `main` | roda, com a mesma exceção | não roda | deploy em `gargallo.vercel.app` |
+| Merge na `main` | roda, com a mesma exceção | não roda | deploy no site oficial, `gargalo-one.vercel.app` (projeto `gargallo` da Vercel) |
 | Branch sem PR | não roda | não roda | preview, salvo branch `docs/*` |
 
-A Quality Gate e o Dependency Review estão em `.github/workflows/`. A Vercel faz preview de todo push por padrão; a exceção de `docs/*` está no `vercel.json` (`git.deploymentEnabled`). O site oficial, `gargalo-one.vercel.app`, não muda com o merge: ele só é publicado com deploy manual pela CLI da Vercel.
+A Quality Gate e o Dependency Review estão em `.github/workflows/`. A Vercel faz preview de todo push por padrão; a exceção de `docs/*` está no `vercel.json` (`git.deploymentEnabled`). O site oficial, `gargalo-one.vercel.app`, é um domínio do projeto `gargallo`, ligado ao GitHub: todo merge na `main` o publica, sem deploy manual. O projeto `gargalo` da Vercel ficou sem domínio e não é mais usado.

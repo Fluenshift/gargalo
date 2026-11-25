@@ -28,7 +28,7 @@ Sucesso é o jogador sair sabendo fazer sozinho o que fez no jogo: escrever uma 
 - Jogo web, sem login. O progresso, os projetos e o banco de cada projeto ficam no navegador (localStorage + PGlite).
 - Modos: **Carreira** (fases por empresa, com metas), **Modo livre**, **Desafio do dia** e **Oficina** (projetos guiados: E-commerce, Banco, Busca e paginação, Revisão de código).
 - A Oficina tem um editor (CodeMirror), um painel Banco (migrações), um Console, uma aba Requisição (cliente HTTP) e o painel Etapa, com passos guiados, conferência por passo e testes com até 3 estrelas.
-- O deploy é na Vercel, manual via CLI.
+- O deploy é na Vercel: cada merge na `main` publica o site oficial (`gargalo-one.vercel.app`) sozinho.
 
 ## Capabilities and Constraints
 
