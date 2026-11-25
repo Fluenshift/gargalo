@@ -201,7 +201,13 @@ describe('primeiros passos, do zero', () => {
     }, 60_000)
   }
 
-  it('every step says what to do now', () => {
-    for (const s of cursoPedidos.stages[0].steps!) expect(s.do, s.title).toBeTruthy()
+  it('every step of every stage says what to do now', () => {
+    for (const stage of cursoPedidos.stages)
+      for (const framework of ['hono', 'fetch'] as Framework[])
+        for (const s of stage.steps!.map((x) => stepFor(x, framework))) {
+          expect(s.do, `${stage.id}: ${s.title}`).toBeTruthy()
+          // "Testar agora" only exists on a step with a request check.
+          if (s.do!.includes('Testar agora')) expect(s.check?.kind, `${stage.id}: ${s.title}`).toBe('request')
+        }
   })
 })

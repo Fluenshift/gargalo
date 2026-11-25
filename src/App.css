@@ -3844,7 +3844,7 @@ textarea::placeholder {
 /* What changes in the player's task: set off from the pattern by an accent rule, not a second box. */
 .passos__note {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--ink);
   font-size: var(--text-sm);
 }
 

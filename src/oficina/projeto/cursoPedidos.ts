@@ -307,6 +307,7 @@ const PASSOS_OLA: GuidedStep[] = [
 const PASSOS_HEALTH: GuidedStep[] = [
   {
     title: 'Por que existe o /health',
+    do: 'Clique em Testar agora: o GET /health que você escreveu na etapa anterior deve responder 200.',
     learn:
       'Balanceadores e orquestradores chamam GET /health de tempos em tempos para saber se a instância está viva. A rota faz await bancoResponde(...) antes de responder: se o banco cair, ela falha junto e a instância sai de circulação. Você escreveu essa rota na etapa anterior; confirme que ela ainda responde.',
     file: 'src/routes/health.ts',
@@ -315,6 +316,7 @@ const PASSOS_HEALTH: GuidedStep[] = [
   },
   {
     title: 'Um formato só para erros: problem+json',
+    do: 'Leia o exemplo abaixo: é o formato que todo erro da sua API vai ter. Nada para digitar ainda.',
     learn:
       'Hoje cada erro sai de um jeito: o 404 do Hono é texto, e outra rota poderia responder { erro } ou { message }. [problem+json](problem-json) (RFC 9457) é o formato padrão: um Content-Type próprio e um corpo com type, title e status. Com um formato só, o cliente trata qualquer erro do mesmo jeito.',
     example: {
@@ -336,6 +338,7 @@ const PASSOS_HEALTH: GuidedStep[] = [
   },
   {
     title: 'Escreva problema() em src/http.ts',
+    do: 'Clique em Abrir src/http.ts (o arquivo é criado vazio) e escreva a função problema(status, title, detail?), que devolve o Response de erro.',
     learn:
       'Os erros da API ficam num arquivo só, src/http.ts, e cada rota só chama a função. problema(status, title, detail?) devolve um [Response pronto](response-pronta), que serve no Hono e no fetch puro.',
     file: 'src/http.ts',
@@ -353,6 +356,7 @@ export function criado(corpo: unknown, local: string): Response {
   },
   {
     title: 'Lance erros com ErroHttp',
+    do: 'Em src/http.ts, acrescente a classe ErroHttp, com status e title, que estende Error.',
     learn:
       'Às vezes o erro nasce longe da rota, numa função que ela chamou. Em vez de devolver o erro de mão em mão, você o [lança](erro-lancado) com throw, e um lugar só o transforma em resposta. ErroHttp é um Error que carrega o status e o title.',
     file: 'src/http.ts',
@@ -376,6 +380,7 @@ export class ErroDeCampo extends Error {
   },
   {
     title: 'Converta qualquer erro: deErro()',
+    do: 'Em src/http.ts, acrescente deErro(err): ErroHttp vira problema() com o status dele; qualquer outro erro vira 500.',
     learn:
       'deErro(err) recebe o que foi lançado e devolve a resposta certa. Um ErroHttp vira problema() com o status dele. Qualquer outro erro é um bug: vira 500 sem mostrar detalhes ao cliente, e o detalhe vai para o Console.',
     file: 'src/http.ts',
@@ -395,6 +400,7 @@ export function mensagemDe(err: unknown): string {
   },
   {
     title: 'Ligue os erros no index',
+    do: 'Em src/index.ts, importe problema e deErro de \'./http\' e ligue os dois: rota não encontrada responde 404 e todo erro lançado passa por deErro.',
     learn:
       'O Hono tem dois ganchos: app.notFound roda quando nenhuma rota casou, e app.onError recebe todo erro lançado numa rota. Ligados às suas funções, todos os erros da API saem em problem+json, sem try/catch em cada rota.',
     file: 'src/index.ts',
@@ -436,6 +442,7 @@ export default app // os ganchos vêm antes do export`,
   },
   {
     title: 'Teste o 404',
+    do: 'Clique em Testar agora: GET /nada deve responder 404 com o corpo em problem+json. Depois, rode os testes da etapa.',
     learn:
       'Peça uma rota que não existe: deve vir 404 com o corpo em problem+json. Abra os headers da resposta: o Content-Type deve ser application/problem+json. Se vier texto ou { erro }, o 404 ainda não passa por problema().',
     docs: ['problem-json'],
@@ -466,6 +473,7 @@ const PASSOS_PRODUTOS: GuidedStep[] = [
   },
   {
     title: 'O que é um CRUD',
+    do: 'Leia o exemplo: são as cinco rotas que você vai escrever nesta etapa, com o status de cada uma. Nada para digitar ainda.',
     learn:
       'CRUD são as quatro operações de um recurso: criar, ler, atualizar e apagar. Cada uma é um verbo HTTP mais um caminho, e o [status](status-http) conta o resultado: 201 criou, 204 apagou, 404 não achou. Aqui o recurso é o produto, guardado na tabela produtos.',
     example: {
@@ -481,6 +489,7 @@ const PASSOS_PRODUTOS: GuidedStep[] = [
   },
   {
     title: 'Camada do banco: criarProduto',
+    do: 'Clique em Abrir src/db/produtos.ts e escreva criarProduto(db, p): um INSERT em produtos com RETURNING id, nome, preco_centavos.',
     learn:
       'As rotas cuidam de HTTP; o SQL fica em src/db/, uma função por operação, e os testes conferem essa separação. Cada função recebe o db e roda [db.query](db-query), com os valores em $1, $2… e nunca colados no texto do SQL. [RETURNING](returning) devolve a linha gravada, com o id que o banco gerou, numa ida só.',
     file: 'src/db/produtos.ts',
@@ -508,6 +517,7 @@ export async function criarCategoria(db: Db, nome: string): Promise<Categoria> {
   },
   {
     title: 'Ler, atualizar e apagar',
+    do: 'Em src/db/produtos.ts, acrescente buscarProduto(db, id), listarProdutos(db), atualizarProduto(db, id, p) e removerProduto(db, id).',
     learn:
       'As outras operações seguem o molde. SELECT lista as colunas pelo nome, sem *, para a resposta não vazar uma coluna nova por acidente. UPDATE e DELETE também aceitam RETURNING: se nada voltou, a linha não existia, e a função devolve undefined para a rota responder 404.',
     file: 'src/db/produtos.ts',
@@ -536,6 +546,7 @@ export async function removerCategoria(db: Db, id: number): Promise<{ id: number
   },
   {
     title: 'idDe e achado em src/http.ts',
+    do: 'Em src/http.ts, acrescente idDe(texto), que converte o id da URL ou lança 404, e achado(valor, nome), que lança 404 quando o valor não existe.',
     learn:
       'O id da URL chega como texto: /produtos/abc é um recurso que não existe, e deve dar 404, não 500. idDe(texto) converte e lança 404 se não for um número inteiro. achado(valor, nome) lança 404 quando a consulta devolveu undefined e, senão, devolve o valor. Os dois lançam o [ErroHttp](erro-lancado) do Health, então o onError já responde em problem+json.',
     file: 'src/http.ts',
@@ -560,6 +571,7 @@ export function obrigatorio<T>(valor: T | undefined, mensagem: string): T {
   },
   {
     title: 'POST /produtos e a lista',
+    do: "Clique em Abrir src/routes/produtos.ts e escreva as rotas POST /produtos (responde 201 com Location) e GET /produtos (a lista).",
     learn:
       'Um arquivo por recurso: src/routes/produtos.ts cria um roteador, exporta com nome, e o index escolhe o prefixo. O POST lê o [corpo JSON](hono-body), chama a função do banco e responde 201 com o produto. O cabeçalho [Location](hono-header-resposta) diz onde o recurso novo está, e o cliente não precisa adivinhar. GET na raiz devolve a lista.',
     file: 'src/routes/produtos.ts',
@@ -619,6 +631,7 @@ export async function categorias(req: Request, env: Env, id?: string): Promise<R
   },
   {
     title: 'Ler, atualizar e apagar por id',
+    do: "Em src/routes/produtos.ts, acrescente GET, PUT e DELETE de /produtos/:id, passando o id por idDe e o resultado do banco por achado.",
     learn:
       'Uma rota com [:id](hono-param) casa qualquer valor naquela posição, e c.req.param("id") devolve texto. Passe o texto por idDe e o resultado do banco por achado: id ruim ou produto sem linha vira 404 sem if na rota. O DELETE responde 204, que por definição [não leva corpo](hono-sem-corpo).',
     file: 'src/routes/produtos.ts',
@@ -672,6 +685,7 @@ categorias.delete('/:id', async (c) => {
   },
   {
     title: 'Registre /produtos no index',
+    do: "Em src/index.ts, importe as rotas de './routes/produtos' e ligue o caminho /produtos, antes do tratamento de erros.",
     learn:
       'Como no /ola, o roteador só responde depois de montado no app: importe e use app.route com o prefixo. Esquecer esse passo é a causa mais comum de 404, mesmo com o arquivo certo.',
     file: 'src/index.ts',
@@ -707,6 +721,7 @@ app.route('/categorias', categorias) // 2. monte no prefixo: /categorias, /categ
   },
   {
     title: 'Teste e rode os testes',
+    do: 'Clique em Testar agora: GET /produtos/999 deve responder 404 em problem+json. Depois, rode os testes da etapa.',
     learn:
       'Teste à mão na aba Requisição: GET /produtos deve responder 200 com uma lista, e um id que não existe, como GET /produtos/999, deve responder 404 em problem+json. Crie um produto com POST e confira o Location e o 201. Com tudo certo, rode os testes da etapa.',
     docs: ['status-http'],
@@ -717,6 +732,7 @@ app.route('/categorias', categorias) // 2. monte no prefixo: /categorias, /categ
 const PASSOS_PEDIDOS: GuidedStep[] = [
   {
     title: 'Duas tabelas: pedido e itens',
+    do: 'Clique em Abrir migrations/002_pedidos.sql, crie as tabelas pedidos e itens_pedido e clique em Aplicar migrações, no painel Banco.',
     learn:
       'Um pedido é um cabeçalho (id, total, data) e várias linhas, os itens. Cada item aponta para o pedido por uma [chave estrangeira](migracao-sql): o banco recusa um item de um pedido que não existe. O item guarda o preco_centavos do momento da compra, porque o catálogo muda e o pedido de ontem não pode mudar de valor.',
     file: 'migrations/002_pedidos.sql',
@@ -744,6 +760,7 @@ CREATE TABLE ingressos (
   },
   {
     title: 'Transação: tudo ou nada',
+    do: 'Leia o exemplo: ele mostra como várias escritas viram uma só. Nada para digitar ainda: o próximo passo usa isso.',
     learn:
       'Criar um pedido são várias escritas: o pedido e cada item. Se uma falhar no meio, sobra um pedido pela metade. Uma [transação](db-transaction) junta as escritas: se a função lançar um erro, o banco desfaz todas. Dentro dela use o tx que ela recebe, nunca o db, porque só o tx participa da transação.',
     example: {
@@ -761,6 +778,7 @@ await db.transaction(async (tx) => {
   },
   {
     title: 'criarPedido: cabeçalho e itens',
+    do: 'Clique em Abrir src/db/pedidos.ts e escreva criarPedido(db, itens): dentro de db.transaction, insira o pedido e depois cada item, com o preço vindo de produtos.',
     learn:
       'A função recebe os itens ({ produtoId, quantidade }) e devolve o pedido criado. Dentro da transação: insira o pedido, depois percorra os itens e insira cada um. O preço vem de um SELECT em produtos e nunca do corpo, porque quem monta a requisição poderia mentir o preço. Some preço vezes quantidade num total e grave-o no pedido ao final.',
     file: 'src/db/pedidos.ts',
@@ -790,6 +808,7 @@ await db.transaction(async (tx) => {
   },
   {
     title: 'Produto inexistente: 422 na transação',
+    do: 'Em criarPedido, logo depois do SELECT do produto, lance ErroHttp(422) quando ele não existir.',
     learn:
       'Se o SELECT do produto não achou linha, o item é inválido. Lance um [ErroHttp](erro-lancado) 422 de dentro da transação: o banco desfaz o pedido e os itens já gravados, e o onError responde em problem+json. 422 quer dizer "entendi o pedido, mas não consigo processar": o JSON está certo, o produto é que não existe.',
     file: 'src/db/pedidos.ts',
@@ -805,6 +824,7 @@ if (!evento) throw new ErroHttp(422, 'Evento inexistente', 'O evento ' + item.ev
   },
   {
     title: 'buscarPedido: duas consultas',
+    do: 'Em src/db/pedidos.ts, acrescente buscarPedido(db, id): busque o pedido e, se existir, os itens dele.',
     learn:
       'Ler um pedido junta duas tabelas. Primeiro busque o cabeçalho; sem linha, devolva undefined para a rota responder 404. Depois busque os itens daquele pedido, em ordem, e junte tudo num objeto só.',
     file: 'src/db/pedidos.ts',
@@ -824,6 +844,7 @@ if (!evento) throw new ErroHttp(422, 'Evento inexistente', 'O evento ' + item.ev
   },
   {
     title: 'As rotas de /pedidos',
+    do: "Clique em Abrir src/routes/pedidos.ts e escreva POST /pedidos (201 com Location) e GET /pedidos/:id (404 quando não existe).",
     learn:
       'São duas rotas, no mesmo molde dos produtos. POST /pedidos recebe { itens: [{ produtoId, quantidade }] }, chama criarPedido e responde 201 com Location; GET /pedidos/:id devolve o pedido, ou 404. O que muda é que o corpo traz uma lista, e o 422 já vem do banco: a rota não precisa de if para ele.',
     file: 'src/routes/pedidos.ts',
@@ -867,6 +888,7 @@ reservas.get('/:id', async (c) => c.json(achado(await buscarReserva(c.env.db, id
   },
   {
     title: 'Registre /pedidos no index',
+    do: "Em src/index.ts, importe as rotas de './routes/pedidos' e ligue o caminho /pedidos.",
     learn:
       'O roteador de pedidos também precisa ser montado no app, do mesmo jeito que o de produtos. Sem isso, POST /pedidos responde 404.',
     file: 'src/index.ts',
@@ -899,6 +921,7 @@ app.route('/reservas', reservas) // um roteador por recurso, cada um no seu pref
   },
   {
     title: 'Teste e rode os testes',
+    do: 'Clique em Testar agora: GET /pedidos/999 deve responder 404. Depois, rode os testes da etapa.',
     learn:
       'Na aba Requisição, mande POST /pedidos com { "itens": [{ "produtoId": 1, "quantidade": 2 }] }, com os produtos já criados. Confira o 201, o Location e o total. Depois mande um produtoId que não existe: deve vir 422 e nenhum pedido novo na aba Banco. Então rode os testes.',
     docs: ['status-http'],
@@ -909,6 +932,7 @@ app.route('/reservas', reservas) // um roteador por recurso, cada um no seu pref
 const PASSOS_VALIDACAO: GuidedStep[] = [
   {
     title: 'Por que validar na borda',
+    do: 'Leia o exemplo: é o 400 que a sua API vai devolver para um corpo inválido. Nada para digitar ainda.',
     learn:
       'O corpo que chega pode ter qualquer coisa: campo faltando, número escrito como texto, lista vazia. Sem validar, isso chega ao banco e vira um 500 sem explicação, ou grava lixo. Validar na borda, na entrada da rota, devolve um [400](status-http) dizendo qual campo errou, e nada é gravado.',
     example: {
@@ -921,6 +945,7 @@ const PASSOS_VALIDACAO: GuidedStep[] = [
   },
   {
     title: 'Descreva a entrada com zod',
+    do: 'Clique em Abrir src/validacao.ts e escreva produtoSchema e pedidoSchema com z.object.',
     learn:
       '[zod](zod-schema) descreve a forma de um dado e confere, em tempo de execução, se ele tem essa forma. z.object descreve um objeto, e cada campo é um tipo com regras encadeadas, como z.string().min(1). Escreva um schema por entrada da API.',
     file: 'src/validacao.ts',
@@ -941,6 +966,7 @@ export const categoriaSchema = z.object({
   },
   {
     title: 'ErroHttp com campos extras',
+    do: 'Em src/http.ts, dê ao ErroHttp e ao problema() um último argumento extra, cujos campos entram no corpo da resposta.',
     learn:
       'O 400 precisa dizer quais campos erraram, e um title só não basta. Dê ao ErroHttp um quarto argumento, extra: um objeto cujos campos entram no corpo da resposta. problema() também recebe o extra e o espalha no corpo com o spread, e deErro repassa o err.extra.',
     file: 'src/http.ts',
@@ -966,6 +992,7 @@ const corpo = { title: 'Limite', status: 429, ...extra } // { title, status, res
   },
   {
     title: 'validar(): safeParse e o 400',
+    do: 'Em src/validacao.ts, escreva validar(dados, schema): com safeParse, devolve os dados ou lança ErroHttp(400) listando os campos errados.',
     learn:
       '[schema.safeParse(dados)](zod-safeparse) não lança: devolve { success: true, data } ou { success: false, error }. Os campos errados estão em error.issues, cada um com path (onde) e message (o quê). Transforme isso numa lista { campo, mensagem } e lance o ErroHttp 400 levando essa lista em extra.',
     file: 'src/validacao.ts',
@@ -988,6 +1015,7 @@ function conferir<S extends z.ZodType>(dados: unknown, schema: S): z.output<S> {
   },
   {
     title: 'lerCorpo(req, schema)',
+    do: 'Em src/validacao.ts, escreva lerCorpo(req, schema): lê o JSON do corpo (corpo inválido vira undefined) e chama validar.',
     learn:
       'As rotas não vão repetir isso: uma função só lê o corpo e valida. req.json() lança se o corpo não for JSON; troque esse erro por undefined com .catch e deixe o schema recusar. Assim, tudo que chega à rota já foi validado.',
     file: 'src/validacao.ts',
@@ -1010,6 +1038,7 @@ export async function lerEntrada<S extends z.ZodType>(req: Request, schema: S): 
   },
   {
     title: 'Valide os produtos',
+    do: 'Em src/routes/produtos.ts, troque a leitura crua do corpo por lerCorpo(…, produtoSchema) no POST e no PUT.',
     learn:
       'Troque a leitura crua pela validada: onde havia await c.req.json(), use await lerCorpo(c.req.raw, produtoSchema). Se o corpo for inválido, a função lança antes do banco, e o app.onError que você ligou no Health responde o 400 em problem+json. A rota não ganha nenhum try/catch.',
     file: 'src/routes/produtos.ts',
@@ -1045,6 +1074,7 @@ export async function lerEntrada<S extends z.ZodType>(req: Request, schema: S): 
   },
   {
     title: 'Valide os pedidos: 400 e 422',
+    do: 'Em src/routes/pedidos.ts, troque a leitura crua do corpo por lerCorpo(…, pedidoSchema).',
     learn:
       'Pedidos também: o schema descreve a lista de itens, e uma lista vazia ou uma quantidade 0 vira 400 antes de abrir a transação. O 422 de produto inexistente continua vindo do banco, porque é outro problema: a forma estava certa.',
     file: 'src/routes/pedidos.ts',
@@ -1061,6 +1091,7 @@ export async function lerEntrada<S extends z.ZodType>(req: Request, schema: S): 
   },
   {
     title: 'Teste e rode os testes',
+    do: 'Clique em Testar agora: o POST /produtos inválido deve responder 400 citando os campos. Depois, rode os testes da etapa.',
     learn:
       'Na aba Requisição, mande POST /produtos com { "nome": "", "preco_centavos": -1 }: deve vir 400 citando os dois campos em erros. Sem corpo nenhum também dá 400, e um corpo válido continua dando 201. Se vier 500, a validação ainda não roda antes do banco.',
     docs: ['problem-json'],
@@ -1079,6 +1110,7 @@ export async function lerEntrada<S extends z.ZodType>(req: Request, schema: S): 
 const PASSOS_PAGINACAO: GuidedStep[] = [
   {
     title: 'Por que paginar: o cursor',
+    do: 'Leia o exemplo: GET /produtos vai passar a devolver { itens, proximoCursor }. Nada para digitar ainda.',
     learn:
       'Uma lista sem limite cresce com a tabela: com um milhão de produtos, GET /produtos devolveria um milhão. Paginar é devolver um pedaço por vez. Na [paginação por cursor](paginacao-cursor), o cliente diz "me dê N itens depois do id X". Diferente de OFFSET, ela não pula nem repete itens quando alguém cria ou apaga no meio, e custa o mesmo na página 1 e na 1000.',
     example: {
@@ -1092,6 +1124,7 @@ const PASSOS_PAGINACAO: GuidedStep[] = [
   },
   {
     title: 'A consulta por cursor',
+    do: 'Em src/db/produtos.ts, troque listarProdutos por listarProdutos(db, filtro): ids maiores que o cursor, em ordem, com LIMIT de uma linha a mais.',
     learn:
       'A consulta pede só os ids maiores que o cursor, em ordem, com LIMIT. Peça uma linha a mais que o limite: se ela vier, há próxima página, e você devolve só o limite. O proximoCursor é o id do último item devolvido, ou null quando não sobrou nada.',
     file: 'src/db/produtos.ts',
@@ -1110,6 +1143,7 @@ const PASSOS_PAGINACAO: GuidedStep[] = [
   },
   {
     title: 'Limite máximo',
+    do: 'Em src/db/produtos.ts, crie export const LIMITE_MAX = 50 e use Math.min(filtro.limite, LIMITE_MAX) na consulta.',
     learn:
       'Sem teto, o cliente pede limite=1000000 e a lista volta inteira. Defina uma constante e use Math.min(limite, teto): o menor dos dois vale. O teto fica no módulo do banco, para valer não importa quem chame.',
     file: 'src/db/produtos.ts',
@@ -1126,6 +1160,7 @@ const limite = Math.min(pedido, TETO)`,
   },
   {
     title: 'Filtros opcionais numa consulta só',
+    do: 'Na mesma consulta, acrescente os filtros q, preco_min e preco_max, cada um valendo tudo quando vier null.',
     learn:
       'q, preco_min e preco_max podem vir ou não. Uma consulta só dá conta: ($2::text IS NULL OR nome ILIKE $2) vale tudo quando o parâmetro é null e filtra quando ele veio. Os valores seguem em params, e o texto de busca ganha % nas pontas para casar um pedaço do nome.',
     file: 'src/db/produtos.ts',
@@ -1142,6 +1177,7 @@ const params = [cursor, autor ? '%' + autor + '%' : null, notaMin ?? null, limit
   },
   {
     title: 'Ler a query string com zod',
+    do: 'Em src/validacao.ts, escreva listaSchema (com z.coerce) e lerConsulta(req, schema), no molde de lerCorpo.',
     learn:
       'Tudo que vem na URL é texto, até limite=3. [z.coerce.number()](zod-coerce) converte o texto em número antes de validar, e default dá o valor quando o parâmetro não veio. Com min(1) no limite, limite=0 vira 400, como no corpo.',
     file: 'src/validacao.ts',
@@ -1162,6 +1198,7 @@ export const paginaSchema = z.object({
   },
   {
     title: 'A rota devolve itens e proximoCursor',
+    do: 'Em src/routes/produtos.ts, faça o GET da lista chamar listarProdutos com lerConsulta(…, listaSchema).',
     learn:
       'A rota só junta as peças: lê os parâmetros validados e entrega ao banco. O corpo da resposta agora é o objeto { itens, proximoCursor }, que a função do banco já devolve montado. Parâmetro inválido lança 400 antes de chegar ao SQL.',
     file: 'src/routes/produtos.ts',
@@ -1187,6 +1224,7 @@ if (!id && req.method === 'GET') return Response.json(await listarComentarios(en
   },
   {
     title: 'Teste e rode os testes',
+    do: 'Com quatro produtos ou mais cadastrados, clique em Testar agora: GET /produtos?limite=3 deve trazer 3 itens e um proximoCursor. Depois, rode os testes.',
     learn:
       'Com pelo menos quatro produtos cadastrados, GET /produtos?limite=3 deve trazer 3 itens e um proximoCursor. Passe esse valor como cursor= para ver a página seguinte, sem repetir itens. limite=0 deve dar 400. Então rode os testes.',
     docs: ['paginacao-cursor'],
@@ -1197,6 +1235,7 @@ if (!id && req.method === 'GET') return Response.json(await listarComentarios(en
 const PASSOS_AUTH: GuidedStep[] = [
   {
     title: 'Quem é você? E o que pode?',
+    do: 'Leia o exemplo: são as regras de acesso que você vai aplicar nesta etapa. Nada para digitar ainda.',
     learn:
       '[Autenticação](auth-401-403) é provar quem você é; autorização é o que você pode fazer. 401 quer dizer "não sei quem é você" (sem token, token inválido ou vencido), e 403, "sei quem é, mas não pode" (token válido, papel errado). O cliente reage diferente a cada um: 401 pede login, 403 avisa que falta permissão. Aqui há dois papéis: admin escreve em /produtos, e qualquer usuário logado faz pedidos.',
     example: {
@@ -1210,6 +1249,7 @@ const PASSOS_AUTH: GuidedStep[] = [
   },
   {
     title: 'A tabela usuarios',
+    do: 'Clique em Abrir migrations/003_usuarios.sql, crie a tabela usuarios (e-mail único, papel e senha_hash) e clique em Aplicar migrações.',
     learn:
       'Um usuário tem e-mail único, papel e o hash da senha, nunca a senha. UNIQUE faz o banco recusar um e-mail repetido, e CHECK limita o papel aos valores permitidos. O papel padrão é cliente.',
     file: 'migrations/003_usuarios.sql',
@@ -1228,6 +1268,7 @@ const PASSOS_AUTH: GuidedStep[] = [
   },
   {
     title: 'Hash da senha com sal',
+    do: 'Clique em Abrir src/auth.ts e escreva hashSenha(senha) e confereSenha(senha, guardado).',
     learn:
       'Se o banco vazar, as senhas não podem vazar junto. Um [hash](hash-senha) é uma conta de mão única: dá para conferir uma senha, mas não recuperá-la. O sal, um texto aleatório por usuário, faz senhas iguais terem hashes diferentes. Grave "sal:hash" e, para conferir, refaça o hash com o mesmo sal.',
     file: 'src/auth.ts',
@@ -1254,6 +1295,7 @@ export async function hashPin(pin: string): Promise<string> {
   },
   {
     title: 'Cadastro no banco: criarUsuario',
+    do: 'Clique em Abrir src/db/usuarios.ts e escreva criarUsuario(db, email, senhaHash) com ON CONFLICT DO NOTHING, devolvendo { id, email, papel }.',
     learn:
       'E-mail repetido deve virar 409, e a forma mais segura de saber é deixar o banco decidir. [ON CONFLICT DO NOTHING](on-conflict) ignora o INSERT que violaria o UNIQUE, e o RETURNING volta vazio: a função devolve undefined e a rota responde 409. Conferir antes com um SELECT deixa uma brecha, porque dois cadastros simultâneos passam os dois.',
     file: 'src/db/usuarios.ts',
@@ -1275,6 +1317,7 @@ export async function criarMembro(db: Db, email: string, senhaHash: string): Pro
   },
   {
     title: 'Token assinado: criarToken',
+    do: 'Em src/auth.ts, escreva criarToken(usuario), que devolve { token, expiraEm }.',
     learn:
       'Depois do login, o cliente precisa provar quem é a cada requisição sem enviar a senha de novo. O [token](token-assinado) é "dados.assinatura": os dados (id, papel, validade) em base64 e o HMAC deles com um segredo que só o servidor conhece. Quem mexer nos dados não consegue refazer a assinatura. A validade vai dentro dos dados, então o token expira.',
     file: 'src/auth.ts',
@@ -1300,6 +1343,7 @@ export async function criarConvite(email: string): Promise<string> {
   },
   {
     title: 'exigir(): 401 e 403',
+    do: 'Em src/auth.ts, escreva exigir(req, papel?): sem token válido lança 401; com o papel errado, 403.',
     learn:
       'exigir(req, papel?) é o porteiro da API. Sem o cabeçalho Authorization: Bearer, com assinatura que não confere ou com token vencido, lança [ErroHttp 401](auth-401-403). Token válido com papel errado lança 403. Se tudo certo, devolve a sessão: quem é o usuário.',
     file: 'src/auth.ts',
@@ -1323,6 +1367,7 @@ export async function criarConvite(email: string): Promise<string> {
   },
   {
     title: 'Rotas de cadastro e login',
+    do: "Clique em Abrir src/routes/usuarios.ts, escreva POST /usuarios e POST /login, ligue os dois caminhos no index e clique em Testar agora.",
     learn:
       'POST /usuarios valida { email, senha } (senha com 8 caracteres ou mais), grava só o hash e responde 201 com { id, email, papel }; e-mail repetido responde 409. POST /login busca o usuário pelo e-mail, confere a senha e devolve o token. Senha errada e e-mail desconhecido respondem o mesmo 401, para não revelar quais e-mails existem.',
     file: 'src/routes/usuarios.ts',
@@ -1369,6 +1414,7 @@ membros.post('/', async (c) => {
   },
   {
     title: 'Proteja as rotas e teste',
+    do: 'Chame exigir antes das rotas: admin no POST, PUT e DELETE de produtos, login em todas as de pedidos. Depois clique em Testar agora e rode os testes.',
     learn:
       'Com exigir pronto, proteger é chamá-lo antes do handler. No Hono, um [middleware](hono-middleware) roda antes e, se lançar, o handler nem começa: use("*") vale para todo o roteador, e um soAdmin por rota fica nas escritas de produtos. GET /produtos continua sem token. Depois teste sem token: deve vir 401.',
     file: 'src/routes/produtos.ts',
