@@ -26,3 +26,7 @@ dist-ssr
 *.sln
 *.sw?
 coverage
+
+# Local tooling output (Vercel CLI link, graphify knowledge graph); the formatter skips ignored files.
+.vercel
+graphify-out
