@@ -4,8 +4,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # pnpm installs only versions at least a day old (pnpm-workspace.yaml). Three days keeps every update
+    # installable and gives the registry time to pull a bad release. Security updates don't wait.
+    cooldown:
+      default-days: 3
     ignore:
-      # Types must match the Node version CI and Vercel run (24), not the newest one.
+      # Types must match engines.node in package.json (24), not the newest Node.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     groups:
@@ -15,3 +19,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns: ["*"]
