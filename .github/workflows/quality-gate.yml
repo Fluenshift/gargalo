@@ -1,10 +1,10 @@
 name: Quality Gate
 
+# Every PR, also one stacked on another PR's branch; pushes only on main.
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 concurrency:
   group: quality-gate-${{ github.ref }}

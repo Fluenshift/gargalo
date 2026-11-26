@@ -46,7 +46,7 @@ Pronto quando: `git branch -a` e `git worktree list` não mostram mais a branch.
 
 | Push | Quality Gate | Dependency Review | Vercel |
 |---|---|---|---|
-| PR para a `main` | roda; se o PR só muda `**.md`, `.claude/**` e `docs/**`, passa sem instalar nem testar | roda | preview, salvo branch `docs/*` |
+| PR (para a `main` ou em cima de outro PR) | roda; se o PR só muda `**.md`, `.claude/**` e `docs/**`, passa sem instalar nem testar | roda | preview, salvo branch `docs/*` |
 | Merge na `main` | roda, com a mesma regra | não roda | deploy no site oficial, `gargalo-one.vercel.app` (projeto `gargallo` da Vercel) |
 | Branch sem PR | não roda | não roda | preview, salvo branch `docs/*` |
 
