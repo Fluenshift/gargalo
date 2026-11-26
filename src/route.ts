@@ -2,7 +2,7 @@
 
 export type Screen = 'fase' | 'carreira' | 'perfil' | 'livre' | 'desafio' | 'oficina' | 'design'
 
-const PATHS: Record<Screen, string> = {
+export const PATHS: Record<Screen, string> = {
   fase: '/',
   carreira: '/carreira',
   perfil: '/perfil',

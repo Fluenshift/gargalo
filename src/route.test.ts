@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { followLink, navigate, oficinaPlace, pathOf, screenOf } from './route'
+import { PATHS, followLink, navigate, oficinaPlace, pathOf, screenOf } from './route'
 import type { Screen } from './route'
 
 describe('followLink', () => {
@@ -89,5 +90,15 @@ describe('navigate', () => {
     const { pushState } = stub('/', '?fase=x&d=y')
     navigate('/')
     expect(pushState).toHaveBeenCalledWith(null, '', '/')
+  })
+})
+
+describe('vercel.json', () => {
+  // The dev server answers index.html on any path, so a screen without a rewrite only fails in production, on reload.
+  it('rewrites every screen URL to the app, so opening or reloading it does not 404', () => {
+    const { rewrites } = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8')) as { rewrites: { source: string; destination: string }[] }
+    const sources = rewrites.filter((r) => r.destination === '/index.html').map((r) => r.source)
+    for (const path of Object.values(PATHS)) if (path !== '/') expect(sources, path).toContain(path)
+    expect(sources, 'the projects under /oficina').toContain('/oficina/(.*)')
   })
 })
