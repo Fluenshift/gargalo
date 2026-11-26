@@ -26,7 +26,17 @@ import type { RequestOutcome } from './oficina/projeto/runtime'
 const statusClass = (status: number) => (status < 300 ? 'is-ok' : status < 500 ? 'is-warm' : 'is-hot')
 
 /** The project's HTTP client: compose a request, send it to the dev database, read the answer, keep history and saved requests. `prefill` sends its steps, then opens with its request and sends it, once. */
-export function HttpClient({ project, onSent, warming, prefill }: { project: Project; onSent: (draft: Draft, outcome: RequestOutcome) => void; warming: boolean; prefill?: Prefill }) {
+export function HttpClient({
+  project,
+  onSent,
+  warming,
+  prefill,
+}: {
+  project: Project
+  onSent: (draft: Draft, outcome: RequestOutcome) => void
+  warming: boolean
+  prefill?: Prefill
+}) {
   const id = useId()
   const [draft, setDraft] = useState<Draft>(() => (prefill ? draftOf(prefill.request) : EMPTY_DRAFT))
   const [state, setState] = useState<ClientState>(() => loadClient(project.id))
@@ -126,13 +136,27 @@ export function HttpClient({ project, onSent, warming, prefill }: { project: Pro
         <label htmlFor={`${id}-headers`} className="projeto__label">
           Headers
         </label>
-        <textarea id={`${id}-headers`} rows={2} value={draft.headers} spellCheck={false} placeholder="Authorization: Bearer …" onChange={(e) => edit({ headers: e.target.value })} />
+        <textarea
+          id={`${id}-headers`}
+          rows={2}
+          value={draft.headers}
+          spellCheck={false}
+          placeholder="Authorization: Bearer …"
+          onChange={(e) => edit({ headers: e.target.value })}
+        />
         {hasBody(draft.method) && (
           <>
             <label htmlFor={`${id}-body`} className="projeto__label">
               Corpo
             </label>
-            <textarea id={`${id}-body`} rows={5} value={draft.body} spellCheck={false} placeholder='{ "nome": "vela" }' onChange={(e) => edit({ body: e.target.value })} />
+            <textarea
+              id={`${id}-body`}
+              rows={5}
+              value={draft.body}
+              spellCheck={false}
+              placeholder='{ "nome": "vela" }'
+              onChange={(e) => edit({ body: e.target.value })}
+            />
           </>
         )}
       </form>
@@ -151,7 +175,11 @@ export function HttpClient({ project, onSent, warming, prefill }: { project: Pro
               </p>
               <details className="http__headers">
                 <summary>Headers da resposta ({Object.keys(response.headers).length})</summary>
-                <pre className="code code--wrap">{Object.entries(response.headers).map(([k, v]) => `${k}: ${v}`).join('\n')}</pre>
+                <pre className="code code--wrap">
+                  {Object.entries(response.headers)
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join('\n')}
+                </pre>
               </details>
               {response.body ? <pre className="code code--wrap">{prettyBody(response.body, contentType)}</pre> : <p className="oficina__note">Sem corpo.</p>}
             </>
@@ -182,7 +210,12 @@ export function HttpClient({ project, onSent, warming, prefill }: { project: Pro
                 <button type="button" className="http__item" onClick={() => load(s)}>
                   <span className="http__method">{s.method}</span> {s.name}
                 </button>
-                <button type="button" className="projeto__close" aria-label={`Apagar ${s.name}`} onClick={() => keep({ ...latest.current, saved: removeSaved(latest.current.saved, s.name) })}>
+                <button
+                  type="button"
+                  className="projeto__close"
+                  aria-label={`Apagar ${s.name}`}
+                  onClick={() => keep({ ...latest.current, saved: removeSaved(latest.current.saved, s.name) })}
+                >
                   ×
                 </button>
               </li>

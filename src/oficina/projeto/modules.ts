@@ -69,7 +69,10 @@ export function loadApp(files: Record<string, string>): App {
     const cached = cache.get(path)
     if (cached) return cached.exports
     if (loading.includes(path)) {
-      throw new ProjectError(`Import circular: ${[...loading.slice(loading.indexOf(path)), path].join(' → ')}. Mova o que os dois usam para um terceiro arquivo.`, path)
+      throw new ProjectError(
+        `Import circular: ${[...loading.slice(loading.indexOf(path)), path].join(' → ')}. Mova o que os dois usam para um terceiro arquivo.`,
+        path,
+      )
     }
     let js: string
     try {
@@ -83,7 +86,9 @@ export function loadApp(files: Record<string, string>): App {
     const require = (spec: string) => {
       if (!spec.startsWith('./') && !spec.startsWith('../')) {
         if (spec in PACKAGES) return PACKAGES[spec]
-        throw new ProjectError(`import "${spec}" não é permitido (em ${path}). Pacotes permitidos: ${Object.keys(PACKAGES).join(', ')}; arquivos do projeto com ./ ou ../.`)
+        throw new ProjectError(
+          `import "${spec}" não é permitido (em ${path}). Pacotes permitidos: ${Object.keys(PACKAGES).join(', ')}; arquivos do projeto com ./ ou ../.`,
+        )
       }
       const target = resolve(files, path, spec)
       if (!target) throw new ProjectError(`${path} importa "${spec}", mas esse arquivo não existe no projeto.`)
@@ -93,7 +98,11 @@ export function loadApp(files: Record<string, string>): App {
     try {
       // Same first line as the file, so line numbers in errors match the editor; sucrase keeps lines too.
       // oxlint-disable-next-line no-eval -- running the player's code is the point; it happens inside the Oficina worker.
-      const factory = (0, eval)(`(function (exports, require, module) {${js}\n})\n//# sourceURL=${SOURCE_PREFIX}${path}`) as (e: unknown, r: unknown, m: unknown) => void
+      const factory = (0, eval)(`(function (exports, require, module) {${js}\n})\n//# sourceURL=${SOURCE_PREFIX}${path}`) as (
+        e: unknown,
+        r: unknown,
+        m: unknown,
+      ) => void
       factory(module.exports, require, module)
     } finally {
       loading.pop()
@@ -104,7 +113,10 @@ export function loadApp(files: Record<string, string>): App {
 
   const app = load(ENTRY).default as Partial<App> | undefined
   if (typeof app?.fetch !== 'function') {
-    throw new ProjectError(`${ENTRY} precisa de um export default com fetch(req, env): export default app (Hono) ou export default { fetch(req, env) { … } }.`, ENTRY)
+    throw new ProjectError(
+      `${ENTRY} precisa de um export default com fetch(req, env): export default app (Hono) ou export default { fetch(req, env) { … } }.`,
+      ENTRY,
+    )
   }
   return app as App
 }

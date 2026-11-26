@@ -8,7 +8,13 @@ describe('Oficina editor setup', () => {
   it('colours TypeScript with the token classes', () => {
     const code = `const n: number = 1 // x`
     const classes = new Set<string>()
-    highlightCode(code, javascript({ typescript: true }).language.parser.parse(code), highlight, (_, c) => c && classes.add(c), () => {})
+    highlightCode(
+      code,
+      javascript({ typescript: true }).language.parser.parse(code),
+      highlight,
+      (_, c) => c && classes.add(c),
+      () => {},
+    )
     expect([...classes]).toEqual(expect.arrayContaining(['tok-keyword', 'tok-type', 'tok-number', 'tok-comment']))
   })
 

@@ -63,12 +63,7 @@ function firstSeconds(ticks: TickResult[], test: (tick: TickResult, id: string) 
 }
 
 /** Turns per-node first seconds into one event per (second, kind). */
-function grouped(
-  arch: Architecture,
-  first: Map<string, number>,
-  text: (who: string, plural: boolean) => string,
-  tone: DebriefEvent['tone'],
-): DebriefEvent[] {
+function grouped(arch: Architecture, first: Map<string, number>, text: (who: string, plural: boolean) => string, tone: DebriefEvent['tone']): DebriefEvent[] {
   const groups = new Map<string, { t: number; ids: string[] }>()
   for (const [id, t] of first) {
     const kind = arch.nodes.find((n) => n.id === id)!.kind
@@ -151,22 +146,13 @@ export function timeline(arch: Architecture, ticks: TickResult[]): DebriefEvent[
     ...grouped(
       arch,
       dropping,
-      (who, plural) =>
-        `${capitalize(who)} ${plural ? 'passaram' : 'passou'} do limite e ${plural ? 'começaram' : 'começou'} a descartar requisições.`,
+      (who, plural) => `${capitalize(who)} ${plural ? 'passaram' : 'passou'} do limite e ${plural ? 'começaram' : 'começou'} a descartar requisições.`,
       'bad',
     ),
   )
-  const hot = firstSeconds(
-    ticks,
-    (tick, id) => tick.nodes[id].utilization > HOT_UTILIZATION && (dropping.get(id) ?? Infinity) > tick.t,
-  )
+  const hot = firstSeconds(ticks, (tick, id) => tick.nodes[id].utilization > HOT_UTILIZATION && (dropping.get(id) ?? Infinity) > tick.t)
   events.push(
-    ...grouped(
-      arch,
-      hot,
-      (who, plural) => `${capitalize(who)} ${plural ? 'passaram' : 'passou'} de 90% de utilização; a fila começa a crescer.`,
-      'warn',
-    ),
+    ...grouped(arch, hot, (who, plural) => `${capitalize(who)} ${plural ? 'passaram' : 'passou'} de 90% de utilização; a fila começa a crescer.`, 'warn'),
   )
 
   // Events were pushed causes first (traffic, outages, missing links, then load);

@@ -10,8 +10,8 @@ updates:
       default-days: 3
     ignore:
       # Types must match engines.node in package.json (24), not the newest Node.
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -23,4 +23,4 @@ updates:
       default-days: 3
     groups:
       actions:
-        patterns: ["*"]
+        patterns: ['*']

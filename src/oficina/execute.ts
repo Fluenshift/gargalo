@@ -75,7 +75,8 @@ export function compile(code: string): Compiled {
   const exports: { default?: unknown; migration?: unknown } = {}
   factory(exports)
   if (typeof exports.default !== 'function') throw new CodeError('Falta o export default do handler: export default async function handler(req, ctx) { … }')
-  if (exports.migration !== undefined && typeof exports.migration !== 'string') throw new CodeError('A migration precisa ser um texto com SQL: export const migration = `CREATE INDEX …`')
+  if (exports.migration !== undefined && typeof exports.migration !== 'string')
+    throw new CodeError('A migration precisa ser um texto com SQL: export const migration = `CREATE INDEX …`')
   return { handler: exports.default as Handler, migration: exports.migration }
 }
 
@@ -130,7 +131,8 @@ function compareResponse(res: CapturedResponse | undefined, expect: ExpectedResp
     const got = res.headers[name.toLowerCase()] ?? null
     if (got !== value) return { message: `Cabeçalho ${name} diferente do esperado.`, expected: value, received: got }
   }
-  if (expect.body !== undefined && !matches(expect.body, res.body)) return { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: res.body }
+  if (expect.body !== undefined && !matches(expect.body, res.body))
+    return { message: 'Corpo da resposta diferente do esperado.', expected: expect.body, received: res.body }
   const leaked = expect.absent && findKey(res.body, expect.absent)
   return leaked ? { message: `A resposta traz o campo ${leaked}, que não pode sair.` } : null
 }
@@ -168,14 +170,16 @@ export async function runTest(handler: Handler, test: TestCase, db: Db): Promise
     if (diff) return { name: test.name, passed: false, ...diff, message: prefix + diff.message, metrics, ...extra() }
     for (const [name, from] of Object.entries(step.save ?? {})) {
       const value = pick(captured, from)
-      if (value === undefined) return { name: test.name, passed: false, message: `${prefix}a resposta não tem ${from} (para {{${name}}}).`, metrics, ...extra() }
+      if (value === undefined)
+        return { name: test.name, passed: false, message: `${prefix}a resposta não tem ${from} (para {{${name}}}).`, metrics, ...extra() }
       vars[name] = value
     }
   }
   if (test.db) {
     const rows = await db.query(test.db.sql, fill(test.db.params, vars))
     const withRows = test.capture ? { ...extra(), rows } : {}
-    if (test.db.rows !== undefined && !matches(test.db.rows, rows)) return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows, metrics, ...withRows }
+    if (test.db.rows !== undefined && !matches(test.db.rows, rows))
+      return { name: test.name, passed: false, message: 'Estado do banco diferente do esperado.', expected: test.db.rows, received: rows, metrics, ...withRows }
     return { name: test.name, passed: true, metrics, ...withRows }
   }
   return { name: test.name, passed: true, metrics, ...extra() }

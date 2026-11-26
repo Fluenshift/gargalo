@@ -23,8 +23,15 @@ import type { Architecture } from './sim/model'
 
 const traffic = (patch: Partial<Traffic> = {}): Traffic => ({ ...defaultTraffic(), ...patch })
 const lone: Architecture = {
-  nodes: [{ id: 'client', kind: 'client' }, { id: 'server', kind: 'server' }, { id: 'db', kind: 'db' }],
-  edges: [{ source: 'client', target: 'server' }, { source: 'server', target: 'db' }],
+  nodes: [
+    { id: 'client', kind: 'client' },
+    { id: 'server', kind: 'server' },
+    { id: 'db', kind: 'db' },
+  ],
+  edges: [
+    { source: 'client', target: 'server' },
+    { source: 'server', target: 'db' },
+  ],
 }
 const design = {
   nodes: [
@@ -116,8 +123,24 @@ describe('levelOf', () => {
   })
 
   it('turns spikes into phases', () => {
-    const level = levelOf({ id: 'a', name: 'A', design: null, traffic: traffic({ rps: 100, spikes: [{ from: 10, to: 20, rps: 900 }, { from: 15, to: 25, rps: 400 }] }) })
-    expect(level.traffic).toEqual([{ from: 0, rps: 100 }, { from: 10, rps: 900 }, { from: 20, rps: 400 }, { from: 25, rps: 100 }])
+    const level = levelOf({
+      id: 'a',
+      name: 'A',
+      design: null,
+      traffic: traffic({
+        rps: 100,
+        spikes: [
+          { from: 10, to: 20, rps: 900 },
+          { from: 15, to: 25, rps: 400 },
+        ],
+      }),
+    })
+    expect(level.traffic).toEqual([
+      { from: 0, rps: 100 },
+      { from: 10, rps: 900 },
+      { from: 20, rps: 400 },
+      { from: 25, rps: 100 },
+    ])
   })
 
   it('does not throw on traffic that cannot run yet', () => {
@@ -183,7 +206,16 @@ describe('export and import', () => {
 
   it('rejects garbage with a clear message and never throws', () => {
     const cases: unknown[] = [
-      '', 'não é json', '[]', 'null', '42', '{}', wrap(null), wrap('x'), wrap([]), wrap({}),
+      '',
+      'não é json',
+      '[]',
+      'null',
+      '42',
+      '{}',
+      wrap(null),
+      wrap('x'),
+      wrap([]),
+      wrap({}),
       JSON.stringify({ format: 'outra-coisa', version: 1, system: good() }),
       wrap(good(), { version: 2 }),
       wrap({ ...good(), name: '   ' }),

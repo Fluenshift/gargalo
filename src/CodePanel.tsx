@@ -3,8 +3,7 @@ import { escapeFor } from './keys'
 import { SPECS } from './sim/model'
 import type { CodeChallenge, Link } from './sim/model'
 
-const linkNames = (links: Link[]) =>
-  links.flatMap((l) => l.to.map((t) => `${SPECS[l.from].label} → ${SPECS[t].label}`)).join(', ')
+const linkNames = (links: Link[]) => links.flatMap((l) => l.to.map((t) => `${SPECS[l.from].label} → ${SPECS[t].label}`)).join(', ')
 
 /**
  * The code of one endpoint, read-only, and the fixes to choose from. The panel

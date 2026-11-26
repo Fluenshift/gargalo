@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { COMPANIES } from './career'
-import { RANKS, XP_PER_BOSS, XP_PER_LEVEL, XP_PER_STAR, achievements, loadResults, oficinaXp, rankFor, record, starGaps, starsFor, totalXp, xpGain } from './score'
+import {
+  RANKS,
+  XP_PER_BOSS,
+  XP_PER_LEVEL,
+  XP_PER_STAR,
+  achievements,
+  loadResults,
+  oficinaXp,
+  rankFor,
+  record,
+  starGaps,
+  starsFor,
+  totalXp,
+  xpGain,
+} from './score'
 import type { LevelResult } from './score'
 import type { RunSummary } from './sim/engine'
 import type { Level } from './sim/model'

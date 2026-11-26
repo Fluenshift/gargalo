@@ -10,7 +10,20 @@ import { docsFor } from './oficina/projeto/docs'
 import { explain } from './oficina/projeto/explain'
 import type { Prefill } from './oficina/projeto/http'
 import type { Project } from './oficina/projeto/project'
-import { checkStep, missingInFile, resumeStage, runStage, saveStageResult, splitStatement, stagePassed, stepFor, stepRequest, type ProjectCourse, type Stage, type StageResult } from './oficina/projeto/stage'
+import {
+  checkStep,
+  missingInFile,
+  resumeStage,
+  runStage,
+  saveStageResult,
+  splitStatement,
+  stagePassed,
+  stepFor,
+  stepRequest,
+  type ProjectCourse,
+  type Stage,
+  type StageResult,
+} from './oficina/projeto/stage'
 
 const show = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v, null, 2))
 
@@ -45,7 +58,16 @@ function Code({ code, label }: { code: string; label: string }) {
     code,
     tsParser.parse(code),
     highlight,
-    (text, classes) => parts.push(classes ? <span key={parts.length} className={classes}>{text}</span> : text),
+    (text, classes) =>
+      parts.push(
+        classes ? (
+          <span key={parts.length} className={classes}>
+            {text}
+          </span>
+        ) : (
+          text
+        ),
+      ),
     () => parts.push('\n'),
   )
   return (
@@ -166,19 +188,19 @@ function Guiado({ course, stage, project, runRef, onOpenFile, onTry, onDoc }: Gu
             {s.docs.map((id, i) => {
               const e = docs.find((d) => d.id === id)
               return (
-              <Fragment key={id}>
-                {e?.url && (
-                  <>
-                    <a className="levels__map" href={e.url} target="_blank" rel="noopener noreferrer">
-                      {e.title} ↗
-                    </a>{' '}
-                  </>
-                )}
-                <button type="button" className="levels__map" onClick={() => onDoc(id)}>
-                  {e?.url ? 'resumo' : (e?.title ?? id)}
-                </button>
-                {i < s.docs!.length - 1 && ' · '}
-              </Fragment>
+                <Fragment key={id}>
+                  {e?.url && (
+                    <>
+                      <a className="levels__map" href={e.url} target="_blank" rel="noopener noreferrer">
+                        {e.title} ↗
+                      </a>{' '}
+                    </>
+                  )}
+                  <button type="button" className="levels__map" onClick={() => onDoc(id)}>
+                    {e?.url ? 'resumo' : (e?.title ?? id)}
+                  </button>
+                  {i < s.docs!.length - 1 && ' · '}
+                </Fragment>
               )
             })}
           </p>
@@ -369,7 +391,16 @@ export function Etapa({
       </p>
       <h3 className="etapa__title">{stage.title}</h3>
       {stage.steps ? (
-        <Guiado key={`${course.id}:${stage.id}`} course={course.id} stage={stage} project={project} runRef={runRef} onOpenFile={onOpenFile} onTry={onTry} onDoc={showDoc} />
+        <Guiado
+          key={`${course.id}:${stage.id}`}
+          course={course.id}
+          stage={stage}
+          project={project}
+          runRef={runRef}
+          onOpenFile={onOpenFile}
+          onTry={onTry}
+          onDoc={showDoc}
+        />
       ) : (
         <Passos key={`${course.id}:${stage.id}`} course={course.id} stageId={stage.id} statement={stage.statement} runRef={runRef} />
       )}
@@ -465,125 +496,115 @@ export function Etapa({
       {stage.steps ? (
         <details className="etapa__details">
           <summary>Detalhes da etapa: arquivos, boas práticas e dicas</summary>
-      <p className="etapa__files">
-        Arquivos:{' '}
-        {stage.files.map((f, i) => (
-          <Fragment key={f}>
-            <span>
-              {Object.hasOwn(project.files, f) ? (
-                <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
-                  {f}
-                </button>
-              ) : (
-                `${f} (falta)`
-              )}
-              {i < stage.files.length - 1 && ','}
-            </span>{' '}
-          </Fragment>
-        ))}
-      </p>
-
-      {stage.checklist.length > 0 && (
-        <section aria-labelledby="etapa-checklist" className="projeto__slot">
-          <h4 id="etapa-checklist" className="projeto__label">
-            Boas práticas
-          </h4>
-          <ol className="oficina__results">
-            {checks.map((c) => (
-              <li key={c.id} className={c.passed === undefined ? undefined : c.passed ? 'is-passed' : 'is-failed'}>
-                <p className="oficina__test">
-                  {c.passed !== undefined && <span>{c.passed ? 'Cumprida' : 'Falta'}</span>} {c.title}
-                </p>
-                <p>{c.passed === undefined ? c.why : c.passed ? c.message : `${c.message} ${c.fix}`}</p>
-              </li>
+          <p className="etapa__files">
+            Arquivos:{' '}
+            {stage.files.map((f, i) => (
+              <Fragment key={f}>
+                <span>
+                  {Object.hasOwn(project.files, f) ? (
+                    <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
+                      {f}
+                    </button>
+                  ) : (
+                    `${f} (falta)`
+                  )}
+                  {i < stage.files.length - 1 && ','}
+                </span>{' '}
+              </Fragment>
             ))}
-          </ol>
-        </section>
-      )}
+          </p>
 
-      {visibleHints.length > 0 && (
-        <section aria-labelledby="etapa-hints" className="projeto__slot">
-          <h4 id="etapa-hints" className="projeto__label">
-            Dica {visibleHints.length} de {stage.hints.length}
-          </h4>
-          <ol className="oficina__hints">
-            {visibleHints.map((h) => (
-              <li key={h}>{h}</li>
-            ))}
-          </ol>
-          {visibleHints.length < stage.hints.length && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--small"
-              onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}
-            >
-              Ver próxima dica
-            </button>
+          {stage.checklist.length > 0 && (
+            <section aria-labelledby="etapa-checklist" className="projeto__slot">
+              <h4 id="etapa-checklist" className="projeto__label">
+                Boas práticas
+              </h4>
+              <ol className="oficina__results">
+                {checks.map((c) => (
+                  <li key={c.id} className={c.passed === undefined ? undefined : c.passed ? 'is-passed' : 'is-failed'}>
+                    <p className="oficina__test">
+                      {c.passed !== undefined && <span>{c.passed ? 'Cumprida' : 'Falta'}</span>} {c.title}
+                    </p>
+                    <p>{c.passed === undefined ? c.why : c.passed ? c.message : `${c.message} ${c.fix}`}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
           )}
-        </section>
-      )}
 
+          {visibleHints.length > 0 && (
+            <section aria-labelledby="etapa-hints" className="projeto__slot">
+              <h4 id="etapa-hints" className="projeto__label">
+                Dica {visibleHints.length} de {stage.hints.length}
+              </h4>
+              <ol className="oficina__hints">
+                {visibleHints.map((h) => (
+                  <li key={h}>{h}</li>
+                ))}
+              </ol>
+              {visibleHints.length < stage.hints.length && (
+                <button type="button" className="btn btn--ghost btn--small" onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}>
+                  Ver próxima dica
+                </button>
+              )}
+            </section>
+          )}
         </details>
       ) : (
         <>
-      <p className="etapa__files">
-        Arquivos:{' '}
-        {stage.files.map((f, i) => (
-          <Fragment key={f}>
-            <span>
-              {Object.hasOwn(project.files, f) ? (
-                <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
-                  {f}
-                </button>
-              ) : (
-                `${f} (falta)`
-              )}
-              {i < stage.files.length - 1 && ','}
-            </span>{' '}
-          </Fragment>
-        ))}
-      </p>
-
-      {stage.checklist.length > 0 && (
-        <section aria-labelledby="etapa-checklist" className="projeto__slot">
-          <h4 id="etapa-checklist" className="projeto__label">
-            Boas práticas
-          </h4>
-          <ol className="oficina__results">
-            {checks.map((c) => (
-              <li key={c.id} className={c.passed === undefined ? undefined : c.passed ? 'is-passed' : 'is-failed'}>
-                <p className="oficina__test">
-                  {c.passed !== undefined && <span>{c.passed ? 'Cumprida' : 'Falta'}</span>} {c.title}
-                </p>
-                <p>{c.passed === undefined ? c.why : c.passed ? c.message : `${c.message} ${c.fix}`}</p>
-              </li>
+          <p className="etapa__files">
+            Arquivos:{' '}
+            {stage.files.map((f, i) => (
+              <Fragment key={f}>
+                <span>
+                  {Object.hasOwn(project.files, f) ? (
+                    <button type="button" className="levels__map" onClick={() => onGoTo(f)}>
+                      {f}
+                    </button>
+                  ) : (
+                    `${f} (falta)`
+                  )}
+                  {i < stage.files.length - 1 && ','}
+                </span>{' '}
+              </Fragment>
             ))}
-          </ol>
-        </section>
-      )}
+          </p>
 
-      {visibleHints.length > 0 && (
-        <section aria-labelledby="etapa-hints" className="projeto__slot">
-          <h4 id="etapa-hints" className="projeto__label">
-            Dica {visibleHints.length} de {stage.hints.length}
-          </h4>
-          <ol className="oficina__hints">
-            {visibleHints.map((h) => (
-              <li key={h}>{h}</li>
-            ))}
-          </ol>
-          {visibleHints.length < stage.hints.length && (
-            <button
-              type="button"
-              className="btn btn--ghost btn--small"
-              onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}
-            >
-              Ver próxima dica
-            </button>
+          {stage.checklist.length > 0 && (
+            <section aria-labelledby="etapa-checklist" className="projeto__slot">
+              <h4 id="etapa-checklist" className="projeto__label">
+                Boas práticas
+              </h4>
+              <ol className="oficina__results">
+                {checks.map((c) => (
+                  <li key={c.id} className={c.passed === undefined ? undefined : c.passed ? 'is-passed' : 'is-failed'}>
+                    <p className="oficina__test">
+                      {c.passed !== undefined && <span>{c.passed ? 'Cumprida' : 'Falta'}</span>} {c.title}
+                    </p>
+                    <p>{c.passed === undefined ? c.why : c.passed ? c.message : `${c.message} ${c.fix}`}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
           )}
-        </section>
-      )}
 
+          {visibleHints.length > 0 && (
+            <section aria-labelledby="etapa-hints" className="projeto__slot">
+              <h4 id="etapa-hints" className="projeto__label">
+                Dica {visibleHints.length} de {stage.hints.length}
+              </h4>
+              <ol className="oficina__hints">
+                {visibleHints.map((h) => (
+                  <li key={h}>{h}</li>
+                ))}
+              </ol>
+              {visibleHints.length < stage.hints.length && (
+                <button type="button" className="btn btn--ghost btn--small" onClick={() => setRevealed((r) => ({ ...r, [stage.id]: (r[stage.id] ?? 0) + 1 }))}>
+                  Ver próxima dica
+                </button>
+              )}
+            </section>
+          )}
         </>
       )}
       {passed && (

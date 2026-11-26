@@ -1,16 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  COMPANIES,
-  CURRENT_KEY,
-  PASSED_KEY,
-  companyOpen,
-  levelStatus,
-  loadProgress,
-  nextLevel,
-  pieceUnlock,
-  stages,
-  startArchitecture,
-} from './career'
+import { COMPANIES, CURRENT_KEY, PASSED_KEY, companyOpen, levelStatus, loadProgress, nextLevel, pieceUnlock, stages, startArchitecture } from './career'
 import type { Company } from './career'
 import { BLACK_FRIDAY, LEVELS } from './levels'
 import type { Level } from './sim/model'
@@ -74,8 +63,7 @@ describe('career data', () => {
   })
 
   it('the five current pieces are unlocked in the first company', () => {
-    for (const kind of ['cdn', 'lb', 'server', 'cache', 'db'] as const)
-      expect(pieceUnlock(kind, 0)).toEqual({ unlocked: true })
+    for (const kind of ['cdn', 'lb', 'server', 'cache', 'db'] as const) expect(pieceUnlock(kind, 0)).toEqual({ unlocked: true })
   })
 })
 
@@ -133,11 +121,14 @@ describe('starting architecture', () => {
 
   it('a level inherits the company start, and its own start wins', () => {
     const start = { nodes: [{ id: 'db', kind: 'db' as const }], edges: [] }
-    const own = { nodes: [{ id: 'client', kind: 'client' as const }, { id: 's', kind: 'server' as const }], edges: [] }
-    expect(startArchitecture({ company: { ...company, start }, level: lvl('x') }).nodes.map((n) => n.id)).toEqual([
-      'client',
-      'db',
-    ])
+    const own = {
+      nodes: [
+        { id: 'client', kind: 'client' as const },
+        { id: 's', kind: 'server' as const },
+      ],
+      edges: [],
+    }
+    expect(startArchitecture({ company: { ...company, start }, level: lvl('x') }).nodes.map((n) => n.id)).toEqual(['client', 'db'])
     expect(startArchitecture({ company: { ...company, start }, level: { ...lvl('x'), start: own } })).toBe(own)
   })
 
@@ -197,9 +188,7 @@ describe('progress migration', () => {
   it('ignores corrupt or foreign data instead of crashing', () => {
     expect(loadProgress(storage({ [PASSED_KEY]: '{oops' })).passed).toEqual([])
     expect(loadProgress(storage({ [PASSED_KEY]: '{"a":1}' })).passed).toEqual([])
-    expect(loadProgress(storage({ [PASSED_KEY]: '["primeiro-deploy",3,null,"primeiro-deploy"]' })).passed).toEqual([
-      'primeiro-deploy',
-    ])
+    expect(loadProgress(storage({ [PASSED_KEY]: '["primeiro-deploy",3,null,"primeiro-deploy"]' })).passed).toEqual(['primeiro-deploy'])
   })
 
   it('reopens the level on screen only if it is still playable', () => {

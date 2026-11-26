@@ -66,8 +66,8 @@ export function FreeSystems({
           Modo livre
         </h1>
         <p className="career__lede">
-          Monte o sistema que quiser, defina o tráfego e rode a simulação. Sem metas: o selo mostra só o que foi medido. Cada sistema fica
-          salvo aqui neste navegador.
+          Monte o sistema que quiser, defina o tráfego e rode a simulação. Sem metas: o selo mostra só o que foi medido. Cada sistema fica salvo aqui neste
+          navegador.
         </p>
         <div className="career__actions">
           <button type="button" className="btn btn--ghost" onClick={() => onCreate()}>
@@ -76,7 +76,14 @@ export function FreeSystems({
           <button type="button" className="btn btn--ghost" onClick={() => fileInput.current?.click()}>
             Importar JSON
           </button>
-          <input ref={fileInput} type="file" accept=".json,application/json" hidden aria-label="Arquivo do sistema" onChange={(e) => importFile(e.target.files?.[0])} />
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-label="Arquivo do sistema"
+            onChange={(e) => importFile(e.target.files?.[0])}
+          />
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Voltar para a fase
           </button>

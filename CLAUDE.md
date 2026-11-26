@@ -4,7 +4,7 @@ A browser game for learning backend and system design. In the career, the player
 
 ## Done means green
 
-A change is done when `pnpm run lint && pnpm run test:coverage && pnpm run build` passes (the Quality Gate in `.github/workflows/quality-gate.yml`, coverage ≥ 80% on `src/**/*.ts`) and, for anything visible, the `verify-ui` skill has been run.
+A change is done when `pnpm run lint && pnpm run test:coverage && pnpm run build` passes (the Quality Gate in `.github/workflows/quality-gate.yml`, coverage ≥ 80% on `src/**/*.ts`) and, for anything visible, the `verify-ui` skill has been run. Formatting belongs to oxfmt (`.oxfmtrc.json`): run `pnpm fmt` before committing, since `pnpm run lint` fails on any unformatted file.
 
 ## Simulation
 

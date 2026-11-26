@@ -103,7 +103,10 @@ export function totalXp(results: Results, companies: Company[] = COMPANIES): num
 
 /** XP from the Oficina exercises and project stages alone: a base per exercise or stage and a bonus per star, like a level. */
 export function oficinaXp(results: Results): number {
-  return Object.entries(results).reduce((sum, [id, r]) => (id.startsWith(OFICINA_PREFIX) || id.startsWith(PROJETO_PREFIX) ? sum + XP_PER_LEVEL + XP_PER_STAR * r.stars : sum), 0)
+  return Object.entries(results).reduce(
+    (sum, [id, r]) => (id.startsWith(OFICINA_PREFIX) || id.startsWith(PROJETO_PREFIX) ? sum + XP_PER_LEVEL + XP_PER_STAR * r.stars : sum),
+    0,
+  )
 }
 
 /** The rank this much XP reaches, and the next one with how much XP is still missing. */

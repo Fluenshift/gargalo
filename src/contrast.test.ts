@@ -48,7 +48,13 @@ const TINT = Number(/color-mix\(in srgb, var\(--company\) (\d+)%, var\(--paper\)
 /** color-mix(in srgb, a p, b): a straight mix of the 8-bit channels. */
 function mix(a: string, b: string, p: number): string {
   const ch = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16)
-  return `#${[1, 3, 5].map((i) => Math.round(ch(a, i) * p + ch(b, i) * (1 - p)).toString(16).padStart(2, '0')).join('')}`
+  return `#${[1, 3, 5]
+    .map((i) =>
+      Math.round(ch(a, i) * p + ch(b, i) * (1 - p))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`
 }
 
 /** Adds each company's --company-<id>-wash, the tint [data-company] puts behind the brief and the career card head. */
@@ -93,12 +99,10 @@ const PAIRS: [string, string, number, string][] = [
     ['--ink-soft', `--company-${c}-wash`, 4.5, `secondary text on the ${c} tint`],
   ]),
   // Code tokens in the Oficina editor (paper) and on its current line (sunk).
-  ...['--code-keyword', '--code-string', '--code-number', '--code-type', '--code-function', '--ink-soft'].flatMap(
-    (t): [string, string, number, string][] => [
-      [t, '--paper', 4.5, 'code token'],
-      [t, '--sunk', 4.5, 'code token on the current line'],
-    ],
-  ),
+  ...['--code-keyword', '--code-string', '--code-number', '--code-type', '--code-function', '--ink-soft'].flatMap((t): [string, string, number, string][] => [
+    [t, '--paper', 4.5, 'code token'],
+    [t, '--sunk', 4.5, 'code token on the current line'],
+  ]),
 ]
 
 describe.each([
@@ -114,7 +118,6 @@ describe('theme tokens', () => {
   it('reads the company tint from App.css', () => {
     expect(TINT).toBeGreaterThan(0)
   })
-
 
   it('the system dark block matches the picked dark block', () => {
     expect(darkBySystem).toEqual(dark)

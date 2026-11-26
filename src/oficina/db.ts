@@ -67,9 +67,10 @@ interface PlanNode {
 
 /** Rows the scans touched: the ones they returned plus the ones their filter threw away, per loop. */
 export function rowsRead(node: PlanNode): number {
-  const own = node['Relation Name'] && node['Node Type'] !== 'ModifyTable'
-    ? (node['Actual Rows'] + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * node['Actual Loops']
-    : 0
+  const own =
+    node['Relation Name'] && node['Node Type'] !== 'ModifyTable'
+      ? (node['Actual Rows'] + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * node['Actual Loops']
+      : 0
   return own + (node.Plans ?? []).reduce((sum, child) => sum + rowsRead(child), 0)
 }
 

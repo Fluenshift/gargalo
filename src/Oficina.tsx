@@ -23,18 +23,20 @@ export default function Oficina() {
 
   return (
     <>
-    <TopBar screen="oficina" />
-    <div className="career free oficina">
-      {/* An open project needs the whole height for the editor and the step beside it: the title stays for screen readers. */}
-      <header className={place.project ? 'sr-only' : 'career__head'}>
-        <h1 ref={heading} tabIndex={-1}>
-          Oficina
-        </h1>
-        <p className="career__lede">Construa uma API do zero, em Hono ou fetch puro: vários arquivos, migrações SQL e um banco Postgres que fica salvo no navegador.</p>
-      </header>
+      <TopBar screen="oficina" />
+      <div className="career free oficina">
+        {/* An open project needs the whole height for the editor and the step beside it: the title stays for screen readers. */}
+        <header className={place.project ? 'sr-only' : 'career__head'}>
+          <h1 ref={heading} tabIndex={-1}>
+            Oficina
+          </h1>
+          <p className="career__lede">
+            Construa uma API do zero, em Hono ou fetch puro: vários arquivos, migrações SQL e um banco Postgres que fica salvo no navegador.
+          </p>
+        </header>
 
-      <Projetos open={place.project} />
-    </div>
+        <Projetos open={place.project} />
+      </div>
     </>
   )
 }

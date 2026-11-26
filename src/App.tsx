@@ -1,17 +1,17 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent, ReactNode } from 'react'
-import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  ReactFlow,
-  ReactFlowProvider,
-  addEdge,
-  useEdgesState,
-  useNodesState,
-  useReactFlow,
+import { Background, BackgroundVariant, Controls, ReactFlow, ReactFlowProvider, addEdge, useEdgesState, useNodesState, useReactFlow } from '@xyflow/react'
+import type {
+  Connection,
+  Edge,
+  FitViewOptions,
+  IsValidConnection,
+  OnBeforeDelete,
+  OnConnectEnd,
+  OnConnectStart,
+  OnNodeDrag,
+  OnSelectionChangeFunc,
 } from '@xyflow/react'
-import type { Connection, Edge, FitViewOptions, IsValidConnection, OnBeforeDelete, OnConnectEnd, OnConnectStart, OnNodeDrag, OnSelectionChangeFunc } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './App.css'
 import { TopBar } from './TopBar'
@@ -20,16 +20,7 @@ import type { Screen } from './route'
 import { LockIcon } from './LockIcon'
 import { ContextMenu } from './ContextMenu'
 import type { MenuItem } from './ContextMenu'
-import {
-  applyRemoval,
-  eventPoint,
-  isEmptyRemoval,
-  planRemoval,
-  pointInRect,
-  pushBounded,
-  removalMessage,
-  undoRemoval,
-} from './editing'
+import { applyRemoval, eventPoint, isEmptyRemoval, planRemoval, pointInRect, pushBounded, removalMessage, undoRemoval } from './editing'
 import type { Removal } from './editing'
 import { EditorContext } from './editorContext'
 import { dialogOpen, escapeFor, isTyping, stepIndex } from './keys'
@@ -44,7 +35,21 @@ import type { Progress, Stage } from './career'
 import { DAILY_KEY, dailyLevel, dailyXp, loadDaily, localDate, shareText, streak } from './daily'
 import type { Daily, DailyRecord } from './daily'
 import { TrafficEditor } from './TrafficEditor'
-import { FREE_KEY, TEMPLATES, createSystem, deleteSystem, duplicateSystem, importSystem, levelOf, loadSystems, renameSystem, startOf, updateDesign, updateTraffic, validateTraffic } from './freeMode'
+import {
+  FREE_KEY,
+  TEMPLATES,
+  createSystem,
+  deleteSystem,
+  duplicateSystem,
+  importSystem,
+  levelOf,
+  loadSystems,
+  renameSystem,
+  startOf,
+  updateDesign,
+  updateTraffic,
+  validateTraffic,
+} from './freeMode'
 import type { FreeSystem, SavedDesign } from './freeMode'
 import { Stars } from './Stars'
 import { GoalRow } from './GoalRow'
@@ -68,7 +73,23 @@ import { runInBackground } from './sim/runner'
 import { bottleneck, nodeName, timeline } from './sim/debrief'
 import type { Bottleneck } from './sim/debrief'
 import { costPerMillion, mostSaturated } from './sim/metrics'
-import { HOME_REGION, PROTOCOLS, REGIONS, SPECS, balanceOf, canConnect, canSetBalance, instanceCapacity, connectRefusal, endpointsOf, levelRegions, lockedLink, openEdges, regionOf, totalCost } from './sim/model'
+import {
+  HOME_REGION,
+  PROTOCOLS,
+  REGIONS,
+  SPECS,
+  balanceOf,
+  canConnect,
+  canSetBalance,
+  instanceCapacity,
+  connectRefusal,
+  endpointsOf,
+  levelRegions,
+  lockedLink,
+  openEdges,
+  regionOf,
+  totalCost,
+} from './sim/model'
 import type { Architecture, Kind, Level, Region } from './sim/model'
 
 // Screens away from the board load when first opened.
@@ -109,7 +130,18 @@ const COLUMN: Record<Kind, number> = {
   search: 1240,
 }
 /** Pieces that share a column with another start lower, so they don't land on top of it. */
-const FIRST_ROW: Partial<Record<Kind, number>> = { dns: -230, queue: 320, worker: 320, limiter: -110, gateway: 150, payment: -160, shard: -340, storage: -330, topic: 540, search: -220 }
+const FIRST_ROW: Partial<Record<Kind, number>> = {
+  dns: -230,
+  queue: 320,
+  worker: 320,
+  limiter: -110,
+  gateway: 150,
+  payment: -160,
+  shard: -340,
+  storage: -330,
+  topic: 540,
+  search: -220,
+}
 /** Height of the canvas band each region keeps: São Paulo on top, then Virgínia, then Frankfurt. */
 const REGION_BAND = 900
 const bandOf = (region: Region) => (Object.keys(REGIONS) as Region[]).indexOf(region)
@@ -133,7 +165,6 @@ interface MenuState {
   /** Where focus goes back to when the menu closes: the piece or link it was opened on. */
   opener: HTMLElement | SVGElement | null
 }
-
 
 /** What the board needs to play a level: a career stage or the daily challenge. */
 interface Play {
@@ -272,7 +303,12 @@ const policyOf = (e: Edge): LinkPolicy => (e.data ?? {}) as LinkPolicy
 
 function toArchitecture(nodes: ComponentNode[], edges: Edge[]): Architecture {
   return {
-    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, ...(n.data.region ? { region: n.data.region } : {}), ...(n.data.balance ? { balance: n.data.balance } : {}) })),
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      kind: n.data.kind,
+      ...(n.data.region ? { region: n.data.region } : {}),
+      ...(n.data.balance ? { balance: n.data.balance } : {}),
+    })),
     edges: edges.map((e) => ({ source: e.source, target: e.target, ...policyOf(e) })),
   }
 }
@@ -315,13 +351,13 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
   if (summary.failed.noRoute / total > 0.001)
     out.push('Algumas requisições não tinham para onde ir. Confira se os usuários chegam a um servidor e se cada servidor chega ao banco.')
   if (summary.failed.overload / total > 0.001)
-    out.push('Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle de tempo, abaixo, até o momento em que algo fica vermelho.')
+    out.push(
+      'Algum componente passou da capacidade e começou a descartar requisições. Arraste o controle de tempo, abaixo, até o momento em que algo fica vermelho.',
+    )
   const stormy = arch.edges.some((e) => (e.retries ?? 0) > 0 && !e.backoff && !e.breaker)
   // A fragile piece down when the level did not take it out: load knocked it over.
   const crashedNode = arch.nodes.find(
-    (node) =>
-      SPECS[node.kind].crashesAbove !== undefined &&
-      ticks.some((t) => t.nodes[node.id]?.down && !isDown(arch, level, node, t.t)),
+    (node) => SPECS[node.kind].crashesAbove !== undefined && ticks.some((t) => t.nodes[node.id]?.down && !isDown(arch, level, node, t.t)),
   )
   const crashed = crashedNode !== undefined
   if (crashedNode) {
@@ -354,15 +390,22 @@ function hints(summary: RunSummary, ticks: TickResult[], arch: Architecture, lev
         : 'Nenhuma requisição se perdeu, mas está lento. Componentes perto do limite formam fila; folga de capacidade derruba o p99.',
     )
   if (summary.staleReadRate >= 0.01)
-    out.push(`${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas e índices de busca atrasam mais quando recebem muitas mudanças ou estão cheios de leituras; uma réplica sem ligação do banco, ou um índice que não assina um tópico, nunca é atualizado.`)
+    out.push(
+      `${pct(summary.staleReadRate)} das leituras devolveram dado velho. Réplicas e índices de busca atrasam mais quando recebem muitas mudanças ou estão cheios de leituras; uma réplica sem ligação do banco, ou um índice que não assina um tópico, nunca é atualizado.`,
+    )
   if (!summary.passed.duplicates)
-    out.push(`${pct(summary.duplicateRate)} das escritas foram executadas duas vezes: a resposta se perdeu e a tentativa extra repetiu o pedido. Ligue a chave de idempotência na ligação, para o destino reconhecer a repetição.`)
+    out.push(
+      `${pct(summary.duplicateRate)} das escritas foram executadas duas vezes: a resposta se perdeu e a tentativa extra repetiu o pedido. Ligue a chave de idempotência na ligação, para o destino reconhecer a repetição.`,
+    )
   if (summary.backlogAtEnd >= 1)
-    out.push(`A rodada terminou com ${count(summary.backlogAtEnd)} mensagens esperando na fila. Se o backlog não esvazia, o problema só foi adiado: ponha mais workers.`)
+    out.push(
+      `A rodada terminou com ${count(summary.backlogAtEnd)} mensagens esperando na fila. Se o backlog não esvazia, o problema só foi adiado: ponha mais workers.`,
+    )
   if (summary.async.lost >= 1)
-    out.push(`${count(summary.async.lost)} escritas foram aceitas pela fila e se perderam depois. Confira se os workers chegam ao banco e se ele aguenta o ritmo deles.`)
-  if (!summary.passed.cost)
-    out.push('Acima do orçamento. Procure o componente que resolve o gargalo gastando menos.')
+    out.push(
+      `${count(summary.async.lost)} escritas foram aceitas pela fila e se perderam depois. Confira se os workers chegam ao banco e se ele aguenta o ritmo deles.`,
+    )
+  if (!summary.passed.cost) out.push('Acima do orçamento. Procure o componente que resolve o gargalo gastando menos.')
   return out
 }
 
@@ -579,7 +622,11 @@ export default function App() {
       </button>
     </span>
   )
-  const streakNote = days > 0 && <p className="levels__streak">Sequência: {days} {days === 1 ? 'dia' : 'dias'}</p>
+  const streakNote = days > 0 && (
+    <p className="levels__streak">
+      Sequência: {days} {days === 1 ? 'dia' : 'dias'}
+    </p>
+  )
 
   if (free && !system)
     return (
@@ -588,14 +635,14 @@ export default function App() {
         {profile}
         <Suspense fallback={null}>
           <FreeSystems
-          systems={systems}
-          onOpen={openSystem}
-          onCreate={createFree}
-          onRename={(id, name) => store.commit(renameSystem(store.list, id, name))}
-          onDuplicate={(id) => store.commit(duplicateSystem(store.list, id).list)}
-          onDelete={(id) => store.commit(deleteSystem(store.list, id))}
-          onImport={importFree}
-          onClose={backToCareer}
+            systems={systems}
+            onOpen={openSystem}
+            onCreate={createFree}
+            onRename={(id, name) => store.commit(renameSystem(store.list, id, name))}
+            onDuplicate={(id) => store.commit(duplicateSystem(store.list, id).list)}
+            onDelete={(id) => store.commit(deleteSystem(store.list, id))}
+            onImport={importFree}
+            onClose={backToCareer}
           />
         </Suspense>
       </>
@@ -605,26 +652,26 @@ export default function App() {
     const errors = validateTraffic(system.traffic)
     return (
       <div className="shell">
-      {top}
-      <ReactFlowProvider key={freeLevel.id}>
-        {profile}
-        <Board
-          play={freePlay(system, freeLevel, errors[0], (design) => saveDesign(system.id, design))}
-          onPassed={() => 0}
-          where="Modo livre"
-          links={
-            <span className="levels__links">
-              <button type="button" className="levels__map" onClick={openFreeList}>
-                Meus sistemas
-              </button>
-              <button type="button" className="levels__map" onClick={backToCareer}>
-                Voltar à carreira
-              </button>
-            </span>
-          }
-          traffic={<TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />}
-        />
-      </ReactFlowProvider>
+        {top}
+        <ReactFlowProvider key={freeLevel.id}>
+          {profile}
+          <Board
+            play={freePlay(system, freeLevel, errors[0], (design) => saveDesign(system.id, design))}
+            onPassed={() => 0}
+            where="Modo livre"
+            links={
+              <span className="levels__links">
+                <button type="button" className="levels__map" onClick={openFreeList}>
+                  Meus sistemas
+                </button>
+                <button type="button" className="levels__map" onClick={backToCareer}>
+                  Voltar à carreira
+                </button>
+              </span>
+            }
+            traffic={<TrafficEditor traffic={system.traffic} errors={errors} onChange={(t) => store.commit(updateTraffic(store.list, system.id, t))} />}
+          />
+        </ReactFlowProvider>
       </div>
     )
   }
@@ -632,71 +679,73 @@ export default function App() {
   if (daily)
     return (
       <div className="shell">
-      {top}
-      <ReactFlowProvider key={daily.level.id}>
-        {profile}
-        <Board
-          play={dailyPlay(daily)}
-          onPassed={(_, result) => markDaily(daily.date, result)}
-          where={daily.date.split('-').reverse().join('/')}
-          note={streakNote}
-          links={backLink}
-        />
-      </ReactFlowProvider>
+        {top}
+        <ReactFlowProvider key={daily.level.id}>
+          {profile}
+          <Board
+            play={dailyPlay(daily)}
+            onPassed={(_, result) => markDaily(daily.date, result)}
+            where={daily.date.split('-').reverse().join('/')}
+            note={streakNote}
+            links={backLink}
+          />
+        </ReactFlowProvider>
       </div>
     )
 
   return (
     <div className="shell">
-    {top}
-    <ReactFlowProvider key={stage.level.id}>
-      {profile}
-      <Board
-        play={careerPlay(stage, shared?.level.id === stage.level.id ? shared.design : undefined)}
-        onPassed={markPassed}
-        where={`Empresa ${stage.companyIndex + 1} · ${company.name}`}
-        note={streakNote}
-        next={nextStage && levelStatus(nextStage.level.id, passed) !== 'locked' ? () => play(nextStage.level.id) : undefined}
-        focusPhases={() => {
-          // Asked once, when the new board mounts: a level picked from the list gives focus back to Fases.
-          const picked = focusLevel.current === stage.level.id
-          focusLevel.current = null
-          return picked
-        }}
-        phases={
-          <nav className="levels" aria-label={`Fases da empresa ${company.name}`}>
-            {[...company.levels, company.boss].map((l, i) => {
-              const status = levelStatus(l.id, passed)
-              const isBoss = l === company.boss
-              const current = l.id === stage.level.id
-              return (
-                <button
-                  key={l.id}
-                  className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
-                  aria-current={current ? 'step' : undefined}
-                  disabled={status === 'locked'}
-                  title={status === 'locked' ? (isBoss ? 'Conclua as fases da empresa para enfrentar o chefão' : 'Conclua a fase anterior') : undefined}
-                  onClick={() => play(l.id)}
-                >
-                  <span className="levels__n">{i + 1}</span>
-                  <span className="levels__title">
-                    {l.title}
-                    {isBoss && <span className="levels__boss">Chefão</span>}
-                  </span>
-                  {status === 'done' && (
-                    <span className="levels__marks">
-                      <span className="tick" aria-label="concluída">✓</span>
-                      {results[l.id] && <Stars count={results[l.id].stars} />}
+      {top}
+      <ReactFlowProvider key={stage.level.id}>
+        {profile}
+        <Board
+          play={careerPlay(stage, shared?.level.id === stage.level.id ? shared.design : undefined)}
+          onPassed={markPassed}
+          where={`Empresa ${stage.companyIndex + 1} · ${company.name}`}
+          note={streakNote}
+          next={nextStage && levelStatus(nextStage.level.id, passed) !== 'locked' ? () => play(nextStage.level.id) : undefined}
+          focusPhases={() => {
+            // Asked once, when the new board mounts: a level picked from the list gives focus back to Fases.
+            const picked = focusLevel.current === stage.level.id
+            focusLevel.current = null
+            return picked
+          }}
+          phases={
+            <nav className="levels" aria-label={`Fases da empresa ${company.name}`}>
+              {[...company.levels, company.boss].map((l, i) => {
+                const status = levelStatus(l.id, passed)
+                const isBoss = l === company.boss
+                const current = l.id === stage.level.id
+                return (
+                  <button
+                    key={l.id}
+                    className={`${current ? 'is-current' : ''}${isBoss ? ' is-boss' : ''}`}
+                    aria-current={current ? 'step' : undefined}
+                    disabled={status === 'locked'}
+                    title={status === 'locked' ? (isBoss ? 'Conclua as fases da empresa para enfrentar o chefão' : 'Conclua a fase anterior') : undefined}
+                    onClick={() => play(l.id)}
+                  >
+                    <span className="levels__n">{i + 1}</span>
+                    <span className="levels__title">
+                      {l.title}
+                      {isBoss && <span className="levels__boss">Chefão</span>}
                     </span>
-                  )}
-                  {status === 'locked' && <LockIcon label="bloqueada" />}
-                </button>
-              )
-            })}
-          </nav>
-        }
-      />
-    </ReactFlowProvider>
+                    {status === 'done' && (
+                      <span className="levels__marks">
+                        <span className="tick" aria-label="concluída">
+                          ✓
+                        </span>
+                        {results[l.id] && <Stars count={results[l.id].stars} />}
+                      </span>
+                    )}
+                    {status === 'locked' && <LockIcon label="bloqueada" />}
+                  </button>
+                )
+              })}
+            </nav>
+          }
+        />
+      </ReactFlowProvider>
     </div>
   )
 }
@@ -1000,17 +1049,20 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
     )
   }
 
-  const openMenu = useCallback((x: number, y: number, target: MenuState['target'], opener: Element | null) => {
-    if (!editable) return
-    if ('node' in target && target.node.deletable === false) return
-    // Keyboard-opened menus (Shift+F10) report 0,0: open at the element instead.
-    if (x === 0 && y === 0 && opener) {
-      const r = opener.getBoundingClientRect()
-      x = r.left + r.width / 2
-      y = r.top + r.height / 2
-    }
-    setMenu({ x, y, target, opener: opener instanceof HTMLElement || opener instanceof SVGElement ? opener : null })
-  }, [editable])
+  const openMenu = useCallback(
+    (x: number, y: number, target: MenuState['target'], opener: Element | null) => {
+      if (!editable) return
+      if ('node' in target && target.node.deletable === false) return
+      // Keyboard-opened menus (Shift+F10) report 0,0: open at the element instead.
+      if (x === 0 && y === 0 && opener) {
+        const r = opener.getBoundingClientRect()
+        x = r.left + r.width / 2
+        y = r.top + r.height / 2
+      }
+      setMenu({ x, y, target, opener: opener instanceof HTMLElement || opener instanceof SVGElement ? opener : null })
+    },
+    [editable],
+  )
   const onNodeContextMenu = useCallback(
     (e: ReactMouseEvent, node: ComponentNode) => {
       e.preventDefault()
@@ -1093,10 +1145,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
     if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 8) cancelLongPress()
   }
 
-  const isValidConnection: IsValidConnection = useCallback(
-    (c) => canConnect(arch, c.source, c.target, level),
-    [arch, level],
-  )
+  const isValidConnection: IsValidConnection = useCallback((c) => canConnect(arch, c.source, c.target, level), [arch, level])
 
   // A drop on a piece that refuses the link says why instead of silently doing nothing.
   /** Where a link started when it is made by clicking one handle and then another. */
@@ -1116,8 +1165,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
 
   const onConnectEnd: OnConnectEnd = (_event, state) => {
     if (state.isValid || !state.fromNode || !state.toNode) return
-    const [source, target] =
-      state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
+    const [source, target] = state.fromHandle?.type === 'target' ? [state.toNode.id, state.fromNode.id] : [state.fromNode.id, state.toNode.id]
     setNotice(connectRefusal(arch, source, target, level))
   }
 
@@ -1148,10 +1196,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
     clearRun()
     const sameKind = nodes.filter((n) => n.data.kind === kind).length
     const id = pieceId(kind)
-    setNodes((ns) => [
-      ...ns,
-      { id, type: 'component', position: { x: COLUMN[kind], y: (FIRST_ROW[kind] ?? 20) + sameKind * 100 }, data: { kind } },
-    ])
+    setNodes((ns) => [...ns, { id, type: 'component', position: { x: COLUMN[kind], y: (FIRST_ROW[kind] ?? 20) + sameKind * 100 }, data: { kind } }])
     pendingFit.current = id
   }
 
@@ -1265,9 +1310,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
   const regionChoices = useMemo(() => {
     const used = nodes.map((n) => regionOf({ id: n.id, ...n.data })).filter((_, i) => !SPECS[nodes[i].data.kind].global)
     const all = new Set<Region>([...levelRegions(level), ...used])
-    return levelRegions(level).length > 1 || used.some((r) => r !== HOME_REGION)
-      ? (Object.keys(REGIONS) as Region[]).filter((r) => all.has(r))
-      : []
+    return levelRegions(level).length > 1 || used.some((r) => r !== HOME_REGION) ? (Object.keys(REGIONS) as Region[]).filter((r) => all.has(r)) : []
   }, [nodes, level])
   const multiRegion = regionChoices.length > 0
 
@@ -1401,7 +1444,13 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
               </div>
             )}
             {traffic && (
-              <button type="button" className="btn btn--ghost btn--small" aria-expanded={side === 'traffic'} aria-controls="side" onClick={(e) => toggleSide('traffic', e.currentTarget)}>
+              <button
+                type="button"
+                className="btn btn--ghost btn--small"
+                aria-expanded={side === 'traffic'}
+                aria-controls="side"
+                onClick={(e) => toggleSide('traffic', e.currentTarget)}
+              >
                 Tráfego
               </button>
             )}
@@ -1422,11 +1471,10 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
             <details className="help">
               <summary>Como montar</summary>
               <p>
-              Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar,
-              ou selecione a peça e use Ligar a, no painel dela.
-              Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
-              direito (toque longo no celular). Ctrl+Z desfaz.
-            </p>
+                Clique numa peça para pôr no desenho, ou no ⓘ para ler sobre ela. Arraste da bolinha direita de um componente até outro para ligar, ou selecione
+                a peça e use Ligar a, no painel dela. Para remover, arraste a peça até a lixeira, use o × da peça ou ligação selecionada, ou o menu do clique
+                direito (toque longo no celular). Ctrl+Z desfaz.
+              </p>
             </details>
             <button type="button" className="levels__map" onClick={() => setBriefOpen(false)}>
               Recolher
@@ -1483,11 +1531,7 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
           </EditorContext.Provider>
 
           {editable && (
-            <div
-              ref={trashRef}
-              className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`}
-              aria-hidden
-            >
+            <div ref={trashRef} className={`trash${dragging ? ' is-armed' : ''}${overTrash ? ' is-over' : ''}`} aria-hidden>
               <TrashIcon />
               <span>{overTrash ? 'Solte para remover' : 'Lixeira'}</span>
             </div>
@@ -1647,69 +1691,62 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
               traffic
             ) : (
               <>
-              {finished && (
-                <Result
-                  summary={run.summary}
-                  ticks={run.ticks}
-                  arch={arch}
-                  level={level}
-                  free={!!play.free}
-                  share={play.share}
-                  sheet={play.linkable ? play.sheet : undefined}
-                  shareQuery={() => encodeShare(level.id, { nodes, edges, fixes })}
-                  xpGained={gain}
-                  onSeek={(t) => {
-                    setPlaying(false)
-                    setShown(t + 1)
-                  }}
-                  onConcept={openInfo}
-                  next={next}
-                />
-              )}
+                {finished && (
+                  <Result
+                    summary={run.summary}
+                    ticks={run.ticks}
+                    arch={arch}
+                    level={level}
+                    free={!!play.free}
+                    share={play.share}
+                    sheet={play.linkable ? play.sheet : undefined}
+                    shareQuery={() => encodeShare(level.id, { nodes, edges, fixes })}
+                    xpGained={gain}
+                    onSeek={(t) => {
+                      setPlaying(false)
+                      setShown(t + 1)
+                    }}
+                    onConcept={openInfo}
+                    next={next}
+                  />
+                )}
 
-              <div className="meters">
-                <Meter
-                  name="Tráfego"
-                  value={tick ? `${count(tick.rps)} req/s` : '—'}
-                  sub={tick && tick.botRps > 0 ? `mais ${count(tick.botRps)} req/s de um bot` : undefined}
-                >
-                  {saturated && (
-                    <button className="meter__link" onClick={() => selectNode(saturated)}>
-                      Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label}{' '}
-                      {Math.round(tick!.nodes[saturated].utilization * 100)}%
-                    </button>
-                  )}
-                </Meter>
-                <Meter
-                  name="Disponibilidade"
-                  value={tick ? pct(tick.rps ? tick.served / tick.rps : 1) : '—'}
-                  bad={!!tick && tick.rps > 0 && tick.served / tick.rps < g.minAvailability}
-                  sub={tick && lostByReason(tick.failed, '/s') && `Perdendo ${lostByReason(tick.failed, '/s')}`}
-                >
-                  <Sparkline
-                    label="Disponibilidade por segundo"
-                    values={visible.map((t) => (t.rps ? t.served / t.rps : 1))}
-                    length={level.durationS}
-                    goal={g.minAvailability}
-                    min={0.8}
-                    max={1}
-                  />
-                </Meter>
-                <Meter
-                  name="Latência p99"
-                  value={tick ? ms(tick.p99Ms) : '—'}
-                  bad={!!tick && tick.p99Ms > g.maxP99Ms}
-                  sub={tick && `p50 ${ms(tick.p50Ms)}, p95 ${ms(tick.p95Ms)}`}
-                >
-                  <Sparkline
-                    label="p99 por segundo"
-                    values={visible.map((t) => t.p99Ms)}
-                    length={level.durationS}
-                    goal={g.maxP99Ms}
-                    max={g.maxP99Ms * 2}
-                  />
-                </Meter>
-              </div>
+                <div className="meters">
+                  <Meter
+                    name="Tráfego"
+                    value={tick ? `${count(tick.rps)} req/s` : '—'}
+                    sub={tick && tick.botRps > 0 ? `mais ${count(tick.botRps)} req/s de um bot` : undefined}
+                  >
+                    {saturated && (
+                      <button className="meter__link" onClick={() => selectNode(saturated)}>
+                        Mais carregado: {SPECS[nodes.find((n) => n.id === saturated)!.data.kind].label} {Math.round(tick!.nodes[saturated].utilization * 100)}%
+                      </button>
+                    )}
+                  </Meter>
+                  <Meter
+                    name="Disponibilidade"
+                    value={tick ? pct(tick.rps ? tick.served / tick.rps : 1) : '—'}
+                    bad={!!tick && tick.rps > 0 && tick.served / tick.rps < g.minAvailability}
+                    sub={tick && lostByReason(tick.failed, '/s') && `Perdendo ${lostByReason(tick.failed, '/s')}`}
+                  >
+                    <Sparkline
+                      label="Disponibilidade por segundo"
+                      values={visible.map((t) => (t.rps ? t.served / t.rps : 1))}
+                      length={level.durationS}
+                      goal={g.minAvailability}
+                      min={0.8}
+                      max={1}
+                    />
+                  </Meter>
+                  <Meter
+                    name="Latência p99"
+                    value={tick ? ms(tick.p99Ms) : '—'}
+                    bad={!!tick && tick.p99Ms > g.maxP99Ms}
+                    sub={tick && `p50 ${ms(tick.p50Ms)}, p95 ${ms(tick.p95Ms)}`}
+                  >
+                    <Sparkline label="p99 por segundo" values={visible.map((t) => t.p99Ms)} length={level.durationS} goal={g.maxP99Ms} max={g.maxP99Ms * 2} />
+                  </Meter>
+                </div>
 
                 {finished && (
                   <label className="scrub">
@@ -1729,57 +1766,55 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
                     />
                   </label>
                 )}
-              <table className="sheet">
-                <caption>
-                  <span className="sheet__n">
-                    {play.sheet}
-                  </span>
-                  <span className="sheet__title">{level.title}</span>
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Meta</th>
-                    {!free && <th scope="col">Exigido</th>}
-                    <th scope="col">Medido</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <GoalRow
-                    name="Disponibilidade"
-                    required={free ? undefined : `≥ ${pct(g.minAvailability)}`}
-                    value={measured && pct(measured.availability)}
-                    ok={free ? undefined : measured?.passed.availability}
-                  />
-                  <GoalRow
-                    name="Latência p99"
-                    required={free ? undefined : `≤ ${ms(g.maxP99Ms)}`}
-                    value={measured && ms(measured.p99Ms)}
-                    ok={free ? undefined : measured?.passed.p99}
-                  />
-                  <GoalRow name="Custo mensal" required={free ? undefined : `≤ $${g.maxCost}`} value={`$${cost}`} ok={free ? undefined : cost <= g.maxCost} />
-                  {g.maxStaleReads !== undefined && (
+                <table className="sheet">
+                  <caption>
+                    <span className="sheet__n">{play.sheet}</span>
+                    <span className="sheet__title">{level.title}</span>
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Meta</th>
+                      {!free && <th scope="col">Exigido</th>}
+                      <th scope="col">Medido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     <GoalRow
-                      name="Leituras desatualizadas"
-                      required={`≤ ${pct(g.maxStaleReads)}`}
-                      value={measured && pct(measured.staleReadRate)}
-                      ok={measured?.passed.stale}
+                      name="Disponibilidade"
+                      required={free ? undefined : `≥ ${pct(g.minAvailability)}`}
+                      value={measured && pct(measured.availability)}
+                      ok={free ? undefined : measured?.passed.availability}
                     />
-                  )}
-                  {g.maxDuplicates !== undefined && (
                     <GoalRow
-                      name="Transferências duplicadas"
-                      required={`≤ ${pct(g.maxDuplicates)}`}
-                      value={measured && pct(measured.duplicateRate)}
-                      ok={measured?.passed.duplicates}
+                      name="Latência p99"
+                      required={free ? undefined : `≤ ${ms(g.maxP99Ms)}`}
+                      value={measured && ms(measured.p99Ms)}
+                      ok={free ? undefined : measured?.passed.p99}
                     />
-                  )}
-                  <tr>
-                    <th scope="row">Custo por 1 mi de req.</th>
-                    {!free && <td>—</td>}
-                    <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                    <GoalRow name="Custo mensal" required={free ? undefined : `≤ $${g.maxCost}`} value={`$${cost}`} ok={free ? undefined : cost <= g.maxCost} />
+                    {g.maxStaleReads !== undefined && (
+                      <GoalRow
+                        name="Leituras desatualizadas"
+                        required={`≤ ${pct(g.maxStaleReads)}`}
+                        value={measured && pct(measured.staleReadRate)}
+                        ok={measured?.passed.stale}
+                      />
+                    )}
+                    {g.maxDuplicates !== undefined && (
+                      <GoalRow
+                        name="Transferências duplicadas"
+                        required={`≤ ${pct(g.maxDuplicates)}`}
+                        value={measured && pct(measured.duplicateRate)}
+                        ok={measured?.passed.duplicates}
+                      />
+                    )}
+                    <tr>
+                      <th scope="row">Custo por 1 mi de req.</th>
+                      {!free && <td>—</td>}
+                      <td className="sheet__info">{perMillion === undefined ? '—' : money(perMillion)}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </>
             )}
           </aside>
@@ -1796,35 +1831,42 @@ function Board({ play, where, note, links, phases, traffic, next, focusPhases, o
           Peças
         </h2>
         <ul className="dock__parts" aria-labelledby="parts-title">
-        {/* What you can use comes first; locked pieces trail at the end of the dock. */}
-        {[...play.pieces].sort((a, b) => Number(!play.unlock(a).unlocked) - Number(!play.unlock(b).unlocked)).map((kind) => {
-          const unlock = play.unlock(kind)
-          const detail = !unlock.unlocked
-            ? unlock.by
-              ? `Bloqueada até a empresa ${COMPANIES.indexOf(unlock.by) + 1}, ${unlock.by.name}.`
-              : 'Bloqueada. Chega numa próxima empresa.'
-            : `${SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, $${SPECS[kind].cost}/mês${atMax(kind) ? `, já no desenho: ${SPECS[kind].maxCount === 1 ? 'só cabe um' : `até ${SPECS[kind].maxCount}`}` : ''}.`
-          return (
-          <li key={kind} className={`dock__part${unlock.unlocked ? '' : ' is-locked'}`}>
-            <button className="part" onClick={() => addComponent(kind)} disabled={!editable || !unlock.unlocked || atMax(kind)} title={`${detail} ${SPECS[kind].description}`}>
-              <KindIcon kind={kind} size={18} />
-              <span className="part__name">{SPECS[kind].label}</span>
-              {unlock.unlocked ? <span className="part__spec">${SPECS[kind].cost}</span> : <LockIcon />}
-              <span className="sr-only">{detail}</span>
-            </button>
-            <button
-              type="button"
-              className={`part__info${listInfo?.kind === kind ? ' is-open' : ''}`}
-              aria-label={`Sobre ${SPECS[kind].label}`}
-              aria-pressed={listInfo?.kind === kind}
-              title={`Sobre ${SPECS[kind].label}`}
-              onClick={(e) => (listInfo?.kind === kind ? closeInfo() : openInfo(kind, e.currentTarget))}
-            >
-              <InfoIcon />
-            </button>
-          </li>
-          )
-        })}
+          {/* What you can use comes first; locked pieces trail at the end of the dock. */}
+          {[...play.pieces]
+            .sort((a, b) => Number(!play.unlock(a).unlocked) - Number(!play.unlock(b).unlocked))
+            .map((kind) => {
+              const unlock = play.unlock(kind)
+              const detail = !unlock.unlocked
+                ? unlock.by
+                  ? `Bloqueada até a empresa ${COMPANIES.indexOf(unlock.by) + 1}, ${unlock.by.name}.`
+                  : 'Bloqueada. Chega numa próxima empresa.'
+                : `${SPECS[kind].capacity.toLocaleString('pt-BR')} req/s, $${SPECS[kind].cost}/mês${atMax(kind) ? `, já no desenho: ${SPECS[kind].maxCount === 1 ? 'só cabe um' : `até ${SPECS[kind].maxCount}`}` : ''}.`
+              return (
+                <li key={kind} className={`dock__part${unlock.unlocked ? '' : ' is-locked'}`}>
+                  <button
+                    className="part"
+                    onClick={() => addComponent(kind)}
+                    disabled={!editable || !unlock.unlocked || atMax(kind)}
+                    title={`${detail} ${SPECS[kind].description}`}
+                  >
+                    <KindIcon kind={kind} size={18} />
+                    <span className="part__name">{SPECS[kind].label}</span>
+                    {unlock.unlocked ? <span className="part__spec">${SPECS[kind].cost}</span> : <LockIcon />}
+                    <span className="sr-only">{detail}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`part__info${listInfo?.kind === kind ? ' is-open' : ''}`}
+                    aria-label={`Sobre ${SPECS[kind].label}`}
+                    aria-pressed={listInfo?.kind === kind}
+                    title={`Sobre ${SPECS[kind].label}`}
+                    onClick={(e) => (listInfo?.kind === kind ? closeInfo() : openInfo(kind, e.currentTarget))}
+                  >
+                    <InfoIcon />
+                  </button>
+                </li>
+              )
+            })}
         </ul>
         {play.free?.blocked && (
           <p className="hint dock__blocked" role="status">
@@ -2028,8 +2070,16 @@ function Result({
             </p>
           )}
           {copied === 'fail' && <p className="hint">Não deu para copiar. Seu navegador bloqueou a área de transferência.</p>}
-          {!gaps.thrifty.earned && <p className="hint">Gaste até {THRIFTY_PCT}% do orçamento ({money(gaps.thrifty.limit)}) para ganhar mais uma estrela.</p>}
-          {!gaps.fast.earned && <p className="hint">Deixe o p99 até {FAST_PCT}% da meta ({ms(gaps.fast.limit)}) para ganhar mais uma estrela.</p>}
+          {!gaps.thrifty.earned && (
+            <p className="hint">
+              Gaste até {THRIFTY_PCT}% do orçamento ({money(gaps.thrifty.limit)}) para ganhar mais uma estrela.
+            </p>
+          )}
+          {!gaps.fast.earned && (
+            <p className="hint">
+              Deixe o p99 até {FAST_PCT}% da meta ({ms(gaps.fast.limit)}) para ganhar mais uma estrela.
+            </p>
+          )}
         </div>
       )}
       {neck && (
@@ -2040,9 +2090,7 @@ function Result({
           </button>
         </p>
       )}
-      {lostByReason(summary.failed)?.includes(', ') && (
-        <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>
-      )}
+      {lostByReason(summary.failed)?.includes(', ') && <p className="hint">Requisições perdidas na rodada: {lostByReason(summary.failed)}.</p>}
       {tips.map((h) => (
         <p key={h} className="hint">
           {h}

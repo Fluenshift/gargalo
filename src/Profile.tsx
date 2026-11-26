@@ -37,10 +37,19 @@ export function Profile({ passed, results, daily, today }: { passed: Passed; res
         </h1>
         <div className="profile-page__xp">
           <span>{xp(total)}</span>
-          <div className="profile__bar" role="progressbar" aria-label="Progresso para o próximo nível" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(share * 100)}>
+          <div
+            className="profile__bar"
+            role="progressbar"
+            aria-label="Progresso para o próximo nível"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(share * 100)}
+          >
             <span style={{ width: `${share * 100}%` }} />
           </div>
-          <span className="profile-page__soft">{rank.next ? `Faltam ${xp(rank.next.missing)} para ${rank.next.title}.` : 'Você chegou ao nível mais alto.'}</span>
+          <span className="profile-page__soft">
+            {rank.next ? `Faltam ${xp(rank.next.missing)} para ${rank.next.title}.` : 'Você chegou ao nível mais alto.'}
+          </span>
         </div>
       </section>
 
@@ -70,7 +79,10 @@ export function Profile({ passed, results, daily, today }: { passed: Passed; res
 
       <section className="profile-page__achievements" aria-labelledby="profile-achievements">
         <h2 id="profile-achievements">
-          Conquistas <span className="profile-page__soft">{earned.size} de {ACHIEVEMENTS.length}</span>
+          Conquistas{' '}
+          <span className="profile-page__soft">
+            {earned.size} de {ACHIEVEMENTS.length}
+          </span>
         </h2>
         <ul className="profile__list">
           {ACHIEVEMENTS.map((a) => (

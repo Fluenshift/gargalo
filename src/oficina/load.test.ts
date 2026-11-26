@@ -13,7 +13,14 @@ const run = (cost: RequestMetrics, l = load) => runLevel(OFICINA_ARCH, loadLevel
 describe('requestCost', () => {
   it('averages queries and rows over every request, takes the median handler time, and ignores tests that measured nothing', () => {
     const results: TestResult[] = [
-      { name: 'a', passed: true, metrics: [{ queries: 1, rowsRead: 10, handlerMs: 1 }, { queries: 3, rowsRead: 30, handlerMs: 3 }] },
+      {
+        name: 'a',
+        passed: true,
+        metrics: [
+          { queries: 1, rowsRead: 10, handlerMs: 1 },
+          { queries: 3, rowsRead: 30, handlerMs: 3 },
+        ],
+      },
       { name: 'b', passed: true, metrics: [{ queries: 2, rowsRead: 20, handlerMs: 2 }] },
       { name: 'c', passed: true },
     ]

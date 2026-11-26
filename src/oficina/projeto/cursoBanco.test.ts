@@ -67,20 +67,28 @@ describe('curso do projeto Banco', () => {
       for (const [i, stage] of cursoBanco.stages.entries()) {
         const project = (files: Record<string, string>): Project => ({ id: 'curso', framework, files })
 
-        it('etapa ' + (i + 1) + ' ' + stage.id + ': a referência passa com o checklist completo', async () => {
-          const r = await run(project(stage.reference[framework]), stage)
-          expect(failures(r)).toEqual([])
-          expect(r).toMatchObject({ passed: true, stars: 3 })
-        }, 60_000)
+        it(
+          'etapa ' + (i + 1) + ' ' + stage.id + ': a referência passa com o checklist completo',
+          async () => {
+            const r = await run(project(stage.reference[framework]), stage)
+            expect(failures(r)).toEqual([])
+            expect(r).toMatchObject({ passed: true, stars: 3 })
+          },
+          60_000,
+        )
 
-        it('etapa ' + (i + 1) + ' ' + stage.id + ': o código ingênuo falha', async () => {
-          const [file, from, to, breaks] = NAIVE[i]
-          const files = { ...stage.reference[framework] }
-          expect(files[file], file).toContain(from)
-          files[file] = files[file].replace(from, to)
-          const r = await run(project(files), stage)
-          expect(breaks === 'tests' ? r.passed : r.checklist.every((c) => c.passed)).toBe(false)
-        }, 60_000)
+        it(
+          'etapa ' + (i + 1) + ' ' + stage.id + ': o código ingênuo falha',
+          async () => {
+            const [file, from, to, breaks] = NAIVE[i]
+            const files = { ...stage.reference[framework] }
+            expect(files[file], file).toContain(from)
+            files[file] = files[file].replace(from, to)
+            const r = await run(project(files), stage)
+            expect(breaks === 'tests' ? r.passed : r.checklist.every((c) => c.passed)).toBe(false)
+          },
+          60_000,
+        )
       }
     })
   }
@@ -131,14 +139,22 @@ describe('passos guiados', () => {
           }
         })
 
-        it(stage.id + ': every request check answers as declared on the reference', async () => {
-          for (const s of steps) {
-            if (s.check?.kind !== 'request') continue
-            const out: TestResult[] = []
-            await executeProjectTests({ project: { id: 'passo', framework, files: stage.reference[framework] }, tests: [stepTest(s.check)], seed: stage.seed }, pg, ({ index, result }) => (out[index] = result))
-            expect(out[0], s.title).toMatchObject({ passed: true })
-          }
-        }, 60_000)
+        it(
+          stage.id + ': every request check answers as declared on the reference',
+          async () => {
+            for (const s of steps) {
+              if (s.check?.kind !== 'request') continue
+              const out: TestResult[] = []
+              await executeProjectTests(
+                { project: { id: 'passo', framework, files: stage.reference[framework] }, tests: [stepTest(s.check)], seed: stage.seed },
+                pg,
+                ({ index, result }) => (out[index] = result),
+              )
+              expect(out[0], s.title).toMatchObject({ passed: true })
+            }
+          },
+          60_000,
+        )
       }
     })
   }

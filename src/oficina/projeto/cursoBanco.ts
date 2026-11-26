@@ -135,7 +135,11 @@ export async function listarCartoes(db: Db): Promise<Cartao[]> {
     check: {
       kind: 'file',
       path: 'src/db/contas.ts',
-      contains: ['RETURNING id, titular, saldo_centavos', 'SELECT id, titular, saldo_centavos FROM contas WHERE id = $1', 'SELECT id, titular, saldo_centavos FROM contas ORDER BY id'],
+      contains: [
+        'RETURNING id, titular, saldo_centavos',
+        'SELECT id, titular, saldo_centavos FROM contas WHERE id = $1',
+        'SELECT id, titular, saldo_centavos FROM contas ORDER BY id',
+      ],
     },
   },
   {
@@ -865,8 +869,14 @@ const pagamentos: Stage = {
     {
       name: 'replay com a mesma chave cobra apenas uma vez',
       requests: [
-        { request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }), expect: { status: 201, body: { id: 2, valor_centavos: 990 } } },
-        { request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }), expect: { status: 201, body: { id: 2, valor_centavos: 990 } } },
+        {
+          request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }),
+          expect: { status: 201, body: { id: 2, valor_centavos: 990 } },
+        },
+        {
+          request: post('/pagamentos', { valor_centavos: 990 }, { 'Idempotency-Key': 'pedido-43' }),
+          expect: { status: 201, body: { id: 2, valor_centavos: 990 } },
+        },
       ],
       db: { sql: 'SELECT count(*)::int AS n FROM pagamentos', rows: [{ n: 2 }] },
     },
@@ -882,7 +892,11 @@ const pagamentos: Stage = {
     },
   ],
   checklist: [
-    { id: 'idempotencia', request: post('/pagamentos', { valor_centavos: 1200 }, { 'Idempotency-Key': 'chave-idemp-check' }), sql: "SELECT id, chave, valor_centavos FROM pagamentos WHERE chave = 'chave-idemp-check'" },
+    {
+      id: 'idempotencia',
+      request: post('/pagamentos', { valor_centavos: 1200 }, { 'Idempotency-Key': 'chave-idemp-check' }),
+      sql: "SELECT id, chave, valor_centavos FROM pagamentos WHERE chave = 'chave-idemp-check'",
+    },
     { id: 'sql-parametrizado' },
     { id: 'camadas' },
     { id: 'sem-select-estrela' },

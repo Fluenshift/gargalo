@@ -48,21 +48,28 @@ describe('curso de busca e paginação', () => {
     describe(framework, () => {
       const project = (files: Record<string, string>): Project => ({ id: 'curso-busca', framework, files })
       for (const [i, stage] of cursoBusca.stages.entries()) {
+        it(
+          'etapa ' + (i + 1) + ' ' + stage.id + ': a referência passa com o checklist completo',
+          async () => {
+            const r = await run(project(stage.reference[framework]), stage)
+            expect(failures(r)).toEqual([])
+            expect(r).toMatchObject({ passed: true, stars: 3 })
+          },
+          60_000,
+        )
 
-        it('etapa ' + (i + 1) + ' ' + stage.id + ': a referência passa com o checklist completo', async () => {
-          const r = await run(project(stage.reference[framework]), stage)
-          expect(failures(r)).toEqual([])
-          expect(r).toMatchObject({ passed: true, stars: 3 })
-        }, 60_000)
-
-        it('etapa ' + (i + 1) + ' ' + stage.id + ': o código ingênuo falha', async () => {
-          const [file, from, to, breaks] = NAIVE[i]
-          const files = { ...stage.reference[framework] }
-          expect(files[file], file).toContain(from)
-          files[file] = files[file].replace(from, to)
-          const r = await run(project(files), stage)
-          expect(breaks === 'tests' ? r.passed : r.checklist.every((c) => c.passed)).toBe(false)
-        }, 60_000)
+        it(
+          'etapa ' + (i + 1) + ' ' + stage.id + ': o código ingênuo falha',
+          async () => {
+            const [file, from, to, breaks] = NAIVE[i]
+            const files = { ...stage.reference[framework] }
+            expect(files[file], file).toContain(from)
+            files[file] = files[file].replace(from, to)
+            const r = await run(project(files), stage)
+            expect(breaks === 'tests' ? r.passed : r.checklist.every((c) => c.passed)).toBe(false)
+          },
+          60_000,
+        )
       }
 
       it('etapa 2 paginacao: uma solução ingênua com OFFSET falha', async () => {
@@ -99,7 +106,7 @@ describe('curso de busca e paginação', () => {
     await pg.exec('ANALYZE')
 
     const plan = JSON.stringify(
-      await pg.query("EXPLAIN SELECT id, nome, preco_centavos FROM produtos WHERE lower(nome) LIKE 'tecl%' ORDER BY lower(nome) LIMIT 20")
+      await pg.query("EXPLAIN SELECT id, nome, preco_centavos FROM produtos WHERE lower(nome) LIKE 'tecl%' ORDER BY lower(nome) LIMIT 20"),
     )
     expect(plan).toMatch(/Index Scan using produtos_nome_idx/)
 
@@ -112,7 +119,7 @@ describe('curso de busca e paginação', () => {
     await pg.exec('ANALYZE')
 
     const naivePlan = JSON.stringify(
-      await pg.query("EXPLAIN SELECT id, nome, preco_centavos FROM produtos WHERE lower(nome) LIKE 'tecl%' ORDER BY lower(nome) LIMIT 20")
+      await pg.query("EXPLAIN SELECT id, nome, preco_centavos FROM produtos WHERE lower(nome) LIKE 'tecl%' ORDER BY lower(nome) LIMIT 20"),
     )
     expect(naivePlan).toMatch(/Seq Scan on produtos/)
   }, 60_000)
@@ -161,14 +168,22 @@ describe('passos guiados', () => {
           }
         })
 
-        it(stage.id + ': every request check answers as declared on the reference', async () => {
-          for (const s of steps) {
-            if (s.check?.kind !== 'request') continue
-            const out: TestResult[] = []
-            await executeProjectTests({ project: { id: 'passo', framework, files: stage.reference[framework] }, tests: [stepTest(s.check)], seed: stage.seed }, pg, ({ index, result }) => (out[index] = result))
-            expect(out[0], s.title).toMatchObject({ passed: true })
-          }
-        }, 60_000)
+        it(
+          stage.id + ': every request check answers as declared on the reference',
+          async () => {
+            for (const s of steps) {
+              if (s.check?.kind !== 'request') continue
+              const out: TestResult[] = []
+              await executeProjectTests(
+                { project: { id: 'passo', framework, files: stage.reference[framework] }, tests: [stepTest(s.check)], seed: stage.seed },
+                pg,
+                ({ index, result }) => (out[index] = result),
+              )
+              expect(out[0], s.title).toMatchObject({ passed: true })
+            }
+          },
+          60_000,
+        )
       }
     })
   }

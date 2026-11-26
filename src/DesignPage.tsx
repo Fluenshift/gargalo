@@ -326,20 +326,20 @@ export default function DesignPage() {
   }, [])
   return (
     <>
-    <TopBar screen="design" />
-    <div className="ds">
-      <header className="career__head ds-head">
-        <h1>Design system</h1>
-        <p className="career__lede">
-          Tokens e componentes nos dois temas. A regra de uso de cada um está em DESIGN.md. O seletor de tema na barra muda o jogo inteiro; as
-          duas folhas abaixo ficam fixas.
-        </p>
-      </header>
-      <div className="ds-sheets">
-        <Sheet theme="light" />
-        <Sheet theme="dark" />
+      <TopBar screen="design" />
+      <div className="ds">
+        <header className="career__head ds-head">
+          <h1>Design system</h1>
+          <p className="career__lede">
+            Tokens e componentes nos dois temas. A regra de uso de cada um está em DESIGN.md. O seletor de tema na barra muda o jogo inteiro; as duas folhas
+            abaixo ficam fixas.
+          </p>
+        </header>
+        <div className="ds-sheets">
+          <Sheet theme="light" />
+          <Sheet theme="dark" />
+        </div>
       </div>
-    </div>
     </>
   )
 }

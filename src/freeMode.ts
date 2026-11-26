@@ -214,8 +214,7 @@ export function duplicateSystem(list: FreeSystem[], id: string): { list: FreeSys
 
 export const deleteSystem = (list: FreeSystem[], id: string): FreeSystem[] => list.filter((s) => s.id !== id)
 
-export const updateTraffic = (list: FreeSystem[], id: string, traffic: Traffic): FreeSystem[] =>
-  list.map((s) => (s.id === id ? { ...s, traffic } : s))
+export const updateTraffic = (list: FreeSystem[], id: string, traffic: Traffic): FreeSystem[] => list.map((s) => (s.id === id ? { ...s, traffic } : s))
 
 /** Keeps the board's drawing on the system; something that cannot be drawn is ignored. */
 export function updateDesign(list: FreeSystem[], id: string, design: unknown): FreeSystem[] {
@@ -378,7 +377,15 @@ export const TEMPLATES: Template[] = [
     },
     start: {
       nodes: [node('client', 'client'), node('lb', 'lb'), node('server-0', 'server'), node('server-1', 'server'), node('db', 'db'), node('payment', 'payment')],
-      edges: [link('client', 'lb'), link('lb', 'server-0'), link('lb', 'server-1'), link('server-0', 'db'), link('server-1', 'db'), link('server-0', 'payment'), link('server-1', 'payment')],
+      edges: [
+        link('client', 'lb'),
+        link('lb', 'server-0'),
+        link('lb', 'server-1'),
+        link('server-0', 'db'),
+        link('server-1', 'db'),
+        link('server-0', 'payment'),
+        link('server-1', 'payment'),
+      ],
     },
   },
 ]

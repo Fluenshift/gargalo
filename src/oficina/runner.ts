@@ -128,7 +128,11 @@ function runBatch(start: StartWorker, input: WorkerInput | ProjectTestsInput): P
 }
 
 /** Runs every test, one batch per worker: a test that times out takes its worker down; the rest get a new one. */
-export async function runTestBatches(tests: TestCase[], input: (tests: TestCase[]) => WorkerInput | ProjectTestsInput, start: StartWorker = startBrowserWorker): Promise<TestResult[]> {
+export async function runTestBatches(
+  tests: TestCase[],
+  input: (tests: TestCase[]) => WorkerInput | ProjectTestsInput,
+  start: StartWorker = startBrowserWorker,
+): Promise<TestResult[]> {
   const results: TestResult[] = []
   while (results.length < tests.length) results.push(...(await runBatch(start, input(tests.slice(results.length)))))
   return results

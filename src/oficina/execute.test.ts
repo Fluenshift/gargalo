@@ -19,11 +19,17 @@ async function run(code: string, tests: TestCase[], { schema, seed } = ACCOUNTS)
 }
 
 /** The results without the timings, which change from run to run. */
-const stable = (results: TestResult[]) => results.map(({ metrics, ...r }) => ({ ...r, ...(metrics && { metrics: metrics.map(({ queries, rowsRead }) => ({ queries, rowsRead })) }) }))
+const stable = (results: TestResult[]) =>
+  results.map(({ metrics, ...r }) => ({ ...r, ...(metrics && { metrics: metrics.map(({ queries, rowsRead }) => ({ queries, rowsRead })) }) }))
 
 const created: TestCase = {
   name: 'cria usuário',
-  requests: [{ request: { method: 'POST', path: '/usuarios', body: { nome: 'Ana' } }, expect: { status: 201, headers: { location: '/usuarios/1' }, body: { nome: 'Ana' } } }],
+  requests: [
+    {
+      request: { method: 'POST', path: '/usuarios', body: { nome: 'Ana' } },
+      expect: { status: 201, headers: { location: '/usuarios/1' }, body: { nome: 'Ana' } },
+    },
+  ],
 }
 
 describe('executeTests', () => {
@@ -90,7 +96,17 @@ describe('executeTests', () => {
 }`
     // Each request's queries are counted on its own: a read and a write each.
     expect(stable(await run(naive, [oneSucceeds]))).toEqual([
-      { name: 'dois saques ao mesmo tempo', passed: false, message: 'Requisição 2 (POST /saques): Status diferente do esperado.', expected: 409, received: 200, metrics: [{ queries: 2, rowsRead: 2 }, { queries: 2, rowsRead: 2 }] },
+      {
+        name: 'dois saques ao mesmo tempo',
+        passed: false,
+        message: 'Requisição 2 (POST /saques): Status diferente do esperado.',
+        expected: 409,
+        received: 200,
+        metrics: [
+          { queries: 2, rowsRead: 2 },
+          { queries: 2, rowsRead: 2 },
+        ],
+      },
     ])
 
     const conditional = `export default async function handler(req: Request, ctx: Ctx) {
@@ -99,11 +115,25 @@ describe('executeTests', () => {
   return rows.length ? new Response('ok') : new Response('sem saldo', { status: 409 })
 }`
     // The explain inside the transaction is rolled back: the balance is 40, not -20.
-    expect(stable(await run(conditional, [oneSucceeds]))).toEqual([{ name: 'dois saques ao mesmo tempo', passed: true, metrics: [{ queries: 1, rowsRead: 1 }, { queries: 1, rowsRead: 1 }] }])
+    expect(stable(await run(conditional, [oneSucceeds]))).toEqual([
+      {
+        name: 'dois saques ao mesmo tempo',
+        passed: true,
+        metrics: [
+          { queries: 1, rowsRead: 1 },
+          { queries: 1, rowsRead: 1 },
+        ],
+      },
+    ])
   })
 
   it('checks the database state after the requests and gives the test clock to ctx.now', async () => {
-    const test: TestCase = { name: 'relógio', now: 1234, requests: [{ request: { path: '/' }, expect: { status: 200, body: { agora: 1234 } } }], db: { sql: 'SELECT saldo FROM contas', rows: [{ saldo: 100 }] } }
+    const test: TestCase = {
+      name: 'relógio',
+      now: 1234,
+      requests: [{ request: { path: '/' }, expect: { status: 200, body: { agora: 1234 } } }],
+      db: { sql: 'SELECT saldo FROM contas', rows: [{ saldo: 100 }] },
+    }
     const code = `export default async (req: Request, ctx: Ctx) => Response.json({ agora: ctx.now() })`
     expect(await run(code, [test])).toMatchObject([{ name: 'relógio', passed: true }])
     const [wrong] = await run(code, [{ ...test, db: { sql: 'SELECT saldo FROM contas', rows: [{ saldo: 0 }] } }])
@@ -132,7 +162,14 @@ describe('executeTests', () => {
       db: { sql: 'SELECT saldo FROM contas WHERE id = $1', params: ['{{id}}'] },
     }
     const [ok] = await run(code, [test])
-    expect(ok).toMatchObject({ passed: true, rows: [{ saldo: 5 }], responses: [{ status: 201, body: { id: 7 } }, { status: 200, body: { id: 7, saldo: 5 } }] })
+    expect(ok).toMatchObject({
+      passed: true,
+      rows: [{ saldo: 5 }],
+      responses: [
+        { status: 201, body: { id: 7 } },
+        { status: 200, body: { id: 7, saldo: 5 } },
+      ],
+    })
     const [missing] = await run(code, [{ ...test, requests: [{ ...test.requests[0], save: { x: 'body.nada' } }] }])
     expect(missing).toMatchObject({ passed: false, message: 'a resposta não tem body.nada (para {{x}}).', responses: [{ status: 201 }] })
     const [stops] = await run(code, [{ ...test, requests: [{ ...test.requests[0], expect: { status: 200 } }, test.requests[1]] }])
@@ -154,12 +191,16 @@ describe('executeTests', () => {
     const [leak] = await run(code, [test({ status: 200, absent: ['senha_hash'] })])
     expect(leak).toMatchObject({ passed: false, message: 'A resposta traz o campo Senha_Hash, que não pode sair.' })
     expect(leak).not.toHaveProperty('expected')
-    expect(await run(code, [test({ status: 200, maxQueries: 1 })])).toMatchObject([{ passed: false, message: 'A requisição fez 2 consultas ao banco; o máximo é 1.' }])
-    expect(await run(`export default async (req: Request, ctx: Ctx) => Response.json(await ctx.db.query('SELECT 1 AS um'))`, [test({ status: 200, maxQueries: 0 })])).toMatchObject([
-      { passed: false, message: 'A requisição fez 1 consulta ao banco; o máximo é 0.' },
+    expect(await run(code, [test({ status: 200, maxQueries: 1 })])).toMatchObject([
+      { passed: false, message: 'A requisição fez 2 consultas ao banco; o máximo é 1.' },
     ])
+    expect(
+      await run(`export default async (req: Request, ctx: Ctx) => Response.json(await ctx.db.query('SELECT 1 AS um'))`, [test({ status: 200, maxQueries: 0 })]),
+    ).toMatchObject([{ passed: false, message: 'A requisição fez 1 consulta ao banco; o máximo é 0.' }])
     // A wrong body is said first; within the limits, the test passes.
-    expect(await run(code, [test({ status: 200, body: { contas: [] }, absent: ['senha_hash'] })])).toMatchObject([{ passed: false, message: 'Corpo da resposta diferente do esperado.' }])
+    expect(await run(code, [test({ status: 200, body: { contas: [] }, absent: ['senha_hash'] })])).toMatchObject([
+      { passed: false, message: 'Corpo da resposta diferente do esperado.' },
+    ])
     expect(await run(code, [test({ status: 200, absent: ['senha'], maxQueries: 2 })])).toMatchObject([{ passed: true }])
   })
 })
@@ -227,7 +268,17 @@ INSERT INTO itens VALUES (1, 10), (1, 20), (1, 30), (2, 40);`,
   })
 
   it('rolls a transaction back when it throws, and a nested one back to its savepoint', async () => {
-    const test: TestCase = { name: 'rollback', requests: [{ request: { path: '/' }, expect: { status: 500 } }], db: { sql: 'SELECT id, saldo FROM contas ORDER BY id', rows: [{ id: 1, saldo: 100 }, { id: 2, saldo: 7 }] } }
+    const test: TestCase = {
+      name: 'rollback',
+      requests: [{ request: { path: '/' }, expect: { status: 500 } }],
+      db: {
+        sql: 'SELECT id, saldo FROM contas ORDER BY id',
+        rows: [
+          { id: 1, saldo: 100 },
+          { id: 2, saldo: 7 },
+        ],
+      },
+    }
     const code = `export default async (req: Request, ctx: Ctx) => {
   await ctx.db.transaction(async (tx) => {
     await tx.query('INSERT INTO contas VALUES (2, 7)')
@@ -278,7 +329,9 @@ describe('compile', () => {
 export default async (req: Request, ctx: Ctx) => Response.json(await ctx.db.query("SELECT indexname FROM pg_indexes WHERE indexname = 'contas_saldo'"))`
     const test: TestCase = { name: 'índice', requests: [{ request: { path: '/' }, expect: { status: 200, body: [{ indexname: 'contas_saldo' }] } }] }
     expect(await run(code('CREATE INDEX contas_saldo ON contas (saldo)'), [test])).toMatchObject([{ passed: true }])
-    expect(await run(code('CREATE INDEX contas_saldo ON nada (saldo)'), [test])).toMatchObject([{ passed: false, message: expect.stringMatching(/A migration falhou: .*nada/) }])
+    expect(await run(code('CREATE INDEX contas_saldo ON nada (saldo)'), [test])).toMatchObject([
+      { passed: false, message: expect.stringMatching(/A migration falhou: .*nada/) },
+    ])
   })
 })
 
@@ -295,7 +348,10 @@ describe('matches', () => {
 
 describe('session state between tests', () => {
   const show = (what: string) => `export default async (req: Request, ctx: Ctx) => Response.json((await ctx.db.query('SHOW ${what}'))[0])`
-  const probe = (name: string, key: string, value: unknown): TestCase => ({ name, requests: [{ request: { path: '/' }, expect: { status: 200, body: { [key]: value } } }] })
+  const probe = (name: string, key: string, value: unknown): TestCase => ({
+    name,
+    requests: [{ request: { path: '/' }, expect: { status: 200, body: { [key]: value } } }],
+  })
 
   it('undoes SET and an open transaction the handler left behind', async () => {
     await run(`export default async (req: Request, ctx: Ctx) => { await ctx.db.query("SET application_name = 'vazou'"); return new Response('ok') }`, [
@@ -315,7 +371,14 @@ describe('fill and pick', () => {
   })
   it('reads status, headers and body paths, and nothing else', () => {
     const res = { status: 201, headers: { location: '/a/1' }, body: { itens: [{ id: 9 }] } }
-    expect([pick(res, 'status'), pick(res, 'header.Location'), pick(res, 'body.itens.0.id'), pick(res, 'body.x.y'), pick(res, 'outra'), pick(undefined, 'status')]).toEqual([201, '/a/1', 9, undefined, undefined, undefined])
+    expect([
+      pick(res, 'status'),
+      pick(res, 'header.Location'),
+      pick(res, 'body.itens.0.id'),
+      pick(res, 'body.x.y'),
+      pick(res, 'outra'),
+      pick(undefined, 'status'),
+    ]).toEqual([201, '/a/1', 9, undefined, undefined, undefined])
   })
   it('finds the first forbidden key at any depth, in arrays too, ignoring case', () => {
     expect(findKey([{ id: 1, dono: { nome: 'Ana', SENHA_HASH: 'h' } }], ['senha', 'senha_hash'])).toBe('SENHA_HASH')

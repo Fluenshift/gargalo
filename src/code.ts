@@ -64,7 +64,8 @@ WHERE p.id = $1`,
       label: 'Aumentar o pool de conexões',
       code: `const db = new Pool({ max: 100 }) // antes: 20`,
       fixes: false,
-      explanation: 'Mais conexões deixam mais consultas esperando ao mesmo tempo, mas o banco continua recebendo 21 por página. O gargalo é o número de consultas.',
+      explanation:
+        'Mais conexões deixam mais consultas esperando ao mesmo tempo, mas o banco continua recebendo 21 por página. O gargalo é o número de consultas.',
       work: [
         { kinds: DATABASES, classes: ['read', 'bot'], factor: 21 },
         { kinds: ['server'], classes: ['read', 'bot'], factor: 1, extraMs: 40 },
@@ -104,7 +105,8 @@ ORDER BY id LIMIT 50`,
       label: 'Comprimir a resposta com gzip',
       code: `app.use(compression())`,
       fixes: false,
-      explanation: 'A resposta fica menor na rede, mas o banco ainda lê 5.000 linhas e o servidor ainda monta o JSON inteiro, agora com o custo de comprimir por cima.',
+      explanation:
+        'A resposta fica menor na rede, mas o banco ainda lê 5.000 linhas e o servidor ainda monta o JSON inteiro, agora com o custo de comprimir por cima.',
       work: [
         { kinds: ['server'], classes: ['read', 'bot'], factor: 4.4, extraMs: 160 },
         { kinds: DATABASES, classes: ['read', 'bot'], factor: 3, extraMs: 30 },
@@ -328,7 +330,8 @@ async function saldos() {
       { from: 'cache', to: ['shard'] },
       { from: 'worker', to: ['shard'] },
     ],
-    reason: 'O SQL das contas está copiado em 30 lugares e ninguém sabe em qual partição a conta mora. Para particionar, o acesso aos dados precisa passar por um lugar só.',
+    reason:
+      'O SQL das contas está copiado em 30 lugares e ninguém sabe em qual partição a conta mora. Para particionar, o acesso aos dados precisa passar por um lugar só.',
   },
   options: [
     {

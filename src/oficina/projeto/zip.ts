@@ -13,7 +13,10 @@ export function crc32(bytes: Uint8Array): number {
 }
 
 /** MS-DOS time and date words (2-second resolution, years from 1980). */
-const dos = (d: Date) => ({ time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() })
+const dos = (d: Date) => ({
+  time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+  date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+})
 
 /** The zip of `files` (path to text), in the order given. */
 export function zip(files: Record<string, string>, when = new Date()): Uint8Array {
@@ -37,7 +40,18 @@ export function zip(files: Record<string, string>, when = new Date()): Uint8Arra
     const data = enc.encode(text)
     const crc = crc32(data)
     // version 20, flags 0x0800 (UTF-8 names), method 0 (store), time, date, crc, sizes, name length, extra length
-    const common: [number, number][] = [[2, 20], [2, 0x0800], [2, 0], [2, time], [2, date], [4, crc], [4, data.length], [4, data.length], [2, name.length], [2, 0]]
+    const common: [number, number][] = [
+      [2, 20],
+      [2, 0x0800],
+      [2, 0],
+      [2, time],
+      [2, date],
+      [4, crc],
+      [4, data.length],
+      [4, data.length],
+      [2, name.length],
+      [2, 0],
+    ]
     const local = put([[4, 0x04034b50], ...common], name, data)
     chunks.push(...local)
     central.push(...put([[4, 0x02014b50], [2, 20], ...common, [2, 0], [2, 0], [2, 0], [4, 0], [4, offset]], name))
@@ -45,7 +59,16 @@ export function zip(files: Record<string, string>, when = new Date()): Uint8Arra
   }
   const size = central.reduce((n, c) => n + c.length, 0)
   const count = Object.keys(files).length
-  const end = put([[4, 0x06054b50], [2, 0], [2, 0], [2, count], [2, count], [4, size], [4, offset], [2, 0]])
+  const end = put([
+    [4, 0x06054b50],
+    [2, 0],
+    [2, 0],
+    [2, count],
+    [2, count],
+    [4, size],
+    [4, offset],
+    [2, 0],
+  ])
   const all = [...chunks, ...central, ...end]
   const out = new Uint8Array(all.reduce((n, c) => n + c.length, 0))
   let at = 0

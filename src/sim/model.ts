@@ -473,8 +473,7 @@ export const SPECS: Record<Kind, Spec> = {
     serves: {},
     targets: ['worker', 'search'],
     maxOut: 8,
-    description:
-      'Recebe um evento, responde a quem publicou na hora e entrega uma cópia a cada assinante. Uma fila entrega cada mensagem a um consumidor só.',
+    description: 'Recebe um evento, responde a quem publicou na hora e entrega uma cópia a cada assinante. Uma fila entrega cada mensagem a um consumidor só.',
     acknowledges: ['write'],
     fanOut: true,
   },
@@ -486,8 +485,7 @@ export const SPECS: Record<Kind, Spec> = {
     serves: { read: 1, write: 1, bot: 1 },
     targets: [],
     maxOut: 0,
-    description:
-      'Responde buscas por texto sem varrer o banco. Só fica sabendo de um vídeo novo pelo evento de um tópico, e ele aparece na busca com atraso.',
+    description: 'Responde buscas por texto sem varrer o banco. Só fica sabendo de um vídeo novo pelo evento de um tópico, e ele aparece na busca com atraso.',
     step: laggingCopy('topic', SEARCH_CAPACITY, SEARCH_REFRESH_MS, FRESH_VIDEOS),
   },
 }
@@ -654,8 +652,7 @@ export function canConnect(arch: Architecture, sourceId: string, targetId: strin
   return connectRefusal(arch, sourceId, targetId, level) === null
 }
 
-const listPT = (items: string[]) =>
-  items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ou ${items[items.length - 1]}`
+const listPT = (items: string[]) => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} ou ${items[items.length - 1]}`)
 
 /** Why the player cannot draw this connection, in words for them; null when it is allowed. */
 export function connectRefusal(arch: Architecture, sourceId: string, targetId: string, level?: Pick<Level, 'code'>): string | null {

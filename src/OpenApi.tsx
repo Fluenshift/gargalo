@@ -12,7 +12,9 @@ export function OpenApi({ project, name, routes }: { project: Project; name: str
     return buildOpenApi({ title: name, routes, requests: requestsOf(history, saved) })
   }, [project.id, name, routes])
   const json = stringify(doc)
-  const operations = Object.entries(doc.paths).flatMap(([path, methods]) => Object.entries(methods).map(([method, op]) => ({ path, method, statuses: Object.keys(op.responses) })))
+  const operations = Object.entries(doc.paths).flatMap(([path, methods]) =>
+    Object.entries(methods).map(([method, op]) => ({ path, method, statuses: Object.keys(op.responses) })),
+  )
 
   const download = () => {
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))

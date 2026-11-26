@@ -13,7 +13,13 @@ beforeAll(async () => {
 }, 60_000)
 
 const dropped: string[] = []
-const dbs = { get test() { return test }, dev: async () => devPg, drop: async (id: string) => void dropped.push(id) }
+const dbs = {
+  get test() {
+    return test
+  },
+  dev: async () => devPg,
+  drop: async (id: string) => void dropped.push(id),
+}
 
 async function call(c: ProjectCall): Promise<unknown> {
   const out = await answer(c, dbs)
@@ -84,14 +90,26 @@ describe('loading a project', () => {
 
   it('reports an error thrown by a fetch project with its file and line, and logs Hono’s own 500', async () => {
     const thrown = await send(
-      { id: 'p', framework: 'fetch', files: { 'src/index.ts': `import { go } from './go'\nexport default { fetch: go }`, 'src/go.ts': `export function go() {\n  throw new Error('quebrou')\n}` } },
+      {
+        id: 'p',
+        framework: 'fetch',
+        files: {
+          'src/index.ts': `import { go } from './go'\nexport default { fetch: go }`,
+          'src/go.ts': `export function go() {\n  throw new Error('quebrou')\n}`,
+        },
+      },
       '/',
     )
     expect(thrown.error).toEqual({ message: 'Error: quebrou', file: 'src/go.ts', line: 2 })
     expect((await send({ id: 'p', framework: 'fetch', files: { 'src/index.ts': `export default { fetch: () => 42 }` } }, '/')).error?.message).toBe(
       'fetch(req, env) precisa devolver um Response.',
     )
-    const hono = await send(withFiles(starter('p', 'hono'), { 'src/routes/health.ts': `import { Hono } from 'hono'\nexport const health = new Hono()\nhealth.get('/', () => {\n  throw new Error('quebrou')\n})` }), '/health')
+    const hono = await send(
+      withFiles(starter('p', 'hono'), {
+        'src/routes/health.ts': `import { Hono } from 'hono'\nexport const health = new Hono()\nhealth.get('/', () => {\n  throw new Error('quebrou')\n})`,
+      }),
+      '/health',
+    )
     expect(hono.response?.status).toBe(500)
     expect(hono.logs).toEqual([{ level: 'error', text: 'Error: quebrou (src/routes/health.ts:4)' }])
   })
@@ -100,7 +118,9 @@ describe('loading a project', () => {
     const project: Project = {
       id: 'p',
       framework: 'fetch',
-      files: { 'src/index.ts': `export default { async fetch(req: Request) {\n  console.log('pedido', req.method, { n: 1 })\n  console.warn('cuidado')\n  console.error(new Error('x'))\n  return new Response('ok')\n} }` },
+      files: {
+        'src/index.ts': `export default { async fetch(req: Request) {\n  console.log('pedido', req.method, { n: 1 })\n  console.warn('cuidado')\n  console.error(new Error('x'))\n  return new Response('ok')\n} }`,
+      },
     }
     const log = console.log
     const outcome = await send(project, '/', { method: 'POST', body: '{}' })
@@ -144,7 +164,11 @@ produtos.get('/:id', async (c) => {
   it('queries c.env.db, validates with zod and throws HTTPException, against the dev database', async () => {
     await call({ op: 'reset', project })
     expect(await call({ op: 'migrate', project })).toEqual(['001_init.sql'])
-    const created = await send(project, '/produtos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"nome":"Caneca","preco_centavos":3500}' })
+    const created = await send(project, '/produtos', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"nome":"Caneca","preco_centavos":3500}',
+    })
     expect(created.response?.status).toBe(201)
     expect(json(created)).toEqual({ id: 1, nome: 'Caneca' })
     expect(json(await send(project, '/produtos/1'))).toEqual({ id: 1, nome: 'Caneca' })
@@ -166,10 +190,21 @@ produtos.get('/:id', async (c) => {
     await call({ op: 'reset', project })
     await call({ op: 'migrate', project })
     await send(project, '/produtos', { method: 'POST', body: '{"nome":"Caneca","preco_centavos":3500}' })
-    for (let run = 0; run < 2; run++) expect((await runTests(project, tests)).map((r) => [r.name, r.passed, r.message])).toEqual([['cria', true, undefined], ['banco novo de novo', true, undefined]])
+    for (let run = 0; run < 2; run++)
+      expect((await runTests(project, tests)).map((r) => [r.name, r.passed, r.message])).toEqual([
+        ['cria', true, undefined],
+        ['banco novo de novo', true, undefined],
+      ])
     // The seed runs after the migrations.
-    expect((await runTests(project, [tests[1]], `INSERT INTO produtos (nome, preco_centavos) VALUES ('Lápis', 100);`))[0]).toMatchObject({ passed: false, expected: 404, received: 200 })
-    expect(await call({ op: 'rows', project, table: 'produtos', limit: 10 })).toEqual({ columns: ['id', 'nome', 'preco_centavos'], rows: [{ id: 1, nome: 'Caneca', preco_centavos: 3500 }] })
+    expect((await runTests(project, [tests[1]], `INSERT INTO produtos (nome, preco_centavos) VALUES ('Lápis', 100);`))[0]).toMatchObject({
+      passed: false,
+      expected: 404,
+      received: 200,
+    })
+    expect(await call({ op: 'rows', project, table: 'produtos', limit: 10 })).toEqual({
+      columns: ['id', 'nome', 'preco_centavos'],
+      rows: [{ id: 1, nome: 'Caneca', preco_centavos: 3500 }],
+    })
   })
 
   it('fails every test with the reason when the project does not load', async () => {
@@ -197,7 +232,11 @@ describe('migrations', () => {
     expect(await call({ op: 'migrate', project })).toEqual(['001_a.sql', '002_b.sql', '010_c.sql'])
     expect(await call({ op: 'migrate', project })).toEqual([])
     expect(await call({ op: 'tables', project })).toEqual(['_migrations', 'a'])
-    expect((await devPg.query('SELECT name FROM _migrations ORDER BY applied_at, name')).rows).toEqual([{ name: '001_a.sql' }, { name: '002_b.sql' }, { name: '010_c.sql' }])
+    expect((await devPg.query('SELECT name FROM _migrations ORDER BY applied_at, name')).rows).toEqual([
+      { name: '001_a.sql' },
+      { name: '002_b.sql' },
+      { name: '010_c.sql' },
+    ])
     const more = withFiles(project, { 'migrations/011_d.sql': `ALTER TABLE a ADD COLUMN d int;` })
     expect(await call({ op: 'migrate', project: more })).toEqual(['011_d.sql'])
   })
@@ -243,7 +282,11 @@ describe('saved projects', () => {
 
   it('keeps the list of projects, forgets a removed one and survives storage being off', () => {
     const data = new Map<string, string>()
-    vi.stubGlobal('localStorage', { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v), removeItem: (k: string) => void data.delete(k) })
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+      removeItem: (k: string) => void data.delete(k),
+    })
     expect(loadProjectList()).toEqual([])
     const list = [{ id: 'x', name: 'Loja', framework: 'hono' as const }]
     expect(saveProjectList(list)).toBe(true)

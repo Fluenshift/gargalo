@@ -120,7 +120,8 @@ const same = (a: Draft, b: Draft) => a.method === b.method && a.path === b.path 
 export const addToHistory = (history: Sent[], sent: Sent): Sent[] => [sent, ...history.filter((h, i) => !(i === 0 && same(h, sent)))].slice(0, HISTORY_MAX)
 
 /** Saving under a name already used replaces that request. */
-export const saveRequest = (saved: Saved[], request: Saved): Saved[] => [...saved.filter((s) => s.name !== request.name), request].toSorted((a, b) => a.name.localeCompare(b.name))
+export const saveRequest = (saved: Saved[], request: Saved): Saved[] =>
+  [...saved.filter((s) => s.name !== request.name), request].toSorted((a, b) => a.name.localeCompare(b.name))
 
 export const removeSaved = (saved: Saved[], name: string): Saved[] => saved.filter((s) => s.name !== name)
 
@@ -136,7 +137,9 @@ export function loadClient(projectId: string, read: (key: string) => string | nu
   try {
     const raw = JSON.parse(read(clientKey(projectId)) ?? 'null') as Partial<ClientState> | null
     return {
-      history: Array.isArray(raw?.history) ? raw.history.filter((h): h is Sent => isDraft(h) && typeof h.ms === 'number' && typeof h.at === 'number').slice(0, HISTORY_MAX) : [],
+      history: Array.isArray(raw?.history)
+        ? raw.history.filter((h): h is Sent => isDraft(h) && typeof h.ms === 'number' && typeof h.at === 'number').slice(0, HISTORY_MAX)
+        : [],
       saved: Array.isArray(raw?.saved) ? raw.saved.filter((s): s is Saved => isDraft(s) && typeof s.name === 'string' && s.name.length > 0) : [],
     }
   } catch {

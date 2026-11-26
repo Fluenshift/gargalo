@@ -55,7 +55,12 @@ describe('hints and results', () => {
 
   it('passes only when there are results and all of them passed', () => {
     expect(allPassed([])).toBe(false)
-    expect(allPassed([{ name: 'a', passed: true }, { name: 'b', passed: false }])).toBe(false)
+    expect(
+      allPassed([
+        { name: 'a', passed: true },
+        { name: 'b', passed: false },
+      ]),
+    ).toBe(false)
     expect(allPassed([{ name: 'a', passed: true }])).toBe(true)
   })
 

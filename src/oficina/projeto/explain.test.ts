@@ -14,7 +14,11 @@ INSERT INTO produtos (nome) VALUES ('a');`)
 }, 60_000)
 
 /** The message the runtime would report for this failing SQL. */
-const pgError = (sql: string) => pg.query(sql).then(() => '', (err) => describeError(err).message)
+const pgError = (sql: string) =>
+  pg.query(sql).then(
+    () => '',
+    (err) => describeError(err).message,
+  )
 
 /** The message the runtime would report for these project files. */
 const loadError = (files: Record<string, string>) => {
@@ -33,20 +37,35 @@ describe('explainMessage', () => {
     expect(explainMessage(await pgError('SELECT preco FROM produtos'))).toMatchObject({ title: 'Coluna não existe', detail: expect.stringContaining('preco') })
     expect(explainMessage(await pgError('INSERT INTO produtos (nome, preco) VALUES (1, 2)')).detail).toContain('preco na tabela produtos')
     expect(explainMessage(await pgError('SELECT 1 FROM pedidos'))).toMatchObject({ title: 'Tabela não existe', detail: expect.stringContaining('pedidos') })
-    expect(explainMessage(await pgError("INSERT INTO produtos (nome) VALUES ('a')"))).toMatchObject({ title: 'Valor repetido', next: expect.stringContaining('409') })
-    expect(explainMessage(await pgError('INSERT INTO produtos (nome) VALUES (NULL)'))).toMatchObject({ title: 'Campo obrigatório vazio', detail: expect.stringContaining('nome de produtos') })
+    expect(explainMessage(await pgError("INSERT INTO produtos (nome) VALUES ('a')"))).toMatchObject({
+      title: 'Valor repetido',
+      next: expect.stringContaining('409'),
+    })
+    expect(explainMessage(await pgError('INSERT INTO produtos (nome) VALUES (NULL)'))).toMatchObject({
+      title: 'Campo obrigatório vazio',
+      detail: expect.stringContaining('nome de produtos'),
+    })
     expect(explainMessage(await pgError('INSERT INTO itens VALUES (999)'))).toMatchObject({ title: 'Referência inválida' })
   })
 
   it('explains what the runtime reports about the project', async () => {
-    expect(explainMessage(loadError({ 'src/index.ts': "import x from 'express'" }))).toMatchObject({ title: 'Import bloqueado', detail: expect.stringContaining('"express"') })
-    expect(explainMessage(loadError({ 'src/index.ts': "import { x } from './nada'" }))).toMatchObject({ title: 'Arquivo importado não existe', detail: expect.stringContaining('src/index.ts importa "./nada"') })
+    expect(explainMessage(loadError({ 'src/index.ts': "import x from 'express'" }))).toMatchObject({
+      title: 'Import bloqueado',
+      detail: expect.stringContaining('"express"'),
+    })
+    expect(explainMessage(loadError({ 'src/index.ts': "import { x } from './nada'" }))).toMatchObject({
+      title: 'Arquivo importado não existe',
+      detail: expect.stringContaining('src/index.ts importa "./nada"'),
+    })
     expect(explainMessage(loadError({ 'src/index.ts': 'export const a = 1' }))).toMatchObject({ title: 'Falta o export default' })
     expect(explainMessage(loadError({}))).toMatchObject({ title: 'Falta o export default' })
     expect(explainMessage(loadError({ 'src/index.ts': 'const = ' }))).toMatchObject({ title: 'Erro de sintaxe' })
     expect(explainMessage('fetch(req, env) precisa devolver um Response.')).toMatchObject({ title: 'Faltou devolver a resposta' })
     expect(explainMessage(TIMEOUT_MESSAGE)).toMatchObject({ title: 'Tempo esgotado' })
-    const migration = await migrate(pg, { 'migrations/001_x.sql': 'CREATE TABLE produtos ();' }).then(() => '', (err) => describeError(err).message)
+    const migration = await migrate(pg, { 'migrations/001_x.sql': 'CREATE TABLE produtos ();' }).then(
+      () => '',
+      (err) => describeError(err).message,
+    )
     expect(explainMessage(migration)).toMatchObject({ title: 'A migração falhou', detail: expect.stringContaining('migrations/001_x.sql: ') })
   })
 
@@ -73,17 +92,32 @@ describe('explainNotFound', () => {
     { method: 'DELETE', path: '/produtos/:id' },
   ]
   it('compares the request with the routes the app registered', () => {
-    expect(explainNotFound(404, '', { request: { path: '/pedidos' }, routes })).toMatchObject({ title: 'Rota não registrada', detail: expect.stringContaining('GET /produtos, GET /produtos/:id{[0-9]+}, DELETE') })
-    expect(explainNotFound(404, '', { request: { method: 'post', path: '/produtos?x=1' }, routes })).toMatchObject({ title: 'Método errado', detail: '/produtos existe para GET, mas não para POST.', next: expect.stringContaining("app.post('/produtos'") })
-    expect(explainNotFound(404, '', { request: { method: 'PUT', path: '/produtos/3' }, routes })?.detail).toBe('/produtos/3 existe para GET, DELETE, mas não para PUT.')
+    expect(explainNotFound(404, '', { request: { path: '/pedidos' }, routes })).toMatchObject({
+      title: 'Rota não registrada',
+      detail: expect.stringContaining('GET /produtos, GET /produtos/:id{[0-9]+}, DELETE'),
+    })
+    expect(explainNotFound(404, '', { request: { method: 'post', path: '/produtos?x=1' }, routes })).toMatchObject({
+      title: 'Método errado',
+      detail: '/produtos existe para GET, mas não para POST.',
+      next: expect.stringContaining("app.post('/produtos'"),
+    })
+    expect(explainNotFound(404, '', { request: { method: 'PUT', path: '/produtos/3' }, routes })?.detail).toBe(
+      '/produtos/3 existe para GET, DELETE, mas não para PUT.',
+    )
     // The route exists: the 404 is the app's own answer (the product isn't there).
     expect(explainNotFound(404, '', { request: { path: '/produtos/3' }, routes })).toBeUndefined()
     expect(explainNotFound(404, '', { request: { path: '/x' }, routes: [] })?.detail).toContain('Rotas do app: nenhuma.')
   })
   it('falls back on the status and Hono’s default body when the routes are unknown', () => {
-    expect(explainNotFound(405, '', { request: { method: 'PUT', path: '/a' } })).toMatchObject({ title: 'Método errado', detail: expect.stringContaining('PUT /a') })
+    expect(explainNotFound(405, '', { request: { method: 'PUT', path: '/a' } })).toMatchObject({
+      title: 'Método errado',
+      detail: expect.stringContaining('PUT /a'),
+    })
     expect(explainNotFound(404, '404 Not Found')).toMatchObject({ title: 'Rota não registrada', detail: 'Nenhuma rota atende essa requisição.' })
-    expect(explainNotFound(404, { erro: 'x' }, { request: { path: '/a' } })).toMatchObject({ title: 'Não encontrado (404)', detail: expect.stringContaining('GET /a') })
+    expect(explainNotFound(404, { erro: 'x' }, { request: { path: '/a' } })).toMatchObject({
+      title: 'Não encontrado (404)',
+      detail: expect.stringContaining('GET /a'),
+    })
   })
 })
 
@@ -98,17 +132,30 @@ describe('explain', () => {
   })
 
   it('explains a 500 by the error Hono logged', () => {
-    const logged = outcome({ response: { status: 500, headers: {}, body: 'Internal Server Error' }, logs: [{ level: 'log', text: 'oi' }, { level: 'error', text: 'error: relation "pedidos" does not exist' }] })
+    const logged = outcome({
+      response: { status: 500, headers: {}, body: 'Internal Server Error' },
+      logs: [
+        { level: 'log', text: 'oi' },
+        { level: 'error', text: 'error: relation "pedidos" does not exist' },
+      ],
+    })
     expect(explain(logged)).toMatchObject({ title: 'Erro interno (500): tabela não existe', detail: expect.stringContaining('pedidos') })
     expect(explain(outcome({ response: { status: 500, headers: {}, body: '' } }))?.title).toBe('Erro interno (500)')
   })
 
   it('explains a failed test by its status, its difference or its error', () => {
     expect(explain({ name: 't', passed: true })).toBeUndefined()
-    expect(explain({ name: 't', passed: false, message: 'Requisição 2: Status diferente do esperado.', expected: 200, received: 404 })?.title).toBe('Não encontrado (404)')
+    expect(explain({ name: 't', passed: false, message: 'Requisição 2: Status diferente do esperado.', expected: 200, received: 404 })?.title).toBe(
+      'Não encontrado (404)',
+    )
     expect(explain({ name: 't', passed: false, message: 'Status diferente do esperado.', expected: 201, received: 500 })?.title).toBe('Erro interno (500)')
-    expect(explain({ name: 't', passed: false, message: 'Status diferente do esperado.', expected: 201, received: 200 })).toMatchObject({ title: 'Status diferente do esperado.', detail: 'Esperado: 201. Recebido: 200.' })
-    expect(explain({ name: 't', passed: false, message: 'Corpo da resposta diferente do esperado.', expected: { a: 1 }, received: 'oi' })?.detail).toBe('Esperado: {"a":1}. Recebido: oi.')
+    expect(explain({ name: 't', passed: false, message: 'Status diferente do esperado.', expected: 201, received: 200 })).toMatchObject({
+      title: 'Status diferente do esperado.',
+      detail: 'Esperado: 201. Recebido: 200.',
+    })
+    expect(explain({ name: 't', passed: false, message: 'Corpo da resposta diferente do esperado.', expected: { a: 1 }, received: 'oi' })?.detail).toBe(
+      'Esperado: {"a":1}. Recebido: oi.',
+    )
     expect(explain({ name: 't', passed: false, message: 'error: column "x" does not exist', file: 'src/db.ts', line: 4 })?.title).toBe('Coluna não existe')
     expect(explain({ name: 't', passed: false })?.title).toBe('Erro no código')
   })
@@ -116,7 +163,10 @@ describe('explain', () => {
   it('explains a field that must not leave and a request over its queries, with what to do', () => {
     const leak = explain({ name: 't', passed: false, message: 'Requisição 2 (POST /login): A resposta traz o campo senha_hash, que não pode sair.' })
     expect(leak).toMatchObject({ title: 'Campo que não pode sair', detail: expect.stringContaining('senha_hash'), next: expect.stringContaining('SELECT *') })
-    expect(explain({ name: 't', passed: false, message: 'A requisição fez 5 consultas ao banco; o máximo é 2.' })).toMatchObject({ title: 'Consultas demais', next: expect.stringContaining('ANY($1)') })
+    expect(explain({ name: 't', passed: false, message: 'A requisição fez 5 consultas ao banco; o máximo é 2.' })).toMatchObject({
+      title: 'Consultas demais',
+      next: expect.stringContaining('ANY($1)'),
+    })
     expect(explain({ name: 't', passed: false, message: 'A requisição fez 1 consulta ao banco; o máximo é 0.' })?.title).toBe('Consultas demais')
   })
 })

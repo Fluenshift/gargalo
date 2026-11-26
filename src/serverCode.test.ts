@@ -42,10 +42,9 @@ describe('serverCode', () => {
     expect(bad).toContain('sem chave de idempotência')
     expect(bad).toContain('Sem disjuntor')
 
-    const good = serverCode(
-      [{ kind: 'payment', edge: { source: 's', target: 'p', retries: 2, backoff: true, breaker: true, idempotent: true } }],
-      { write: routes.write },
-    )
+    const good = serverCode([{ kind: 'payment', edge: { source: 's', target: 'p', retries: 2, backoff: true, breaker: true, idempotent: true } }], {
+      write: routes.write,
+    })
     expect(good).toContain('comRetry(() => disjuntor.chamar(() => pagamentos.cobrar(dados)), { tentativas: 3, backoff: true })')
     expect(good).not.toMatch(/sem backoff|sem chave|Sem disjuntor/i)
   })

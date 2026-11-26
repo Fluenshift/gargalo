@@ -46,7 +46,10 @@ const tick = (nodes: Record<string, NodeStats>): TickResult => ({
 describe('costPerMillion', () => {
   it('divides the monthly cost by a month of traffic at the average rps', () => {
     // 5 s at 100 rps and 5 s at 300 rps: 200 rps on average, 518.4 million requests a month.
-    const l = level([{ from: 0, rps: 100 }, { from: 5, rps: 300 }])
+    const l = level([
+      { from: 0, rps: 100 },
+      { from: 5, rps: 300 },
+    ])
     expect(costPerMillion(518.4, l)).toBeCloseTo(1)
   })
 
@@ -67,11 +70,7 @@ describe('mostSaturated', () => {
 
 describe('nodeSeries', () => {
   it('lists one piece per second and treats missing seconds as idle', () => {
-    const ticks = [
-      tick({ server: stats(200, 0.5, { latencyMs: 60 }) }),
-      tick({ server: stats(600, 1.5, { dropRate: 1 / 3, latencyMs: 600 }) }),
-      tick({}),
-    ]
+    const ticks = [tick({ server: stats(200, 0.5, { latencyMs: 60 }) }), tick({ server: stats(600, 1.5, { dropRate: 1 / 3, latencyMs: 600 }) }), tick({})]
     expect(nodeSeries(ticks, 'server')).toEqual({
       load: [200, 600, 0],
       utilization: [0.5, 1.5, 0],

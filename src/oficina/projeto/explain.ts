@@ -154,7 +154,12 @@ export function explainMessage(message: string, where?: { file?: string; line?: 
 
 /** `/produtos/:id` → a regex for paths it serves. */
 const routePattern = (path: string) =>
-  new RegExp(`^${path.replace(/[.+?^$()|[\]\\]/g, '\\$&').replace(/:\w+(\{[^}]*\})?/g, '[^/]+').replace(/\*/g, '.*')}$`)
+  new RegExp(
+    `^${path
+      .replace(/[.+?^$()|[\]\\]/g, '\\$&')
+      .replace(/:\w+(\{[^}]*\})?/g, '[^/]+')
+      .replace(/\*/g, '.*')}$`,
+  )
 
 /** A 404 or 405: the route isn't there, or not for this method. Undefined when the app has that route (the 404 is its own answer). */
 export function explainNotFound(status: number, body: unknown, context: ExplainContext = {}): Explanation | undefined {
@@ -181,9 +186,17 @@ export function explainNotFound(status: number, body: unknown, context: ExplainC
     }
   }
   if (status === 405)
-    return { title: 'Método errado', detail: `O app respondeu 405: ${asked} não aceita esse método.`, next: 'Confira o método da requisição e o if (req.method === …) da rota.' }
+    return {
+      title: 'Método errado',
+      detail: `O app respondeu 405: ${asked} não aceita esse método.`,
+      next: 'Confira o método da requisição e o if (req.method === …) da rota.',
+    }
   if (body === '404 Not Found')
-    return { title: 'Rota não registrada', detail: `Nenhuma rota atende ${asked}.`, next: 'Registre a rota (app.get, app.post…) e confira o prefixo de app.route() em src/index.ts.' }
+    return {
+      title: 'Rota não registrada',
+      detail: `Nenhuma rota atende ${asked}.`,
+      next: 'Registre a rota (app.get, app.post…) e confira o prefixo de app.route() em src/index.ts.',
+    }
   return {
     title: 'Não encontrado (404)',
     detail: `${asked} respondeu 404: ou a rota não existe, ou o recurso pedido não está no banco.`,
@@ -221,6 +234,10 @@ export function explain(input: CodeError | TestResult | RequestOutcome, context:
     if (known) return known
   }
   if (/(Status|Cabeçalho .+|Corpo da resposta|Estado do banco) diferente do esperado\.$/.test(message))
-    return { title: message, detail: `Esperado: ${show(input.expected)}. Recebido: ${show(input.received)}.`, next: 'Rode a mesma requisição no cliente HTTP e compare com o esperado.' }
+    return {
+      title: message,
+      detail: `Esperado: ${show(input.expected)}. Recebido: ${show(input.received)}.`,
+      next: 'Rode a mesma requisição no cliente HTTP e compare com o esperado.',
+    }
   return explainMessage(message, input)
 }

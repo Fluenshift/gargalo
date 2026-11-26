@@ -78,11 +78,13 @@ export function CareerMap({ passed, results, current, onPlay }: { passed: Passed
                             <Stars count={results[l.id].stars} />
                           </>
                         ) : status === 'locked' ? (
-                          !open
-                            ? 'Abre quando você for promovido para esta empresa.'
-                            : isBoss
-                              ? 'Conclua as fases acima para enfrentar o chefão.'
-                              : 'Conclua a fase anterior.'
+                          !open ? (
+                            'Abre quando você for promovido para esta empresa.'
+                          ) : isBoss ? (
+                            'Conclua as fases acima para enfrentar o chefão.'
+                          ) : (
+                            'Conclua a fase anterior.'
+                          )
                         ) : (
                           'Jogar →'
                         )}

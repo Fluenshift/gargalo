@@ -41,7 +41,15 @@ export function oficinaPlace(pathname: string): { project?: string } {
 }
 
 /** A link's click handler: plain clicks go to its href in place; ctrl/middle click still opens a new tab. */
-export function followLink(e: { button: number; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean; preventDefault(): void; currentTarget: Element }) {
+export function followLink(e: {
+  button: number
+  metaKey: boolean
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+  preventDefault(): void
+  currentTarget: Element
+}) {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
   e.preventDefault()
   navigate(e.currentTarget.getAttribute('href')!)
