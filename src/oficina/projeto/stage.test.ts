@@ -317,3 +317,16 @@ describe('guided steps', () => {
     expect(stepFor(step, 'hono').learn).toBe('Hono.')
   })
 })
+
+describe('guided steps in every course', () => {
+  it('every step says what to do now, and "Testar agora" only where the step has that button', () => {
+    for (const course of COURSES)
+      for (const stage of course.stages)
+        for (const framework of ['hono', 'fetch'] as const)
+          for (const s of (stage.steps ?? []).map((x) => stepFor(x, framework))) {
+            const where = `${course.id}/${stage.id}: ${s.title}`
+            expect(s.do, where).toBeTruthy()
+            if (s.do!.includes('Testar agora')) expect(s.check?.kind, where).toBe('request')
+          }
+  })
+})
