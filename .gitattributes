@@ -1,0 +1,2 @@
+# LF everywhere: oxfmt checks line endings, and Windows checkouts with core.autocrlf would turn every file into CRLF.
+* text=auto eol=lf
