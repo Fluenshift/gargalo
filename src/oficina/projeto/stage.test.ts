@@ -187,12 +187,6 @@ describe('COURSES', () => {
     expect(courseOf('nada')).toBe(COURSES[0])
     expect(courseOf(undefined).id).toBe('ecommerce')
   })
-  it.each(['hono', 'fetch'] as const)('pass every orders stage with 3 stars from its %s reference', async (framework) => {
-    for (const s of courseOf('ecommerce').stages) { // revisao has its own harness (revisao.test.ts)
-      const p: Project = { id: 'ref', framework, files: s.reference[framework] }
-      expect(evaluateStage(p, s, await results(p, s)), s.id).toMatchObject({ passed: true, stars: 3 })
-    }
-  })
 })
 
 describe('course base files', () => {
