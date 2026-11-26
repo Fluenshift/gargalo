@@ -1,8 +1,8 @@
 name: Dependency Review
 
+# Every PR, also one stacked on another PR's branch.
 on:
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read

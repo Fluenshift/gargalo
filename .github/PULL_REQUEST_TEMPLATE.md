@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] `pnpm exec oxlint --deny-warnings`, `pnpm run test:coverage` e `pnpm run build` passam localmente
+- [ ] `pnpm run lint`, `pnpm run test:coverage` e `pnpm run build` passam localmente
 - [ ] Testes novos ou ajustados para a lógica alterada (cobertura mínima de 80%)
 - [ ] Mudou número do motor ou spec de peça: desenhos de referência ainda passam e os ingênuos ainda falham
 - [ ] Mudança visível: telas conferidas com `verify-ui` a 1440, 1280 e 390 px

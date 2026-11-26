@@ -34,7 +34,7 @@ Um commit por mudança lógica. Pronto quando: `git log --oneline origin/main..`
 - **Corpo** em português, a partir do [template](../.github/PULL_REQUEST_TEMPLATE.md). Quando fecha uma issue, a última linha é `Closes #N`.
 - Abra pronto para revisão. O merge é do dono do projeto; um agente só faz merge quando alguém pede na conversa, com merge commit: `gh pr merge <n> --merge --delete-branch`.
 
-Pronto quando: os checks do PR estão verdes, ou não rodaram porque o PR só mexe em documentação.
+Pronto quando: os checks do PR estão verdes. Num PR só de documentação, a Quality Gate passa em segundos, sem instalar nem testar.
 
 ## 4. Depois do merge
 
@@ -46,8 +46,8 @@ Pronto quando: `git branch -a` e `git worktree list` não mostram mais a branch.
 
 | Push | Quality Gate | Dependency Review | Vercel |
 |---|---|---|---|
-| PR para a `main` | roda, salvo se o PR só muda `**.md`, `.claude/**` e `docs/**` | roda | preview, salvo branch `docs/*` |
-| Merge na `main` | roda, com a mesma exceção | não roda | deploy no site oficial, `gargalo-one.vercel.app` (projeto `gargallo` da Vercel) |
+| PR (para a `main` ou em cima de outro PR) | roda; se o PR só muda `**.md`, `.claude/**` e `docs/**`, passa sem instalar nem testar | roda | preview, salvo branch `docs/*` |
+| Merge na `main` | roda, com a mesma regra | não roda | deploy no site oficial, `gargalo-one.vercel.app` (projeto `gargallo` da Vercel) |
 | Branch sem PR | não roda | não roda | preview, salvo branch `docs/*` |
 
 A Quality Gate e o Dependency Review estão em `.github/workflows/`. A Vercel faz preview de todo push por padrão; a exceção de `docs/*` está no `vercel.json` (`git.deploymentEnabled`). O site oficial, `gargalo-one.vercel.app`, é um domínio do projeto `gargallo`, ligado ao GitHub: todo merge na `main` o publica, sem deploy manual. O projeto `gargalo` da Vercel ficou sem domínio e não é mais usado.

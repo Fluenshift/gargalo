@@ -1,85 +1,64 @@
 name: Quality Gate
 
-# A change that only touches documentation skips the gate (docs/CONTRIBUTING.md).
+# Every PR, also one stacked on another PR's branch; pushes only on main.
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', '.claude/**', 'docs/**']
   pull_request:
-    branches: [main]
-    paths-ignore: ['**.md', '.claude/**', 'docs/**']
 
+# A new push to a PR cancels the run of the push before it: only the last one matters.
+# On main every merge is checked, so a run is never cancelled there.
 concurrency:
   group: quality-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
-# Fail-fast: each job only runs if the previous one passed.
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Every installed package must carry a valid npm registry signature (catches tampered tarballs).
-      - run: pnpm audit signatures
-      - run: pnpm exec oxlint --deny-warnings
-
-  typecheck:
-    name: Typecheck
-    needs: lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec tsc -b
-
-  test:
-    name: Test and coverage
-    needs: typecheck
+  gate:
+    # One job: each job set up a runner and installed again, so four jobs in a row paid that four times.
+    # It always reports a result, so it can be a required check. A change that only touches documentation
+    # passes without installing or testing (docs/CONTRIBUTING.md).
+    name: Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Changes beyond documentation
+        id: changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # Any doubt (no base, a failed or empty diff) runs the whole gate.
+          if files=$(git diff --name-only "$BASE" HEAD 2>/dev/null) && [ -n "$files" ] \
+            && ! grep -qvE '(\.md$|^docs/|^\.claude/)' <<< "$files"; then
+            echo "Only documentation changed: the gate passes without installing or testing."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
       # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@v7
+      - if: steps.changes.outputs.code == 'true'
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - if: steps.changes.outputs.code == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - if: steps.changes.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+      # Every installed package must carry a valid npm registry signature (catches tampered tarballs).
+      - if: steps.changes.outputs.code == 'true'
+        run: pnpm audit signatures
+      - if: steps.changes.outputs.code == 'true'
+        run: pnpm run lint
+      # tsc -b, then vite build: a type error fails here, before the minute of tests.
+      - if: steps.changes.outputs.code == 'true'
+        run: pnpm run build
       # Thresholds (80%) live in vite.config.ts; vitest exits non-zero below them.
-      - run: pnpm run test:coverage
-
-  build:
-    name: Build
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vite build
+      # 100%: every vCPU of the runner. By default vitest leaves one to its main process, which mostly waits.
+      - if: steps.changes.outputs.code == 'true'
+        run: pnpm run test:coverage --maxWorkers=100%
