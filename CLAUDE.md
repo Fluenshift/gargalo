@@ -4,7 +4,7 @@ A browser game for learning backend and system design. In the career, the player
 
 ## Done means green
 
-A change is done when `npx oxlint --deny-warnings && npm run test:coverage && npm run build` passes (the Quality Gate in `.github/workflows/quality-gate.yml`, coverage ≥ 80% on `src/**/*.ts`) and, for anything visible, the `verify-ui` skill has been run.
+A change is done when `pnpm exec oxlint --deny-warnings && pnpm run test:coverage && pnpm run build` passes (the Quality Gate in `.github/workflows/quality-gate.yml`, coverage ≥ 80% on `src/**/*.ts`) and, for anything visible, the `verify-ui` skill has been run.
 
 ## Simulation
 
@@ -26,14 +26,14 @@ A change is done when `npx oxlint --deny-warnings && npm run test:coverage && np
 ## Dependencies
 
 - No new dependency without the owner's approval in the conversation or issue. Prefer what the platform, the standard library or an installed package already does.
-- Before proposing a package, confirm it is real and healthy on the npm registry (`npm view <name> time.created repository.url maintainers`, weekly downloads on npmjs.com): exact name, an existing source repository, real maintainers and history. AI-suggested names can be hallucinated and squatted with malware (slopsquatting); never install a name you have not checked.
-- Install with `npm install <name>@<exact version>` so the lockfile records it, and say in the PR why the package is needed.
+- Before proposing a package, confirm it is real and healthy on the npm registry (`pnpm view <name> time.created repository.url maintainers`, weekly downloads on npmjs.com): exact name, an existing source repository, real maintainers and history. AI-suggested names can be hallucinated and squatted with malware (slopsquatting); never install a name you have not checked.
+- Install with `pnpm add <name>@<exact version>` so the lockfile records it, and say in the PR why the package is needed. The supply-chain settings in `pnpm-workspace.yaml` (minimum release age, trust policy) apply to every install; loosen them only with the owner's approval.
 
 ## Git
 
 - Before you create a branch, commit or open a PR, read `docs/CONTRIBUTING.md`: branch names, commit messages, the PR, cleanup after merge, and what each push triggers in CI and Vercel. Where a generic commit or PR skill says otherwise, that file wins.
 - PRs carry no "Generated with Claude Code" footer.
-- Parallel agents work in separate worktrees under `../gargalo-wt/<name>` (each runs its own `npm ci`), each on its own dev-server port.
+- Parallel agents work in separate worktrees under `../gargalo-wt/<name>` (each runs its own `pnpm install`, hard-linked from the shared store), each on its own dev-server port.
 
 ## Dev servers
 

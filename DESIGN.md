@@ -102,7 +102,7 @@ O escuro é grafite: papel `#0f1114`, hover `#191c21`, linhas `#2c3139`, tinta `
 
 ## Contraste
 
-`src/contrast.test.ts` lê os tokens dos dois temas direto do `App.css` e exige ≥ 4,5:1 para todo par texto/fundo que o jogo desenha (texto e secundário sobre papel, hover e briefing; texto sobre superfície invertida; texto da ação primária; tintas de carga sobre o papel; texto sobre os três preenchimentos; cada cor de linha sobre papel e hover; texto e secundário sobre o `--company-wash` de cada empresa, calculado com a mesma porcentagem do `color-mix`; cada cor de código sobre o fundo do editor e a linha atual) e ≥ 3:1 para foco, seleção, borda do botão fantasma, ligações e barras de carga sobre o trilho. Também confere que o bloco escuro do `@media` é igual ao de `[data-theme='dark']`. Mudou uma cor? Rode `npm test`.
+`src/contrast.test.ts` lê os tokens dos dois temas direto do `App.css` e exige ≥ 4,5:1 para todo par texto/fundo que o jogo desenha (texto e secundário sobre papel, hover e briefing; texto sobre superfície invertida; texto da ação primária; tintas de carga sobre o papel; texto sobre os três preenchimentos; cada cor de linha sobre papel e hover; texto e secundário sobre o `--company-wash` de cada empresa, calculado com a mesma porcentagem do `color-mix`; cada cor de código sobre o fundo do editor e a linha atual) e ≥ 3:1 para foco, seleção, borda do botão fantasma, ligações e barras de carga sobre o trilho. Também confere que o bloco escuro do `@media` é igual ao de `[data-theme='dark']`. Mudou uma cor? Rode `pnpm test`.
 
 As linhas de 1px (`--line`) são divisórias, não limites de controle, e ficam de propósito abaixo de 3:1.
 
