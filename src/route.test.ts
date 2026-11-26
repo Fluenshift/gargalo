@@ -14,7 +14,16 @@ describe('followLink', () => {
     vi.stubGlobal('PopStateEvent', class {})
     const click = (extra: object) => {
       const preventDefault = vi.fn()
-      followLink({ button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, preventDefault, currentTarget: { getAttribute: () => '/oficina/projetos' } as unknown as Element, ...extra })
+      followLink({
+        button: 0,
+        metaKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        altKey: false,
+        preventDefault,
+        currentTarget: { getAttribute: () => '/oficina/projetos' } as unknown as Element,
+        ...extra,
+      })
       return preventDefault
     }
     expect(click({ ctrlKey: true })).not.toHaveBeenCalled()

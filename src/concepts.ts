@@ -15,8 +15,7 @@ export interface Concept {
 
 export const CONCEPTS: Record<Kind, Concept> = {
   dns: {
-    whatIs:
-      'DNS que responde a cada pessoa com o endereço vivo mais perto dela. Custa $40/mês, responde em 2 ms e não fica em região nenhuma.',
+    whatIs: 'DNS que responde a cada pessoa com o endereço vivo mais perto dela. Custa $40/mês, responde em 2 ms e não fica em região nenhuma.',
     whenToUse: 'Quando o público está em mais de uma região e você tem peças em cada uma delas.',
     gains: [
       'Cada pessoa vai para a região mais próxima, sem pagar a latência entre regiões.',
@@ -32,158 +31,88 @@ export const CONCEPTS: Record<Kind, Concept> = {
     ],
   },
   client: {
-    whatIs:
-      'As pessoas usando o sistema. Geram as requisições de cada fase: estáticos, leituras e escritas, em ondas que podem subir de repente.',
-    whenToUse:
-      'Está sempre no desenho. Você só escolhe para onde o DNS aponta: uma única peça recebe todo o tráfego.',
+    whatIs: 'As pessoas usando o sistema. Geram as requisições de cada fase: estáticos, leituras e escritas, em ondas que podem subir de repente.',
+    whenToUse: 'Está sempre no desenho. Você só escolhe para onde o DNS aponta: uma única peça recebe todo o tráfego.',
     gains: ['Nada a ganhar aqui: é a demanda que o resto precisa aguentar.'],
     costs: ['Não custa nada, mas não perdoa: requisição perdida conta contra a disponibilidade.'],
-    mistakes: [
-      'Apontar direto para um servidor: ele vira ponto único de falha.',
-      'Dimensionar pelo tráfego médio e esquecer o pico.',
-    ],
+    mistakes: ['Apontar direto para um servidor: ele vira ponto único de falha.', 'Dimensionar pelo tráfego médio e esquecer o pico.'],
   },
   cdn: {
-    whatIs:
-      'Rede de servidores perto das pessoas que guarda cópias de arquivos estáticos. Aqui responde 95% dos estáticos na borda, com até 100.000 req/s.',
+    whatIs: 'Rede de servidores perto das pessoas que guarda cópias de arquivos estáticos. Aqui responde 95% dos estáticos na borda, com até 100.000 req/s.',
     whenToUse: 'Quando boa parte do tráfego é imagem, script ou CSS. Fica na frente de tudo.',
-    gains: [
-      'Tira quase todo estático da origem por $25/mês.',
-      'Latência baixa: a resposta vem da borda.',
-    ],
+    gains: ['Tira quase todo estático da origem por $25/mês.', 'Latência baixa: a resposta vem da borda.'],
     costs: [
       'Ajuda pouco nas leituras: guarda só 10% delas, e só as que vêm por REST. Escritas seguem para a origem.',
       'Arquivo trocado demora a aparecer até a cópia expirar.',
     ],
-    mistakes: [
-      'Esperar que a CDN salve um banco sobrecarregado.',
-      'Esquecer que os 5% que passam ainda chegam aos servidores.',
-    ],
+    mistakes: ['Esperar que a CDN salve um banco sobrecarregado.', 'Esquecer que os 5% que passam ainda chegam aos servidores.'],
   },
   limiter: {
-    whatIs:
-      'Recusa com 429, na hora e quase de graça, o que passa do limite: 10 req/s por cliente e, no total, 80% do que as peças atrás aguentam.',
-    whenToUse:
-      'Na frente de quem pode ser afogado: quando um bot martela o site ou quando um pico passaria da capacidade dos servidores.',
-    gains: [
-      'Um pico vira 429 rápido em vez de servidor lotado: quem passa é atendido sem fila.',
-      'Segura um bot sozinho por $15/mês.',
-    ],
-    costs: [
-      'Cada 429 de usuário de verdade é alguém sem resposta e conta contra a disponibilidade.',
-      'Não cria capacidade: só escolhe quem fica de fora.',
-    ],
+    whatIs: 'Recusa com 429, na hora e quase de graça, o que passa do limite: 10 req/s por cliente e, no total, 80% do que as peças atrás aguentam.',
+    whenToUse: 'Na frente de quem pode ser afogado: quando um bot martela o site ou quando um pico passaria da capacidade dos servidores.',
+    gains: ['Um pico vira 429 rápido em vez de servidor lotado: quem passa é atendido sem fila.', 'Segura um bot sozinho por $15/mês.'],
+    costs: ['Cada 429 de usuário de verdade é alguém sem resposta e conta contra a disponibilidade.', 'Não cria capacidade: só escolhe quem fica de fora.'],
     mistakes: [
       'Usar o limite no lugar de servidores: no pico, metade dos usuários leva 429.',
       'Pôr o limite atrás dos servidores: aí eles já fizeram o trabalho.',
     ],
   },
   gateway: {
-    whatIs:
-      'A porta única da API: autentica, limita por cliente e divide as chamadas entre servidores saudáveis. Aguenta 10.000 req/s e soma 5 ms.',
-    whenToUse:
-      'Quando há clientes que abusam ou vários serviços atrás de um endereço só. Faz o papel do load balancer e do limite por cliente juntos.',
-    gains: [
-      'Um lugar só para autenticação, limites e regras de roteamento.',
-      'Bots e clientes abusivos param na porta, antes de gastar servidor.',
-    ],
-    costs: [
-      '$60/mês, três vezes o load balancer.',
-      'Mais um salto em toda chamada, e ele mesmo pode virar o gargalo.',
-    ],
+    whatIs: 'A porta única da API: autentica, limita por cliente e divide as chamadas entre servidores saudáveis. Aguenta 10.000 req/s e soma 5 ms.',
+    whenToUse: 'Quando há clientes que abusam ou vários serviços atrás de um endereço só. Faz o papel do load balancer e do limite por cliente juntos.',
+    gains: ['Um lugar só para autenticação, limites e regras de roteamento.', 'Bots e clientes abusivos param na porta, antes de gastar servidor.'],
+    costs: ['$60/mês, três vezes o load balancer.', 'Mais um salto em toda chamada, e ele mesmo pode virar o gargalo.'],
     mistakes: [
       'Esperar que ele corte picos de usuários de verdade: o limite é por cliente, não no total.',
       'Pôr regra de negócio no gateway: ele fica lento e difícil de mudar.',
     ],
   },
   payment: {
-    whatIs:
-      'API de outra empresa que cobra o cartão em cada pedido. Aguenta 600 req/s, leva 120 ms e cai às vezes. Com mais de 1,5× a capacidade, cai também.',
+    whatIs: 'API de outra empresa que cobra o cartão em cada pedido. Aguenta 600 req/s, leva 120 ms e cai às vezes. Com mais de 1,5× a capacidade, cai também.',
     whenToUse: 'Vem com a fase: todo pedido passa por ela. Você não escala nem conserta; só decide como chamá-la.',
     gains: ['Ninguém da loja precisa guardar dado de cartão.', 'O custo é por transação, fora do orçamento mensal.'],
-    costs: [
-      'Quando ela cai, nenhum pedido fecha.',
-      'É lenta: puxa o p99 de todo pedido para cima.',
-    ],
+    costs: ['Quando ela cai, nenhum pedido fecha.', 'É lenta: puxa o p99 de todo pedido para cima.'],
     mistakes: [
       'Tentar de novo sem backoff quando ela volta: a enxurrada derruba de novo.',
       'Achar que retry resolve uma queda inteira: tentar de novo um serviço fora só gasta carga.',
     ],
   },
   lb: {
-    whatIs:
-      'Recebe o tráfego e divide igualmente entre até 16 servidores. Um health check tira da roda o servidor que cai.',
+    whatIs: 'Recebe o tráfego e divide igualmente entre até 16 servidores. Um health check tira da roda o servidor que cai.',
     whenToUse: 'Assim que um servidor não basta, ou quando a queda de um não pode derrubar o sistema.',
-    gains: [
-      'Permite escalar horizontalmente.',
-      'Sobrevive à queda de um servidor sem perder tudo.',
-    ],
-    costs: [
-      'Mais uma peça e mais um salto: $20/mês e 1 ms.',
-      'Com um só balanceador, ele vira o novo ponto único de falha.',
-    ],
-    mistakes: [
-      'Pôr só um servidor atrás: não há para onde desviar.',
-      'Contar com folga exata: se um cai, os outros herdam a carga dele.',
-    ],
+    gains: ['Permite escalar horizontalmente.', 'Sobrevive à queda de um servidor sem perder tudo.'],
+    costs: ['Mais uma peça e mais um salto: $20/mês e 1 ms.', 'Com um só balanceador, ele vira o novo ponto único de falha.'],
+    mistakes: ['Pôr só um servidor atrás: não há para onde desviar.', 'Contar com folga exata: se um cai, os outros herdam a carga dele.'],
   },
   server: {
-    whatIs:
-      'Roda a aplicação. Aguenta 400 req/s, responde os estáticos e manda leituras e escritas para o cache ou o banco.',
+    whatIs: 'Roda a aplicação. Aguenta 400 req/s, responde os estáticos e manda leituras e escritas para o cache ou o banco.',
     whenToUse: 'Sempre. A questão é quantos: some o tráfego que chega e deixe folga para o pico e para uma queda.',
-    gains: [
-      'Escala bem: mais servidores atrás de um balanceador somam capacidade.',
-      'É a peça mais barata de multiplicar.',
-    ],
-    costs: [
-      '$50/mês cada, e a conta cresce rápido.',
-      'Perto do limite a fila cresce e o p99 dispara antes de haver erro.',
-    ],
-    mistakes: [
-      'Rodar com utilização perto de 100% e chamar isso de eficiência.',
-      'Um servidor só: quando ele cai, nada responde.',
-    ],
+    gains: ['Escala bem: mais servidores atrás de um balanceador somam capacidade.', 'É a peça mais barata de multiplicar.'],
+    costs: ['$50/mês cada, e a conta cresce rápido.', 'Perto do limite a fila cresce e o p99 dispara antes de haver erro.'],
+    mistakes: ['Rodar com utilização perto de 100% e chamar isso de eficiência.', 'Um servidor só: quando ele cai, nada responde.'],
   },
   cache: {
-    whatIs:
-      'Memória rápida na frente do banco. Aqui 85% das leituras acertam e respondem em 1 ms; escritas e misses seguem para o banco.',
+    whatIs: 'Memória rápida na frente do banco. Aqui 85% das leituras acertam e respondem em 1 ms; escritas e misses seguem para o banco.',
     whenToUse: 'Quando o banco sofre com leituras repetidas dos mesmos dados.',
-    gains: [
-      'Latência menor nas leituras.',
-      'Alivia o banco: só 15% das leituras chegam nele.',
-    ],
+    gains: ['Latência menor nas leituras.', 'Alivia o banco: só 15% das leituras chegam nele.'],
     costs: [
       'Dado desatualizado até a cópia ser invalidada.',
       'Invalidação é difícil de acertar.',
       'Cache frio depois de reiniciar: tudo vira miss. No jogo ele já começa quente.',
     ],
-    mistakes: [
-      'Esperar que o cache ajude escritas: elas sempre vão ao banco.',
-      'Esquecer que um pico de leituras ainda manda 15% ao banco.',
-    ],
+    mistakes: ['Esperar que o cache ajude escritas: elas sempre vão ao banco.', 'Esquecer que um pico de leituras ainda manda 15% ao banco.'],
   },
   db: {
-    whatIs:
-      'A fonte da verdade, onde leituras e escritas terminam. Aguenta 1.000 req/s e custa $120/mês.',
+    whatIs: 'A fonte da verdade, onde leituras e escritas terminam. Aguenta 1.000 req/s e custa $120/mês.',
     whenToUse: 'Sempre que há dados. Proteja-o com cache e mande para ele só o que precisa chegar.',
     gains: ['Guarda o dado certo e durável.'],
-    costs: [
-      'A peça mais cara, e não escala horizontalmente como servidores.',
-      'Saturado, a latência sobe e as requisições caem para todo mundo.',
-    ],
-    mistakes: [
-      'Mandar todas as leituras direto para ele.',
-      'Tratá-lo como ilimitado: é o gargalo mais comum.',
-    ],
+    costs: ['A peça mais cara, e não escala horizontalmente como servidores.', 'Saturado, a latência sobe e as requisições caem para todo mundo.'],
+    mistakes: ['Mandar todas as leituras direto para ele.', 'Tratá-lo como ilimitado: é o gargalo mais comum.'],
   },
   replica: {
-    whatIs:
-      'Cópia do banco que só responde leituras: 1.000 req/s por $80/mês. O primário manda cada escrita para ela, e a cópia chega com atraso.',
+    whatIs: 'Cópia do banco que só responde leituras: 1.000 req/s por $80/mês. O primário manda cada escrita para ela, e a cópia chega com atraso.',
     whenToUse: 'Quando as leituras passam do que um banco aguenta e o cache não basta. Ligue o banco a ela e mande as leituras para ela.',
-    gains: [
-      'Escala leitura mais barato que outro banco: o primário fica só com as escritas.',
-      'Cada réplica soma 1.000 leituras por segundo.',
-    ],
+    gains: ['Escala leitura mais barato que outro banco: o primário fica só com as escritas.', 'Cada réplica soma 1.000 leituras por segundo.'],
     costs: [
       'Quem edita o perfil pode ler a versão antiga logo depois: consistência eventual.',
       'A cópia atrasa mais quanto mais escritas chegam e quanto mais cheia ela está.',
@@ -194,14 +123,9 @@ export const CONCEPTS: Record<Kind, Concept> = {
     ],
   },
   shard: {
-    whatIs:
-      'Uma partição do banco: guarda só uma fatia das chaves. Aguenta 1.000 req/s, $130/mês, 15 ms; cai acima de 2×. Lê e escreve.',
-    whenToUse:
-      'Quando as escritas passam do que um banco aguenta: réplica só soma leitura. Ligue servidores, caches e workers a todas.',
-    gains: [
-      'Única forma de escalar escrita: cada partição soma 1.000 req/s.',
-      'Carga igual entre elas; se uma cai, só as chaves dela se perdem.',
-    ],
+    whatIs: 'Uma partição do banco: guarda só uma fatia das chaves. Aguenta 1.000 req/s, $130/mês, 15 ms; cai acima de 2×. Lê e escreve.',
+    whenToUse: 'Quando as escritas passam do que um banco aguenta: réplica só soma leitura. Ligue servidores, caches e workers a todas.',
+    gains: ['Única forma de escalar escrita: cada partição soma 1.000 req/s.', 'Carga igual entre elas; se uma cai, só as chaves dela se perdem.'],
     costs: [
       'Consulta que cruza partições (scatter-gather, join) fica cara.',
       'Escolher a chave de partição é difícil, e mudar exige rebalancear.',
@@ -213,62 +137,38 @@ export const CONCEPTS: Record<Kind, Concept> = {
     ],
   },
   queue: {
-    whatIs:
-      'Guarda as escritas e responde ao usuário na hora; workers consomem depois, no ritmo deles. Cabem 20.000 mensagens, e acima disso ela recusa.',
+    whatIs: 'Guarda as escritas e responde ao usuário na hora; workers consomem depois, no ritmo deles. Cabem 20.000 mensagens, e acima disso ela recusa.',
     whenToUse: 'Quando picos de escrita passam do que o banco aguenta, mas a escrita pode terminar alguns segundos depois.',
-    gains: [
-      'Absorve picos sem dimensionar tudo para o pico.',
-      'O usuário não espera o banco: a escrita responde em milissegundos.',
-    ],
-    costs: [
-      'A escrita aceita só aparece quando um worker processa: consistência eventual.',
-      'Mais uma peça para operar, $30/mês, e os workers à parte.',
-    ],
-    mistakes: [
-      'Poucos workers: o backlog nunca esvazia e o problema só foi adiado.',
-      'Mandar leituras para a fila: quem lê precisa da resposta agora.',
-    ],
+    gains: ['Absorve picos sem dimensionar tudo para o pico.', 'O usuário não espera o banco: a escrita responde em milissegundos.'],
+    costs: ['A escrita aceita só aparece quando um worker processa: consistência eventual.', 'Mais uma peça para operar, $30/mês, e os workers à parte.'],
+    mistakes: ['Poucos workers: o backlog nunca esvazia e o problema só foi adiado.', 'Mandar leituras para a fila: quem lê precisa da resposta agora.'],
   },
   worker: {
-    whatIs:
-      'Processo que tira mensagens da fila e faz o trabalho, aqui gravar no banco. Processa 200 mensagens/s e custa $40/mês.',
+    whatIs: 'Processo que tira mensagens da fila e faz o trabalho, aqui gravar no banco. Processa 200 mensagens/s e custa $40/mês.',
     whenToUse: 'Atrás de uma fila. Some workers até que eles consumam, em média, mais do que chega.',
-    gains: [
-      'Escala horizontalmente: cada worker a mais esvazia a fila mais rápido.',
-      'Trabalha fora do caminho do usuário, sem pesar na latência.',
-    ],
-    costs: [
-      'Workers demais repassam o pico inteiro ao banco, e a fila deixa de proteger.',
-      'Escrita perdida depois da fila já foi confirmada ao usuário.',
-    ],
+    gains: ['Escala horizontalmente: cada worker a mais esvazia a fila mais rápido.', 'Trabalha fora do caminho do usuário, sem pesar na latência.'],
+    costs: ['Workers demais repassam o pico inteiro ao banco, e a fila deixa de proteger.', 'Escrita perdida depois da fila já foi confirmada ao usuário.'],
     mistakes: [
       'Esquecer de ligar o worker ao banco: as mensagens saem da fila e se perdem.',
       'Dimensionar pelo pico: basta vencer a média e ter fila para o resto.',
     ],
   },
   storage: {
-    whatIs:
-      'Guarda arquivos grandes por nome, como vídeos e fotos: 5.000 req/s, 20 ms, $20/mês. Não faz consulta: só guarda e devolve o arquivo inteiro.',
-    whenToUse:
-      'Quando arquivos pesados passam pelo servidor ou moram no banco. Ligue a CDN a ele: os trechos e os uploads vão direto, com URL assinada.',
+    whatIs: 'Guarda arquivos grandes por nome, como vídeos e fotos: 5.000 req/s, 20 ms, $20/mês. Não faz consulta: só guarda e devolve o arquivo inteiro.',
+    whenToUse: 'Quando arquivos pesados passam pelo servidor ou moram no banco. Ligue a CDN a ele: os trechos e os uploads vão direto, com URL assinada.',
     gains: [
       'O servidor só assina a URL: o upload de 500 MB não prende mais ninguém.',
       'É a origem da CDN: o que a borda não tem vem daqui, sem passar pelo servidor.',
     ],
-    costs: [
-      'Não responde buscas nem filtros: os dados do vídeo continuam no banco ou no índice.',
-      'Cada chamada leva uns 20 ms, mais que um disco local.',
-    ],
+    costs: ['Não responde buscas nem filtros: os dados do vídeo continuam no banco ou no índice.', 'Cada chamada leva uns 20 ms, mais que um disco local.'],
     mistakes: [
       'Guardar o vídeo no banco: cada upload vira uma escrita gigante.',
       'Deixar a CDN buscar os vídeos no servidor: na estreia, o pico de misses derruba a aplicação.',
     ],
   },
   topic: {
-    whatIs:
-      'Pub/sub: recebe um evento e entrega uma cópia a cada assinante. 20.000 eventos/s, 3 ms, $35/mês. Responde a quem publicou na hora.',
-    whenToUse:
-      'Quando um acontecimento dispara várias tarefas independentes: thumbnail, notificação, recomendação, busca. Cada uma assina o evento.',
+    whatIs: 'Pub/sub: recebe um evento e entrega uma cópia a cada assinante. 20.000 eventos/s, 3 ms, $35/mês. Responde a quem publicou na hora.',
+    whenToUse: 'Quando um acontecimento dispara várias tarefas independentes: thumbnail, notificação, recomendação, busca. Cada uma assina o evento.',
     gains: [
       'Quem publica não espera nenhuma tarefa e não sabe quem assina: um serviço novo só assina.',
       'Uma tarefa lenta ou fora do ar não atrasa as outras.',
@@ -283,22 +183,14 @@ export const CONCEPTS: Record<Kind, Concept> = {
     ],
   },
   search: {
-    whatIs:
-      'Índice de busca: responde buscas por texto sem varrer o banco. 1.000 req/s, 10 ms, $70/mês. Recebe os vídeos novos por evento.',
-    whenToUse:
-      'Quando a busca por palavras pesa no banco. Ligue os servidores a ele e assine o índice no tópico dos vídeos publicados.',
-    gains: [
-      'Busca por palavra, relevância e filtros, sem tocar no banco.',
-      'Cada índice a mais soma 1.000 buscas por segundo.',
-    ],
+    whatIs: 'Índice de busca: responde buscas por texto sem varrer o banco. 1.000 req/s, 10 ms, $70/mês. Recebe os vídeos novos por evento.',
+    whenToUse: 'Quando a busca por palavras pesa no banco. Ligue os servidores a ele e assine o índice no tópico dos vídeos publicados.',
+    gains: ['Busca por palavra, relevância e filtros, sem tocar no banco.', 'Cada índice a mais soma 1.000 buscas por segundo.'],
     costs: [
       'Um vídeo novo só aparece depois de indexado, cerca de 1 s ou mais: consistência eventual.',
       'Cada índice aplica todos os eventos: lotado de buscas, ele fica para trás.',
     ],
-    mistakes: [
-      'Não assinar o tópico: o índice nunca fica sabendo dos vídeos novos.',
-      'Lotar um índice de buscas: sem fôlego para indexar, o atraso dispara.',
-    ],
+    mistakes: ['Não assinar o tópico: o índice nunca fica sabendo dos vídeos novos.', 'Lotar um índice de buscas: sem fôlego para indexar, o atraso dispara.'],
   },
 }
 
@@ -329,8 +221,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'p99',
     term: 'p99',
-    definition:
-      '99% das requisições respondem em até esse tempo. Mostra o pior caso comum, que a média esconde.',
+    definition: '99% das requisições respondem em até esse tempo. Mostra o pior caso comum, que a média esconde.',
   },
   {
     id: 'disponibilidade',
@@ -340,8 +231,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'utilizacao',
     term: 'utilização',
-    definition:
-      'Carga dividida pela capacidade. Perto de 100%, a fila e a latência crescem muito mais rápido que a carga.',
+    definition: 'Carga dividida pela capacidade. Perto de 100%, a fila e a latência crescem muito mais rápido que a carga.',
   },
   {
     id: 'escalar-horizontalmente',
@@ -370,8 +260,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'folga',
     term: 'folga',
     forms: ['folga de capacidade'],
-    definition:
-      'Capacidade além da carga esperada. Cobre o pico e a queda de uma peça: com N servidores no limite, quando um cai os outros transbordam.',
+    definition: 'Capacidade além da carga esperada. Cobre o pico e a queda de uma peça: com N servidores no limite, quando um cai os outros transbordam.',
   },
   {
     id: 'health-check',
@@ -381,8 +270,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'backpressure',
     term: 'backpressure',
-    definition:
-      'Uma peça sobrecarregada avisa quem manda tráfego para desacelerar, em vez de aceitar e falhar. No jogo não há: o excedente é descartado.',
+    definition: 'Uma peça sobrecarregada avisa quem manda tráfego para desacelerar, em vez de aceitar e falhar. No jogo não há: o excedente é descartado.',
   },
   {
     id: 'miss',
@@ -415,20 +303,17 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'backlog',
     term: 'backlog',
-    definition:
-      'O que está esperando na fila para ser processado. Cresce quando chega mais do que os workers consomem.',
+    definition: 'O que está esperando na fila para ser processado. Cresce quando chega mais do que os workers consomem.',
   },
   {
     id: 'consistencia-eventual',
     term: 'consistência eventual',
-    definition:
-      'O dado fica certo em todo lugar depois de um tempo, não na hora. Até lá, alguém pode ver a versão antiga.',
+    definition: 'O dado fica certo em todo lugar depois de um tempo, não na hora. Até lá, alguém pode ver a versão antiga.',
   },
   {
     id: 'atraso-replicacao',
     term: 'atraso de replicação',
-    definition:
-      'Tempo entre a escrita no primário e ela aparecer na réplica. Cresce com o volume de escritas e com a réplica sobrecarregada.',
+    definition: 'Tempo entre a escrita no primário e ela aparecer na réplica. Cresce com o volume de escritas e com a réplica sobrecarregada.',
   },
   {
     id: 'leitura-desatualizada',
@@ -451,15 +336,13 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'chave-particao',
     term: 'chave de partição',
-    definition:
-      'O campo que decide em qual partição cada dado fica. Uma boa chave espalha a carga por igual; uma ruim concentra tudo em uma só.',
+    definition: 'O campo que decide em qual partição cada dado fica. Uma boa chave espalha a carga por igual; uma ruim concentra tudo em uma só.',
   },
   {
     id: 'chave-quente',
     term: 'chave quente',
     forms: ['chaves quentes', 'hot key'],
-    definition:
-      'Chave que recebe uma fatia enorme do tráfego, como um produto viral. Cai inteira em uma partição, e acrescentar partições não a esfria.',
+    definition: 'Chave que recebe uma fatia enorme do tráfego, como um produto viral. Cai inteira em uma partição, e acrescentar partições não a esfria.',
   },
   {
     id: 'scatter-gather',
@@ -516,7 +399,8 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'dns',
     term: 'DNS',
-    definition: 'Traduz o nome do site para o endereço de uma peça. O comum aponta para um lugar só; o DNS geográfico responde a cada pessoa com a peça viva mais perto dela.',
+    definition:
+      'Traduz o nome do site para o endereço de uma peça. O comum aponta para um lugar só; o DNS geográfico responde a cada pessoa com a peça viva mais perto dela.',
   },
   {
     id: 'regiao',
@@ -673,8 +557,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'origem',
     term: 'origem',
-    definition:
-      'De onde a CDN busca o que ainda não tem na borda. Se a origem é o servidor, cada miss pesa nele; numa estreia, os misses chegam todos juntos.',
+    definition: 'De onde a CDN busca o que ainda não tem na borda. Se a origem é o servidor, cada miss pesa nele; numa estreia, os misses chegam todos juntos.',
   },
   {
     id: 'indice',

@@ -70,12 +70,7 @@ describe('parseDesign', () => {
         edges: [],
       }),
     )
-    expect(design?.nodes.map((n) => n.data)).toEqual([
-      { kind: 'client' },
-      { kind: 'server', region: 'us' },
-      { kind: 'server' },
-      { kind: 'dns' },
-    ])
+    expect(design?.nodes.map((n) => n.data)).toEqual([{ kind: 'client' }, { kind: 'server', region: 'us' }, { kind: 'server' }, { kind: 'dns' }])
   })
 
   it("keeps the picks for the level's code challenges and drops the rest", () => {

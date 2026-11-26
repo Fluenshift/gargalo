@@ -358,7 +358,7 @@ const fetchProdutos = (f: Flags) => {
       f.auth && "import { exigir } from '../auth'",
       "import type { Env } from '../env'",
       "import { achado, idDe, problema } from '../http'",
-      f.validar && "import { " + (f.lista ? 'listaSchema, ' : '') + 'lerCorpo, ' + (f.lista ? 'lerConsulta, ' : '') + "produtoSchema } from '../validacao'",
+      f.validar && 'import { ' + (f.lista ? 'listaSchema, ' : '') + 'lerCorpo, ' + (f.lista ? 'lerConsulta, ' : '') + "produtoSchema } from '../validacao'",
     ) +
     String.raw`
 export async function produtos(req: Request, env: Env, id?: string): Promise<Response> {
@@ -442,7 +442,7 @@ const fetchIndex = (f: Flags) => {
     lines(
       "import type { Env } from './env'",
       "import { deErro, problema } from './http'",
-      ...mods.map(([file, names]) => "import { " + names.join(', ') + " } from './routes/" + file + "'"),
+      ...mods.map(([file, names]) => 'import { ' + names.join(', ') + " } from './routes/" + file + "'"),
     ) +
     String.raw`
 type Rota = (req: Request, env: Env, id?: string) => Promise<Response>
@@ -477,7 +477,7 @@ const honoProdutos = (f: Flags) => {
       "import { atualizarProduto, buscarProduto, criarProduto, listarProdutos, removerProduto } from '../db/produtos'",
       "import type { Env } from '../env'",
       "import { achado, idDe } from '../http'",
-      f.validar && "import { " + (f.lista ? 'listaSchema, ' : '') + 'lerCorpo, ' + (f.lista ? 'lerConsulta, ' : '') + "produtoSchema } from '../validacao'",
+      f.validar && 'import { ' + (f.lista ? 'listaSchema, ' : '') + 'lerCorpo, ' + (f.lista ? 'lerConsulta, ' : '') + "produtoSchema } from '../validacao'",
     ) +
     String.raw`
 export const produtos = new Hono<{ Bindings: Env }>()
@@ -579,12 +579,15 @@ const honoIndex = (f: Flags) => {
       "import { Hono } from 'hono'",
       "import type { Env } from './env'",
       "import { deErro, problema } from './http'",
-      ...mods.map(([file, names]) => "import { " + names.join(', ') + " } from './routes/" + file + "'"),
+      ...mods.map(([file, names]) => 'import { ' + names.join(', ') + " } from './routes/" + file + "'"),
     ) +
     String.raw`
 const app = new Hono<{ Bindings: Env }>()
 
-${mods.flatMap(([, names]) => names).map((n) => "app.route('/" + n + "', " + n + ')').join('\n')}
+${mods
+  .flatMap(([, names]) => names)
+  .map((n) => "app.route('/" + n + "', " + n + ')')
+  .join('\n')}
 
 app.notFound(() => problema(404, 'Rota não encontrada'))
 app.onError(deErro)

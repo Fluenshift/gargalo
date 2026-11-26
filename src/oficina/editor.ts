@@ -34,7 +34,17 @@ const editorTheme = EditorView.theme({
 })
 
 /** The editor's setup: TypeScript (or plain text in the mono font), the coloured tokens, Tab indenting and `onChange` with the whole text. */
-export function codeExtensions({ label, describedBy, typescript = true, onChange }: { label: string; describedBy: string; typescript?: boolean; onChange: (code: string) => void }) {
+export function codeExtensions({
+  label,
+  describedBy,
+  typescript = true,
+  onChange,
+}: {
+  label: string
+  describedBy: string
+  typescript?: boolean
+  onChange: (code: string) => void
+}) {
   return [
     basicSetup,
     // Tab indents; Esc then Tab (CodeMirror's own escape) leaves the editor.

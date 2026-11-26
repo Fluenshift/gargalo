@@ -174,7 +174,11 @@ async function run(call: ProjectCall, dbs: Databases): Promise<unknown> {
       await pgliteDb(pg)('', '')
       return undefined
     case 'tables':
-      return (await pg.query<{ name: string }>(`SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1`)).rows.map((r) => r.name)
+      return (
+        await pg.query<{ name: string }>(
+          `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY 1`,
+        )
+      ).rows.map((r) => r.name)
     case 'rows':
       return tableRows(pg, call.table, call.limit)
   }

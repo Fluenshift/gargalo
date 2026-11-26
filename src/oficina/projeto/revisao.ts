@@ -18,7 +18,8 @@ INSERT INTO pedidos (cliente) VALUES ('Ana'), ('Beto'), ('Ana'), ('Beto');
 INSERT INTO itens (pedido_id, produto, qtd) VALUES (1, 'Caneta', 2), (1, 'Lápis', 1), (2, 'Caneta', 1), (3, 'Lápis', 4), (4, 'Caneta', 3);
 `
 
-const CONFLICT = "Response.json({ type: 'about:blank', title: 'Sem estoque', status: 409 }, { status: 409, headers: { 'Content-Type': 'application/problem+json' } })"
+const CONFLICT =
+  "Response.json({ type: 'about:blank', title: 'Sem estoque', status: 409 }, { status: 409, headers: { 'Content-Type': 'application/problem+json' } })"
 
 /** The four route bodies are the only difference between the buggy project and its fix. */
 export const revisaoRoutes = (usuarios: string, busca: string, comprar: string, pedidos: string) => `export default {
@@ -96,7 +97,14 @@ export type RevisaoBugId = (typeof REVISAO_BUGS)[number]['id']
 const INJECAO = `/usuarios/busca?nome=${encodeURIComponent("x' OR '1'='1")}`
 
 const PEDIDOS_COM_ITENS = [
-  { id: 1, cliente: 'Ana', itens: [{ produto: 'Caneta', qtd: 2 }, { produto: 'Lápis', qtd: 1 }] },
+  {
+    id: 1,
+    cliente: 'Ana',
+    itens: [
+      { produto: 'Caneta', qtd: 2 },
+      { produto: 'Lápis', qtd: 1 },
+    ],
+  },
   { id: 2, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 1 }] },
   { id: 3, cliente: 'Ana', itens: [{ produto: 'Lápis', qtd: 4 }] },
   { id: 4, cliente: 'Beto', itens: [{ produto: 'Caneta', qtd: 3 }] },
@@ -261,7 +269,13 @@ export const revisaoStarter: Project = {
   files: { 'src/index.ts': revisaoRoutes(...BUGGY_BLOCKS), 'migrations/001_init.sql': MIGRATION },
 }
 
-export const revisaoCourse: ProjectCourse = { id: 'revisao', title: 'Revisão de código', summary: 'Depois do básico: ache e corrija os problemas de uma API pronta, como vazamento de dados e N+1.', stages: [revisaoStage], starter: revisaoStarter }
+export const revisaoCourse: ProjectCourse = {
+  id: 'revisao',
+  title: 'Revisão de código',
+  summary: 'Depois do básico: ache e corrija os problemas de uma API pronta, como vazamento de dados e N+1.',
+  stages: [revisaoStage],
+  starter: revisaoStarter,
+}
 
 export interface BugVerdict {
   id: RevisaoBugId

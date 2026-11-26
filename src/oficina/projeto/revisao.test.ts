@@ -4,7 +4,17 @@ import type { TestResult } from '../exercise'
 import { checkTests } from './checklist'
 import { docsFor } from './docs'
 import type { Project } from './project'
-import { BUGGY_BLOCKS, FIXED_BLOCKS, REVISAO_BUGS, REVISAO_FIX_CHECKS, judgeRevisao, revisaoCourse, revisaoRoutes, revisaoStage, revisaoStarter } from './revisao'
+import {
+  BUGGY_BLOCKS,
+  FIXED_BLOCKS,
+  REVISAO_BUGS,
+  REVISAO_FIX_CHECKS,
+  judgeRevisao,
+  revisaoCourse,
+  revisaoRoutes,
+  revisaoStage,
+  revisaoStarter,
+} from './revisao'
 import { executeProjectTests } from './runtime'
 import { checkStep, evaluateStage, missingInFile, stepFor, stepTest, type RunTests } from './stage'
 
@@ -22,7 +32,8 @@ async function run(index: string): Promise<{ results: TestResult[]; project: Pro
 }
 
 /** The buggy project with only the `fixed` bugs' routes replaced by their fix. */
-const mixed = (fixed: number[]) => revisaoRoutes(...(BUGGY_BLOCKS.map((b, i) => (fixed.includes(i) ? FIXED_BLOCKS[i] : b)) as unknown as [string, string, string, string]))
+const mixed = (fixed: number[]) =>
+  revisaoRoutes(...(BUGGY_BLOCKS.map((b, i) => (fixed.includes(i) ? FIXED_BLOCKS[i] : b)) as unknown as [string, string, string, string]))
 
 describe('revisão de código', () => {
   it('o curso tem a etapa, que julga os bugs com judgeRevisao', () => {
@@ -48,10 +59,14 @@ describe('revisão de código', () => {
     expect(stage.stars).toBe(3)
   }, 60_000)
 
-  it.each([0, 1, 2, 3])('corrigir só o bug %i só conserta ele', async (bug) => {
-    const { results } = await run(mixed([bug]))
-    expect(judgeRevisao(results).map((b) => b.fixed)).toEqual([0, 1, 2, 3].map((k) => k === bug))
-  }, 60_000)
+  it.each([0, 1, 2, 3])(
+    'corrigir só o bug %i só conserta ele',
+    async (bug) => {
+      const { results } = await run(mixed([bug]))
+      expect(judgeRevisao(results).map((b) => b.fixed)).toEqual([0, 1, 2, 3].map((k) => k === bug))
+    },
+    60_000,
+  )
 })
 
 describe('passos guiados', () => {
@@ -91,13 +106,24 @@ describe('passos guiados', () => {
   }, 60_000)
 
   it('cada bug tem o passo que confere o conserto', () => {
-    for (const bug of REVISAO_BUGS) expect(steps.some((s) => s.check === REVISAO_FIX_CHECKS[bug.id]), bug.id).toBe(true)
+    for (const bug of REVISAO_BUGS)
+      expect(
+        steps.some((s) => s.check === REVISAO_FIX_CHECKS[bug.id]),
+        bug.id,
+      ).toBe(true)
   })
 
   it('o ataque do passo de SQL injection só passa na busca corrigida', async () => {
-    const check = steps.find((s) => s.check?.kind === 'request' && s.check.body !== undefined)!.check as Extract<NonNullable<(typeof steps)[number]['check']>, { kind: 'request' }>
+    const check = steps.find((s) => s.check?.kind === 'request' && s.check.body !== undefined)!.check as Extract<
+      NonNullable<(typeof steps)[number]['check']>,
+      { kind: 'request' }
+    >
     const out: TestResult[] = []
-    await executeProjectTests({ project: { ...revisaoStarter, files: { ...revisaoStarter.files, 'src/index.ts': mixed([]) } }, tests: [stepTest(check)], seed: revisaoStage.seed }, pg, ({ index, result }) => (out[index] = result))
+    await executeProjectTests(
+      { project: { ...revisaoStarter, files: { ...revisaoStarter.files, 'src/index.ts': mixed([]) } }, tests: [stepTest(check)], seed: revisaoStage.seed },
+      pg,
+      ({ index, result }) => (out[index] = result),
+    )
     expect(out[0].passed).toBe(false)
   }, 60_000)
 })
@@ -138,9 +164,13 @@ describe('os quatro veredictos, pelos mesmos checks do jogador', () => {
     expect(panel.map((b) => b.fixed)).toEqual([true, true, true, true])
   }, 60_000)
 
-  it.each([0, 1, 2, 3])('corrigir só o bug %i: só o passo dele confere, e o painel concorda', async (bug) => {
-    const { steps, panel } = await verdicts(mixed([bug]))
-    expect(steps.map((m) => m === undefined)).toEqual([0, 1, 2, 3].map((k) => k === bug))
-    expect(panel.map((b) => b.fixed)).toEqual([0, 1, 2, 3].map((k) => k === bug))
-  }, 60_000)
+  it.each([0, 1, 2, 3])(
+    'corrigir só o bug %i: só o passo dele confere, e o painel concorda',
+    async (bug) => {
+      const { steps, panel } = await verdicts(mixed([bug]))
+      expect(steps.map((m) => m === undefined)).toEqual([0, 1, 2, 3].map((k) => k === bug))
+      expect(panel.map((b) => b.fixed)).toEqual([0, 1, 2, 3].map((k) => k === bug))
+    },
+    60_000,
+  )
 })

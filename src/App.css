@@ -1203,7 +1203,10 @@ ul {
   font-size: var(--text-sm);
   font-weight: 500;
   pointer-events: none;
-  transition: transform var(--duration) ease, background var(--duration) ease, color var(--duration) ease;
+  transition:
+    transform var(--duration) ease,
+    background var(--duration) ease,
+    color var(--duration) ease;
 }
 
 /* Clear of the right panel when it is open. */
@@ -2511,7 +2514,6 @@ ul {
     padding: var(--space-12) var(--space-16) var(--space-16);
   }
 }
-
 
 /* Free mode: the list of systems and the traffic editor. */
 
@@ -4257,7 +4259,6 @@ textarea::placeholder {
     display: inline-flex;
   }
 }
-
 
 /* A page under the bar: career, profile. */
 .page {

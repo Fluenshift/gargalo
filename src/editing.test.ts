@@ -1,23 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import {
-  applyRemoval,
-  clampMenu,
-  eventPoint,
-  isEmptyRemoval,
-  planRemoval,
-  pointInRect,
-  pushBounded,
-  removalMessage,
-  undoRemoval,
-} from './editing'
+import { applyRemoval, clampMenu, eventPoint, isEmptyRemoval, planRemoval, pointInRect, pushBounded, removalMessage, undoRemoval } from './editing'
 
-const nodes = [
-  { id: 'client', deletable: false },
-  { id: 'lb' },
-  { id: 's1' },
-  { id: 's2' },
-  { id: 'db' },
-]
+const nodes = [{ id: 'client', deletable: false }, { id: 'lb' }, { id: 's1' }, { id: 's2' }, { id: 'db' }]
 const edges = [
   { id: 'e1', source: 'client', target: 'lb' },
   { id: 'e2', source: 'lb', target: 's1' },

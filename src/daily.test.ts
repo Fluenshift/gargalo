@@ -24,8 +24,15 @@ describe('daily level', () => {
       const { level, reference } = dailyLevel(date)
       for (let seed = 1; seed <= 3; seed++) expect(runLevel(reference, level, seed).summary.passed.all, `${date} seed ${seed}`).toBe(true)
       const lone = {
-        nodes: [{ id: 'client', kind: 'client' as const }, { id: 'server', kind: 'server' as const }, { id: 'db', kind: 'db' as const }],
-        edges: [{ source: 'client', target: 'server' }, { source: 'server', target: 'db' }],
+        nodes: [
+          { id: 'client', kind: 'client' as const },
+          { id: 'server', kind: 'server' as const },
+          { id: 'db', kind: 'db' as const },
+        ],
+        edges: [
+          { source: 'client', target: 'server' },
+          { source: 'server', target: 'db' },
+        ],
       }
       expect(runLevel(lone, level).summary.passed.all, date).toBe(false)
     }

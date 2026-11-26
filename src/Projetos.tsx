@@ -36,7 +36,19 @@ const projectPath = (id: string) => `${PROJETOS_PATH}/${encodeURIComponent(id)}`
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 /** One text field with its action; `submit` returns why the value is refused, or undefined when it was taken. Esc cancels. */
-function NameForm({ label, initial, action, submit, onCancel }: { label: string; initial: string; action: string; submit: (value: string) => string | undefined; onCancel: () => void }) {
+function NameForm({
+  label,
+  initial,
+  action,
+  submit,
+  onCancel,
+}: {
+  label: string
+  initial: string
+  action: string
+  submit: (value: string) => string | undefined
+  onCancel: () => void
+}) {
   const id = useId()
   const [value, setValue] = useState(initial)
   const [problem, setProblem] = useState<string>()
@@ -81,7 +93,17 @@ function NameForm({ label, initial, action, submit, onCancel }: { label: string;
 }
 
 /** The editor for one file of the project; its text is read once, when the file's tab opens. */
-function FileEditor({ path, text, onChange, onView }: { path: string; text: string; onChange: (code: string) => void; onView: (view: EditorView | null) => void }) {
+function FileEditor({
+  path,
+  text,
+  onChange,
+  onView,
+}: {
+  path: string
+  text: string
+  onChange: (code: string) => void
+  onView: (view: EditorView | null) => void
+}) {
   const host = useRef<HTMLDivElement>(null)
   const initial = useRef(text)
   const change = useRef(onChange)
@@ -92,7 +114,12 @@ function FileEditor({ path, text, onChange, onView }: { path: string; text: stri
     const view = new EditorView({
       parent: host.current!,
       doc: initial.current,
-      extensions: codeExtensions({ label: `Código de ${path}`, describedBy: 'projeto-keys', typescript: isScript(path), onChange: (code) => change.current(code) }),
+      extensions: codeExtensions({
+        label: `Código de ${path}`,
+        describedBy: 'projeto-keys',
+        typescript: isScript(path),
+        onChange: (code) => change.current(code),
+      }),
     })
     onView(view)
     return () => {
@@ -339,7 +366,10 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
   // Every request the HTTP client sends leaves a line in the Console, then the project's own logs.
   const record = (method: string, sent: string, outcome: RequestOutcome) => {
     if (outcome.routes) setRoutes(outcome.routes)
-    const head: ConsoleLine = { level: outcome.error ? 'error' : 'log', text: `${method} ${sent} → ${outcome.response?.status ?? 'erro'} · ${Math.round(outcome.ms)} ms` }
+    const head: ConsoleLine = {
+      level: outcome.error ? 'error' : 'log',
+      text: `${method} ${sent} → ${outcome.response?.status ?? 'erro'} · ${Math.round(outcome.ms)} ms`,
+    }
     const error: ConsoleLine[] = outcome.error ? [{ level: 'error', text: outcome.error.message, error: outcome.error }] : []
     setLogs((l) => [...l, head, ...outcome.logs, ...error])
   }
@@ -374,18 +404,42 @@ function ProjectView({ entry }: { entry: ProjectEntry }) {
           Arquivos
         </h3>
         <div className="projeto__file-actions">
-          <button type="button" className="btn btn--ghost btn--small" onClick={(e) => { formOpener.current = e.currentTarget; setForm('new') }}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--small"
+            onClick={(e) => {
+              formOpener.current = e.currentTarget
+              setForm('new')
+            }}
+          >
             Novo arquivo
           </button>
-          <button type="button" className="btn btn--ghost btn--small" onClick={(e) => { formOpener.current = e.currentTarget; setForm('rename') }} disabled={active === ENTRY} title={active === ENTRY ? `${ENTRY} é a entrada do projeto` : undefined}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--small"
+            onClick={(e) => {
+              formOpener.current = e.currentTarget
+              setForm('rename')
+            }}
+            disabled={active === ENTRY}
+            title={active === ENTRY ? `${ENTRY} é a entrada do projeto` : undefined}
+          >
             Renomear
           </button>
-          <button type="button" className="btn btn--ghost btn--small" onClick={remove} disabled={active === ENTRY} title={active === ENTRY ? `${ENTRY} não pode ser apagado` : undefined}>
+          <button
+            type="button"
+            className="btn btn--ghost btn--small"
+            onClick={remove}
+            disabled={active === ENTRY}
+            title={active === ENTRY ? `${ENTRY} não pode ser apagado` : undefined}
+          >
             Apagar
           </button>
         </div>
         {form === 'new' && <NameForm label="Caminho do arquivo" initial="src/routes/" action="Criar" submit={create} onCancel={() => setForm(null)} />}
-        {form === 'rename' && <NameForm label={`Novo caminho de ${active}`} initial={active} action="Renomear" submit={rename} onCancel={() => setForm(null)} />}
+        {form === 'rename' && (
+          <NameForm label={`Novo caminho de ${active}`} initial={active} action="Renomear" submit={rename} onCancel={() => setForm(null)} />
+        )}
         <ul className="projeto__tree" aria-label="Arquivos do projeto">
           {rows.map((r) => (
             <li key={`${r.kind}:${r.path}`} style={{ '--depth': r.depth } as React.CSSProperties}>

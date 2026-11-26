@@ -142,13 +142,7 @@ export function Inspector({
           <h3 id={`${titleId}-region`}>Região</h3>
           <div className="segmented" role="group" aria-labelledby={`${titleId}-region`}>
             {region.choices.map((r) => (
-              <button
-                key={r}
-                type="button"
-                aria-pressed={region.value === r}
-                disabled={!region.editable}
-                onClick={() => region.onChange(r)}
-              >
+              <button key={r} type="button" aria-pressed={region.value === r} disabled={!region.editable} onClick={() => region.onChange(r)}>
                 {REGIONS[r]}
               </button>
             ))}
@@ -160,20 +154,12 @@ export function Inspector({
         <section>
           <h3 id={`${titleId}-balance`}>Como divide</h3>
           {balance.forced ? (
-            <p className="inspector__note">
-              Dividido pelo código: o velho recebe metade. Para escolher o algoritmo, troque a correção no código.
-            </p>
+            <p className="inspector__note">Dividido pelo código: o velho recebe metade. Para escolher o algoritmo, troque a correção no código.</p>
           ) : (
             <>
               <div className="segmented segmented--wrap" role="group" aria-labelledby={`${titleId}-balance`}>
                 {BALANCES.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    aria-pressed={balance.value === b.id}
-                    disabled={!balance.editable}
-                    onClick={() => balance.onChange(b.id)}
-                  >
+                  <button key={b.id} type="button" aria-pressed={balance.value === b.id} disabled={!balance.editable} onClick={() => balance.onChange(b.id)}>
                     {b.label}
                   </button>
                 ))}
@@ -228,29 +214,29 @@ export function Inspector({
               const challenge = onOpenCode ? level.code?.find((c) => c.class === e.class) : undefined
               const fixed = challenge?.options.find((o) => o.id === fixes?.[challenge.id])?.fixes === true
               return (
-              <tbody key={e.class}>
-                <tr>
-                  <th scope="rowgroup" colSpan={4} className="routes__route">
-                    {e.route}
-                  </th>
-                </tr>
-                <tr>
-                  <td>{Math.round(e.share * 1000) / 10}%</td>
-                  <td>{e.cpuMs} ms</td>
-                  <td>{e.queries}</td>
-                  <td>{e.responseKb} kB</td>
-                </tr>
-                {challenge && (
+                <tbody key={e.class}>
                   <tr>
-                    <td colSpan={4} className="routes__code">
-                      <span className="routes__flag">{fixed ? 'código corrigido' : 'código com problema'}</span>
-                      <button type="button" className="btn btn--ghost btn--small" onClick={() => onOpenCode?.(challenge.id)}>
-                        Ver código
-                      </button>
-                    </td>
+                    <th scope="rowgroup" colSpan={4} className="routes__route">
+                      {e.route}
+                    </th>
                   </tr>
-                )}
-              </tbody>
+                  <tr>
+                    <td>{Math.round(e.share * 1000) / 10}%</td>
+                    <td>{e.cpuMs} ms</td>
+                    <td>{e.queries}</td>
+                    <td>{e.responseKb} kB</td>
+                  </tr>
+                  {challenge && (
+                    <tr>
+                      <td colSpan={4} className="routes__code">
+                        <span className="routes__flag">{fixed ? 'código corrigido' : 'código com problema'}</span>
+                        <button type="button" className="btn btn--ghost btn--small" onClick={() => onOpenCode?.(challenge.id)}>
+                          Ver código
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
               )
             })}
           </table>

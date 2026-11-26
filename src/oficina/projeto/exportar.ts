@@ -98,7 +98,9 @@ describe(${JSON.stringify(`Etapa ${index + 1}: ${stage.title}`)}, () => {
 
 /** Checklist items the stage met: all of them with 3 stars; otherwise only the ones the code alone proves (static items). */
 function practices(stage: Stage, stars: number, files: Record<string, string>): string[] {
-  return stage.checklist.filter((ref) => stars >= 3 || (info(ref.id).kind === 'static' && evaluateChecklist([ref], files, [])[0].passed)).map((ref) => info(ref.id).title)
+  return stage.checklist
+    .filter((ref) => stars >= 3 || (info(ref.id).kind === 'static' && evaluateChecklist([ref], files, [])[0].passed))
+    .map((ref) => info(ref.id).title)
 }
 
 function readme(project: Project, ctx: ExportContext, slug: string, done: Stage[]): string {

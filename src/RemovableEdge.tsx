@@ -6,12 +6,30 @@ import { useControlScale, useEditor } from './editorContext'
  * The × in the middle of a selected link, with the label moved under it. Only this follows the
  * zoom, so zooming re-renders the selected link and not every one.
  */
-function SelectedEdge({ id, path, labelX, labelY, label, style, markerEnd, interactionWidth }: { id: string; path: string; labelX: number; labelY: number } & Pick<EdgeProps, 'label' | 'style' | 'markerEnd' | 'interactionWidth'>) {
+function SelectedEdge({
+  id,
+  path,
+  labelX,
+  labelY,
+  label,
+  style,
+  markerEnd,
+  interactionWidth,
+}: { id: string; path: string; labelX: number; labelY: number } & Pick<EdgeProps, 'label' | 'style' | 'markerEnd' | 'interactionWidth'>) {
   const { remove } = useEditor()
   const scale = useControlScale()
   return (
     <>
-      <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} interactionWidth={interactionWidth} label={label} labelX={labelX} labelY={labelY + 26 * scale} />
+      <BaseEdge
+        id={id}
+        path={path}
+        style={style}
+        markerEnd={markerEnd}
+        interactionWidth={interactionWidth}
+        label={label}
+        labelX={labelX}
+        labelY={labelY + 26 * scale}
+      />
       <EdgeLabelRenderer>
         <button
           type="button"
@@ -53,6 +71,8 @@ export function RemovableEdge({
   const { editable } = useEditor()
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
   if (selected && editable && deletable !== false)
-    return <SelectedEdge id={id} path={path} labelX={labelX} labelY={labelY} label={label} style={style} markerEnd={markerEnd} interactionWidth={interactionWidth} />
+    return (
+      <SelectedEdge id={id} path={path} labelX={labelX} labelY={labelY} label={label} style={style} markerEnd={markerEnd} interactionWidth={interactionWidth} />
+    )
   return <BaseEdge id={id} path={path} style={style} markerEnd={markerEnd} interactionWidth={interactionWidth} label={label} labelX={labelX} labelY={labelY} />
 }

@@ -76,7 +76,10 @@ export const stepRequest = (check: RequestCheck): RequestSpec => ({ method: chec
 export const stepTest = (check: RequestCheck): TestCase => ({
   name: `${check.method ?? 'GET'} ${check.path} responde ${check.status}`,
   sequential: true,
-  requests: [...(check.before ?? []), { request: stepRequest(check), expect: { status: check.status, body: check.body, absent: check.absent, maxQueries: check.maxQueries } }],
+  requests: [
+    ...(check.before ?? []),
+    { request: stepRequest(check), expect: { status: check.status, body: check.body, absent: check.absent, maxQueries: check.maxQueries } },
+  ],
 })
 
 /** What a request check's test found wrong, in Portuguese; undefined when it passed. */

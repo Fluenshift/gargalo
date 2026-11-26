@@ -12,7 +12,7 @@ export interface OutLink {
 const CALLS: Partial<Record<Kind, Record<'read' | 'write', string>>> = {
   cache: {
     read: "cache.getOrSet(`produto:${id}`, () => banco.query('SELECT * FROM produtos WHERE id = $1', [id]))",
-    write: "cache.gravar(dados) // o cache repassa a escrita ao banco",
+    write: 'cache.gravar(dados) // o cache repassa a escrita ao banco',
   },
   db: {
     read: "db.query('SELECT * FROM produtos WHERE id = $1', [id])",

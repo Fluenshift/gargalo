@@ -76,7 +76,8 @@ const project = (select: string, notFound: string): Project => ({
   },
 })
 
-const PROBLEM = "Response.json({ type: 'about:blank', title: 'Não encontrado', status: 404 }, { status: 404, headers: { 'Content-Type': 'application/problem+json' } })"
+const PROBLEM =
+  "Response.json({ type: 'about:blank', title: 'Não encontrado', status: 404 }, { status: 404, headers: { 'Content-Type': 'application/problem+json' } })"
 const PLAIN = 'new Response(null, { status: 404 })'
 
 /** What a worker answers: the project's tests run here on a real Postgres. */
@@ -104,14 +105,23 @@ describe('evaluateStage', () => {
     const p = project('SELECT id, nome', PROBLEM)
     const r = evaluateStage(p, stage, await results(p))
     expect(r.tests).toMatchObject([{ name: 'cria e lê pelo Location', passed: true }])
-    expect(r.checklist.map((c) => [c.id, c.passed])).toEqual([['sem-select-estrela', true], ['problem-json', true]])
+    expect(r.checklist.map((c) => [c.id, c.passed])).toEqual([
+      ['sem-select-estrela', true],
+      ['problem-json', true],
+    ])
     expect(r).toMatchObject({ passed: true, stars: 3, xp: XP_PER_LEVEL + 3 * XP_PER_STAR })
   })
 
   it('drops a star per missed half of the checklist, and gives none when a test fails', async () => {
     expect(evaluateStage(project('SELECT *', PROBLEM), stage, await results(project('SELECT *', PROBLEM)))).toMatchObject({ passed: true, stars: 2 })
     expect(evaluateStage(project('SELECT *', PLAIN), stage, await results(project('SELECT *', PLAIN)))).toMatchObject({ passed: true, stars: 1 })
-    const broken: Project = { ...project('SELECT id, nome', PROBLEM), files: { ...project('SELECT id, nome', PROBLEM).files, 'migrations/001_init.sql': 'CREATE TABLE produtos (id serial PRIMARY KEY, nome text, extra int NOT NULL);' } }
+    const broken: Project = {
+      ...project('SELECT id, nome', PROBLEM),
+      files: {
+        ...project('SELECT id, nome', PROBLEM).files,
+        'migrations/001_init.sql': 'CREATE TABLE produtos (id serial PRIMARY KEY, nome text, extra int NOT NULL);',
+      },
+    }
     const r = evaluateStage(broken, stage, await results(broken))
     expect(r).toMatchObject({ passed: false, stars: 0, xp: 0, tests: [{ passed: false }] })
     // A short list of results (the worker died) is a failure, not a pass.
@@ -125,21 +135,31 @@ describe('runStage', () => {
   })
 
   /** A worker that is ready at once and answers each batch of tests with `reply`. */
-  const fakeWorker = (reply: (input: ProjectTestsInput) => TestResult[], posted: WorkerMessage[] = []): StartWorker => (onMessage) => {
-    queueMicrotask(() => onMessage({ ready: true }))
-    return {
-      postMessage: (input) => {
-        posted.push(input)
-        if ('tests' in input && 'project' in input) reply(input).forEach((result, index) => queueMicrotask(() => onMessage({ index, result })))
-      },
-      terminate: () => {},
+  const fakeWorker =
+    (reply: (input: ProjectTestsInput) => TestResult[], posted: WorkerMessage[] = []): StartWorker =>
+    (onMessage) => {
+      queueMicrotask(() => onMessage({ ready: true }))
+      return {
+        postMessage: (input) => {
+          posted.push(input)
+          if ('tests' in input && 'project' in input) reply(input).forEach((result, index) => queueMicrotask(() => onMessage({ index, result })))
+        },
+        terminate: () => {},
+      }
     }
-  }
 
   it('sends the acceptance tests then the checklist tests, with the seed, and judges what comes back', async () => {
     const posted: WorkerMessage[] = []
     const p = project('SELECT id, nome', PROBLEM)
-    const start = fakeWorker((input) => input.tests.map((t) => ({ name: t.name, passed: true, responses: [{ status: 404, headers: { 'content-type': 'application/problem+json' }, body: { type: 'x', title: 'y', status: 404 } }] })), posted)
+    const start = fakeWorker(
+      (input) =>
+        input.tests.map((t) => ({
+          name: t.name,
+          passed: true,
+          responses: [{ status: 404, headers: { 'content-type': 'application/problem+json' }, body: { type: 'x', title: 'y', status: 404 } }],
+        })),
+      posted,
+    )
     const r = await runStage(p, { ...stage, seed: 'SELECT 1' }, start)
     expect(posted).toMatchObject([{ project: p, seed: 'SELECT 1', tests: [{ name: 'cria e lê pelo Location' }, { name: 'checklist:problem-json' }] }])
     expect(r).toMatchObject({ passed: true, stars: 3 })
@@ -219,12 +239,18 @@ describe('guided steps', () => {
   it('a file check ignores spaces and quote style, and says what is missing', () => {
     const files = { 'src/index.ts': 'app.route( "/ola",ola )' }
     expect(missingInFile(files, { kind: 'file', path: 'src/index.ts', contains: ["app.route('/ola', ola)"] })).toBeUndefined()
-    expect(missingInFile(files, { kind: 'file', path: 'src/index.ts', contains: ['app.notFound(', 'app.onError('] })).toBe('Em src/index.ts ainda falta: app.notFound( · app.onError(')
+    expect(missingInFile(files, { kind: 'file', path: 'src/index.ts', contains: ['app.notFound(', 'app.onError('] })).toBe(
+      'Em src/index.ts ainda falta: app.notFound( · app.onError(',
+    )
     expect(missingInFile(files, { kind: 'file', path: 'src/http.ts' })).toBe('Falta criar src/http.ts.')
   })
 
   it('a request check becomes one sequential acceptance test: its steps before, then its request, GET by default', () => {
-    expect(stepTest({ kind: 'request', path: '/nada', status: 404 })).toEqual({ name: 'GET /nada responde 404', sequential: true, requests: [{ request: { method: undefined, path: '/nada' }, expect: { status: 404 } }] })
+    expect(stepTest({ kind: 'request', path: '/nada', status: 404 })).toEqual({
+      name: 'GET /nada responde 404',
+      sequential: true,
+      requests: [{ request: { method: undefined, path: '/nada' }, expect: { status: 404 } }],
+    })
     const login: TestStep = { request: { method: 'POST', path: '/login', body: { email: 'a@b.c' } }, save: { token: 'body.token' } }
     const check: RequestCheck = {
       kind: 'request',
@@ -238,7 +264,10 @@ describe('guided steps', () => {
       before: [login],
     }
     expect(stepRequest(check)).toEqual({ method: 'POST', path: '/pedidos', body: { itens: [] }, headers: { Authorization: 'Bearer {{token}}' } })
-    expect(stepTest(check).requests).toEqual([login, { request: stepRequest(check), expect: { status: 201, body: { id: 1 }, absent: ['senha'], maxQueries: 2 } }])
+    expect(stepTest(check).requests).toEqual([
+      login,
+      { request: stepRequest(check), expect: { status: 201, body: { id: 1 }, absent: ['senha'], maxQueries: 2 } },
+    ])
   })
 
   /** What the worker does for "Conferir passo", here on the file's Postgres. */
@@ -263,12 +292,18 @@ describe('guided steps', () => {
       before: [{ request: { method: 'POST', path: '/produtos', body: { nome: 'Caneta' } }, expect: { status: 201 }, save: { id: 'body.id' } }],
     }
     expect(await checkStep(p, flow, undefined, onPg)).toBeUndefined()
-    expect(await checkStep(p, { ...flow, absent: ['NOME'] }, undefined, onPg)).toBe('Requisição 2 (GET /produtos/1): A resposta traz o campo nome, que não pode sair.')
-    expect(await checkStep(p, { ...flow, maxQueries: 0 }, undefined, onPg)).toBe('Requisição 2 (GET /produtos/1): A requisição fez 1 consulta ao banco; o máximo é 0.')
+    expect(await checkStep(p, { ...flow, absent: ['NOME'] }, undefined, onPg)).toBe(
+      'Requisição 2 (GET /produtos/1): A resposta traz o campo nome, que não pode sair.',
+    )
+    expect(await checkStep(p, { ...flow, maxQueries: 0 }, undefined, onPg)).toBe(
+      'Requisição 2 (GET /produtos/1): A requisição fez 1 consulta ao banco; o máximo é 0.',
+    )
     expect(await checkStep(p, { ...flow, before: [{ ...flow.before![0], expect: { status: 200 } }] }, undefined, onPg)).toBe(
       'Requisição 1 (POST /produtos): Status diferente do esperado. Esperado 200, veio 201.',
     )
-    expect(await checkStep(p, { kind: 'request', path: '/produtos/99', status: 200 }, undefined, onPg)).toBe('Status diferente do esperado. Esperado 200, veio 404.')
+    expect(await checkStep(p, { kind: 'request', path: '/produtos/99', status: 200 }, undefined, onPg)).toBe(
+      'Status diferente do esperado. Esperado 200, veio 404.',
+    )
   })
 
   it('a failed result without a message still says something', () => {

@@ -24,7 +24,10 @@ describe('buildOpenApi', () => {
   it('attaches a tested request to its route: status and JSON example', () => {
     const doc = buildOpenApi({
       title: 'x',
-      routes: [{ method: 'POST', path: '/produtos' }, { method: 'GET', path: '/produtos/:id' }],
+      routes: [
+        { method: 'POST', path: '/produtos' },
+        { method: 'GET', path: '/produtos/:id' },
+      ],
       requests: [req({ method: 'POST', path: '/produtos?a=1', body: '{"nome":"vela"}', status: 201 }), req({ path: '/produtos/7', status: 404 })],
     })
     expect(doc.paths['/produtos'].post.requestBody?.content['application/json'].example).toEqual({ nome: 'vela' })
@@ -36,7 +39,11 @@ describe('buildOpenApi', () => {
   it('derives paths from requests alone (fetch puro), text bodies and own content-type', () => {
     const doc = buildOpenApi({
       title: 'x',
-      requests: [req({ path: 'ping', status: 200 }), req({ method: 'PUT', path: '/t', body: 'oi', headers: 'Content-Type: text/csv' }), req({ method: 'PUT', path: '/u', body: 'oi', headers: 'ruim' })],
+      requests: [
+        req({ path: 'ping', status: 200 }),
+        req({ method: 'PUT', path: '/t', body: 'oi', headers: 'Content-Type: text/csv' }),
+        req({ method: 'PUT', path: '/u', body: 'oi', headers: 'ruim' }),
+      ],
     })
     expect(doc.paths['/ping'].get.responses[200]).toBeDefined()
     expect(doc.paths['/t'].put.requestBody?.content['text/csv'].example).toBe('oi')
@@ -45,7 +52,15 @@ describe('buildOpenApi', () => {
 
   it('helpers', () => {
     expect(templateOf('/a/:id{[0-9]+}/b')).toBe('/a/{id}/b')
-    expect(requestsOf([{ ...req({ path: '/1' }), ms: 1, at: 1 }, { ...req({ path: '/2' }), ms: 1, at: 2 }], [req({ path: '/s' })]).map((r) => r.path)).toEqual(['/1', '/2', '/s'])
+    expect(
+      requestsOf(
+        [
+          { ...req({ path: '/1' }), ms: 1, at: 1 },
+          { ...req({ path: '/2' }), ms: 1, at: 2 },
+        ],
+        [req({ path: '/s' })],
+      ).map((r) => r.path),
+    ).toEqual(['/1', '/2', '/s'])
     expect(stringify(buildOpenApi({ title: 'x', requests: [] }))).toContain('"paths": {}')
   })
 })

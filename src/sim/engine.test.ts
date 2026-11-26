@@ -2,7 +2,21 @@ import { describe, expect, it } from 'vitest'
 import { BLACK_FRIDAY, ESTREIA_DE_SERIE, LEVELS, STARTUP_LEGACY } from '../levels'
 import { latencyPercentiles, mulberry32, retryOutcome, runLevel, simulateTick } from './engine'
 import type { TickResult } from './engine'
-import { PROTOCOLS, QUEUE_MAX_BACKLOG, REGION_RTT_MS, REPLICA_BASE_LAG_MS, LIMITER_HEADROOM, PER_CLIENT_LIMIT, SPECS, balanceOf, canConnect, canSetBalance, connectRefusal, instanceCapacity, protocolRefusal } from './model'
+import {
+  PROTOCOLS,
+  QUEUE_MAX_BACKLOG,
+  REGION_RTT_MS,
+  REPLICA_BASE_LAG_MS,
+  LIMITER_HEADROOM,
+  PER_CLIENT_LIMIT,
+  SPECS,
+  balanceOf,
+  canConnect,
+  canSetBalance,
+  connectRefusal,
+  instanceCapacity,
+  protocolRefusal,
+} from './model'
 import type { ArchEdge, Architecture, CodeChallenge, Kind, Level, Protocol, Region, Spec } from './model'
 
 /** Builds an architecture from `kind#n` names, e.g. chain('client', 'server#1'). */
@@ -37,7 +51,15 @@ const byId = (id: string) => LEVELS.find((l) => l.id === id)!
 
 describe('simulateTick', () => {
   it('drops the load above a node capacity', () => {
-    const tick = simulateTick(arch([['client', 'server'], ['server', 'db']]), steady, 0, mulberry32(1))
+    const tick = simulateTick(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      steady,
+      0,
+      mulberry32(1),
+    )
     expect(tick.nodes.server.dropRate).toBeCloseTo(0.5)
     expect(tick.nodes.server.lost).toBeCloseTo(400)
     expect(tick.failed.overload).toBeCloseTo(400 + 0) // server drops 400; db gets 400 < 1000
@@ -61,7 +83,11 @@ describe('simulateTick', () => {
 
   it('cache absorbs reads before the database', () => {
     const tick = simulateTick(
-      arch([['client', 'server'], ['server', 'cache'], ['cache', 'db']]),
+      arch([
+        ['client', 'server'],
+        ['server', 'cache'],
+        ['cache', 'db'],
+      ]),
       { ...steady, traffic: [{ from: 0, rps: 300 }] },
       0,
       mulberry32(1),
@@ -70,8 +96,24 @@ describe('simulateTick', () => {
   })
 
   it('latency grows with utilization', () => {
-    const light = simulateTick(arch([['client', 'server'], ['server', 'db']]), { ...steady, traffic: [{ from: 0, rps: 100 }] }, 0, mulberry32(1))
-    const heavy = simulateTick(arch([['client', 'server'], ['server', 'db']]), { ...steady, traffic: [{ from: 0, rps: 380 }] }, 0, mulberry32(1))
+    const light = simulateTick(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      { ...steady, traffic: [{ from: 0, rps: 100 }] },
+      0,
+      mulberry32(1),
+    )
+    const heavy = simulateTick(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      { ...steady, traffic: [{ from: 0, rps: 380 }] },
+      0,
+      mulberry32(1),
+    )
     expect(heavy.p99Ms).toBeGreaterThan(light.p99Ms * 2)
   })
 
@@ -92,7 +134,10 @@ describe('latency percentiles', () => {
   })
 
   it('are ordered in every second and for the run', () => {
-    const a = arch([['client', 'server'], ['server', 'db']])
+    const a = arch([
+      ['client', 'server'],
+      ['server', 'db'],
+    ])
     const { ticks, summary } = runLevel(a, steady, 3)
     for (const p of [...ticks, summary]) {
       expect(p.p50Ms).toBeGreaterThan(0)
@@ -103,7 +148,10 @@ describe('latency percentiles', () => {
   })
 
   it('gives each node its mean latency, growing with utilization', () => {
-    const a = arch([['client', 'server'], ['server', 'db']])
+    const a = arch([
+      ['client', 'server'],
+      ['server', 'db'],
+    ])
     const light = simulateTick(a, { ...steady, traffic: [{ from: 0, rps: 40 }] }, 0, mulberry32(1))
     const heavy = simulateTick(a, { ...steady, traffic: [{ from: 0, rps: 380 }] }, 0, mulberry32(1))
     expect(light.nodes.server.latencyMs).toBeGreaterThanOrEqual(SPECS.server.baseLatencyMs)
@@ -133,11 +181,22 @@ describe('custom pieces', () => {
     ...steady,
     durationS: 2,
     mix: { static: 0, read: 0, write: 1 },
-    traffic: [{ from: 0, rps: 300 }, { from: 1, rps: 0 }],
+    traffic: [
+      { from: 0, rps: 300 },
+      { from: 1, rps: 0 },
+    ],
   }
 
   it('runs through the engine and carries load to the next second', () => {
-    const { ticks, summary } = runLevel(arch([['client', 'buffer'], ['buffer', 'db']]), burst, 1, { ...SPECS, buffer })
+    const { ticks, summary } = runLevel(
+      arch([
+        ['client', 'buffer'],
+        ['buffer', 'db'],
+      ]),
+      burst,
+      1,
+      { ...SPECS, buffer },
+    )
     expect(ticks[0].nodes.db.load).toBeCloseTo(200)
     expect(ticks[1].nodes.db.load).toBeCloseTo(100)
     expect(summary.failed.overload).toBe(0)
@@ -161,7 +220,11 @@ describe('message queue and workers', () => {
     traffic,
   })
   // 10 s at three times the usual writes, then back to normal.
-  const spike = writes([{ from: 0, rps: 600 }, { from: 10, rps: 1800 }, { from: 20, rps: 600 }])
+  const spike = writes([
+    { from: 0, rps: 600 },
+    { from: 10, rps: 1800 },
+    { from: 20, rps: 600 },
+  ])
 
   it('absorbs a write spike the database alone would drop', () => {
     const direct = runLevel(fanOut(5, 'db', [['client', 'lb']]), spike)
@@ -218,7 +281,13 @@ describe('message queue and workers', () => {
   it('takes only writes; reads keep going to the database', () => {
     const level: Level = { ...steady, mix: { static: 0, read: 0.5, write: 0.5 }, traffic: [{ from: 0, rps: 300 }] }
     const tick = simulateTick(
-      arch([['client', 'server'], ['server', 'db'], ['server', 'queue'], ['queue', 'worker'], ['worker', 'db']]),
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+        ['server', 'queue'],
+        ['queue', 'worker'],
+        ['worker', 'db'],
+      ]),
       level,
       0,
       mulberry32(1),
@@ -276,10 +345,21 @@ describe('read replicas', () => {
     const level: Level = {
       ...steady,
       mix: { static: 0, read: 0.85, write: 0.15 },
-      traffic: [{ from: 0, rps: 1300 }, { from: 5, rps: 0 }],
+      traffic: [
+        { from: 0, rps: 1300 },
+        { from: 5, rps: 0 },
+      ],
       nodeTweaks: [{ id: 'server', capacity: 100_000 }],
     }
-    const { ticks, summary } = runLevel(arch([['client', 'server'], ['server', 'replica'], ['server', 'db'], ['db', 'replica']]), level)
+    const { ticks, summary } = runLevel(
+      arch([
+        ['client', 'server'],
+        ['server', 'replica'],
+        ['server', 'db'],
+        ['db', 'replica'],
+      ]),
+      level,
+    )
     // Too busy with reads to apply the writes, it catches up once the traffic stops.
     expect(ticks[5].nodes.replica.load).toBeGreaterThan(0)
     expect(ticks[5].served).toBe(0)
@@ -301,7 +381,13 @@ describe('read replicas', () => {
   })
 
   it('cache misses go to the replicas, cache writes to the primary', () => {
-    const a = arch([['client', 'server'], ['server', 'cache'], ['cache', 'db'], ['cache', 'replica'], ['db', 'replica']])
+    const a = arch([
+      ['client', 'server'],
+      ['server', 'cache'],
+      ['cache', 'db'],
+      ['cache', 'replica'],
+      ['db', 'replica'],
+    ])
     const tick = simulateTick(a, mixed(300, 0.5), 0, mulberry32(1))
     expect(tick.edges['cache->replica']).toBeCloseTo(150 * 0.15)
     expect(tick.edges['cache->db']).toBeCloseTo(150)
@@ -352,7 +438,10 @@ describe('rate limiter', () => {
     ],
   }
   const unprotected = fanOut(2, 'db', [['client', 'lb']])
-  const limited = fanOut(2, 'db', [['client', 'limiter'], ['limiter', 'lb']])
+  const limited = fanOut(2, 'db', [
+    ['client', 'limiter'],
+    ['limiter', 'lb'],
+  ])
 
   it('turns a spike into fast 429s instead of overloaded servers', () => {
     const without = runLevel(unprotected, spike).summary
@@ -391,7 +480,15 @@ describe('rate limiter', () => {
 describe('bot traffic', () => {
   it('a 429 to the bot is no failure for the users behind a retrying link or a breaker', () => {
     const level = byId('bot-de-precos')
-    const design = (policy: Partial<ArchEdge>) => extend(STARTUP_LEGACY, [['cdn', 'limiter', policy], ['limiter', 'lb']], [['cdn', 'lb']])
+    const design = (policy: Partial<ArchEdge>) =>
+      extend(
+        STARTUP_LEGACY,
+        [
+          ['cdn', 'limiter', policy],
+          ['limiter', 'lb'],
+        ],
+        [['cdn', 'lb']],
+      )
     const plain = runLevel(design({}), level).summary
     for (const policy of [{ retries: 1 }, { breaker: true }]) {
       const guarded = runLevel(design(policy), level).summary
@@ -414,8 +511,17 @@ describe('bot traffic', () => {
   })
 
   it('a per-client limit at the gateway or the rate limiter keeps the bot out', () => {
-    const gateway = arch([['client', 'gateway'], ['gateway', 'server#0'], ['gateway', 'server#1'], ['server#0', 'db'], ['server#1', 'db']])
-    const limiter = fanOut(2, 'db', [['client', 'limiter'], ['limiter', 'lb']])
+    const gateway = arch([
+      ['client', 'gateway'],
+      ['gateway', 'server#0'],
+      ['gateway', 'server#1'],
+      ['server#0', 'db'],
+      ['server#1', 'db'],
+    ])
+    const limiter = fanOut(2, 'db', [
+      ['client', 'limiter'],
+      ['limiter', 'lb'],
+    ])
     for (const a of [gateway, limiter]) {
       const { summary, ticks } = runLevel(a, scraped)
       expect(summary.availability).toBe(1)
@@ -425,7 +531,11 @@ describe('bot traffic', () => {
   })
 
   it('reads like a user read: the cache answers most of it', () => {
-    const cached = arch([['client', 'server'], ['server', 'cache'], ['cache', 'db']])
+    const cached = arch([
+      ['client', 'server'],
+      ['server', 'cache'],
+      ['cache', 'db'],
+    ])
     const tick = simulateTick(cached, { ...scraped, traffic: [{ from: 0, rps: 0 }], bot: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
     expect(tick.nodes.db.load).toBeCloseTo(300 * 0.15)
   })
@@ -606,7 +716,14 @@ describe('regions', () => {
   })
   /** One stack per region behind a geographic DNS: lb → 3 servers → cache; reads end on the primary in São Paulo or a local replica. */
   const twoRegions = (): Architecture => {
-    const edges: [string, string][] = [['client', 'dns'], ['dns', 'lb#sa'], ['dns', 'lb#us'], ['cache#sa', 'db'], ['cache#us', 'replica#us'], ['db', 'replica#us']]
+    const edges: [string, string][] = [
+      ['client', 'dns'],
+      ['dns', 'lb#sa'],
+      ['dns', 'lb#us'],
+      ['cache#sa', 'db'],
+      ['cache#us', 'replica#us'],
+      ['db', 'replica#us'],
+    ]
     for (const r of ['sa', 'us']) for (let i = 0; i < 3; i++) edges.push([`lb#${r}`, `server#${r}${i}`], [`server#${r}${i}`, `cache#${r}`])
     const a = arch(edges)
     const us = a.nodes.filter((n) => n.id.includes('#us')).map((n) => n.id)
@@ -615,10 +732,29 @@ describe('regions', () => {
   const reads: Level = { ...steady, durationS: 30, traffic: [{ from: 0, rps: 800 }], users: { sa: 0.5, us: 0.5 } }
 
   it('a call across regions pays the round trip', () => {
-    const local = runLevel(arch([['client', 'server'], ['server', 'db']]), steady).summary
-    const far = runLevel(arch([['client', 'server'], ['server', 'db']]), { ...steady, users: { eu: 1 } }).summary
+    const local = runLevel(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      steady,
+    ).summary
+    const far = runLevel(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      { ...steady, users: { eu: 1 } },
+    ).summary
     expect(far.p50Ms - local.p50Ms).toBeCloseTo(REGION_RTT_MS.eu.sa, -1)
-    const split = placed(arch([['client', 'server'], ['server', 'db']]), 'us', ['db'])
+    const split = placed(
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+      'us',
+      ['db'],
+    )
     expect(runLevel(split, steady).summary.p50Ms - local.p50Ms).toBeCloseTo(REGION_RTT_MS.sa.us, -1)
   })
 
@@ -626,8 +762,14 @@ describe('regions', () => {
     const tick = runLevel(twoRegions(), reads).ticks[0]
     expect(tick.nodes['lb#sa'].load).toBeCloseTo(400)
     expect(tick.nodes['lb#us'].load).toBeCloseTo(400)
-    const oneRegion = placed(twoRegions(), 'sa', twoRegions().nodes.map((n) => n.id))
-    expect(runLevel(twoRegions(), reads).summary.p99Ms).toBeLessThan(runLevel({ ...oneRegion, edges: oneRegion.edges }, { ...reads, users: { us: 1 } }).summary.p99Ms)
+    const oneRegion = placed(
+      twoRegions(),
+      'sa',
+      twoRegions().nodes.map((n) => n.id),
+    )
+    expect(runLevel(twoRegions(), reads).summary.p99Ms).toBeLessThan(
+      runLevel({ ...oneRegion, edges: oneRegion.edges }, { ...reads, users: { us: 1 } }).summary.p99Ms,
+    )
   })
 
   it('fails over when a whole region goes dark', () => {
@@ -637,13 +779,21 @@ describe('regions', () => {
     expect(ticks[15].nodes['lb#us'].load).toBeCloseTo(800)
     expect(summary.passed.availability).toBe(true)
     // Everything in one region: the outage takes the whole site down.
-    const single = fanOut(3, 'cache', [['client', 'lb'], ['cache', 'db']])
+    const single = fanOut(3, 'cache', [
+      ['client', 'lb'],
+      ['cache', 'db'],
+    ])
     expect(runLevel(single, outage).summary.passed.availability).toBe(false)
   })
 
   it('without a DNS, every user goes to the one place the users point at', () => {
     const outage: Level = { ...reads, regionOutages: [{ region: 'sa', from: 10, to: 20 }] }
-    const a = { ...twoRegions(), edges: twoRegions().edges.map((e) => (e.source === 'client' ? { ...e, target: 'lb#sa' } : e)).filter((e) => e.source !== 'dns') }
+    const a = {
+      ...twoRegions(),
+      edges: twoRegions()
+        .edges.map((e) => (e.source === 'client' ? { ...e, target: 'lb#sa' } : e))
+        .filter((e) => e.source !== 'dns'),
+    }
     expect(runLevel(a, outage).summary.passed.availability).toBe(false)
   })
 })
@@ -654,7 +804,10 @@ describe('protocols', () => {
     ...a,
     edges: a.edges.map((e) => (e.source.split('#')[0] === from ? { ...e, protocol } : e)),
   })
-  const shop = fanOut(4, 'db', [['client', 'cdn'], ['cdn', 'lb']])
+  const shop = fanOut(4, 'db', [
+    ['client', 'cdn'],
+    ['cdn', 'lb'],
+  ])
   const site: Level = { ...steady, mix: { static: 0.3, read: 0.6, write: 0.1 }, traffic: [{ from: 0, rps: 600 }] }
 
   it('REST is what every link speaks when none is set', () => {
@@ -678,7 +831,15 @@ describe('protocols', () => {
   })
 
   it('GraphQL answers reads in fewer round trips', () => {
-    const direct = arch([['client', 'lb'], ['lb', 'server#0'], ['lb', 'server#1'], ['lb', 'server#2'], ['server#0', 'db'], ['server#1', 'db'], ['server#2', 'db']])
+    const direct = arch([
+      ['client', 'lb'],
+      ['lb', 'server#0'],
+      ['lb', 'server#1'],
+      ['lb', 'server#2'],
+      ['server#0', 'db'],
+      ['server#1', 'db'],
+      ['server#2', 'db'],
+    ])
     const rest = runLevel(direct, site).summary
     const graphql = runLevel(speak(direct, 'client', 'graphql'), site).summary
     expect(graphql.p50Ms).toBeLessThan(rest.p50Ms)
@@ -726,21 +887,13 @@ describe('connectRefusal', () => {
 })
 
 /** `start` plus `edges` (new pieces named `kind#n`), minus the `drop` edges. */
-function extend(
-  start: Architecture,
-  edges: [string, string, Partial<ArchEdge>?][],
-  drop: [string, string][] = [],
-  dropNodes: string[] = [],
-): Architecture {
+function extend(start: Architecture, edges: [string, string, Partial<ArchEdge>?][], drop: [string, string][] = [], dropNodes: string[] = []): Architecture {
   const nodes = start.nodes.filter((n) => !dropNodes.includes(n.id))
-  for (const [a, b] of edges)
-    for (const id of [a, b]) if (!nodes.some((n) => n.id === id)) nodes.push({ id, kind: id.split('#')[0] as Kind })
+  for (const [a, b] of edges) for (const id of [a, b]) if (!nodes.some((n) => n.id === id)) nodes.push({ id, kind: id.split('#')[0] as Kind })
   return {
     nodes,
     edges: [
-      ...start.edges.filter(
-        (e) => !drop.some(([s, t]) => s === e.source && t === e.target) && !dropNodes.includes(e.source) && !dropNodes.includes(e.target),
-      ),
+      ...start.edges.filter((e) => !drop.some(([s, t]) => s === e.source && t === e.target) && !dropNodes.includes(e.source) && !dropNodes.includes(e.target)),
       ...edges.map(([source, target, p]) => ({ source, target, ...p })),
     ],
   }
@@ -762,8 +915,14 @@ const europe = () =>
     extend(
       STARTUP_LEGACY,
       [
-        ['client', 'dns'], ['dns', 'cdn'], ['dns', 'cdn#eu'], ['cdn#eu', 'lb#eu'], ...servers(3, ['cache#eu'], 'lb#eu', 'eu'),
-        ['cache#eu', 'replica#eu'], ['cache#eu', 'db'], ['db', 'replica#eu'],
+        ['client', 'dns'],
+        ['dns', 'cdn'],
+        ['dns', 'cdn#eu'],
+        ['cdn#eu', 'lb#eu'],
+        ...servers(3, ['cache#eu'], 'lb#eu', 'eu'),
+        ['cache#eu', 'replica#eu'],
+        ['cache#eu', 'db'],
+        ['db', 'replica#eu'],
       ],
       [['client', 'cdn']],
     ),
@@ -777,8 +936,15 @@ const monthEnd = (primary: Region, us: number) =>
       extend(
         STARTUP_LEGACY,
         [
-          ['client', 'dns'], ['dns', 'cdn'], ['dns', 'cdn#us'], ['cdn#us', 'lb#us'], ...servers(us, ['cache#us'], 'lb#us', 'us'),
-          ['cache#us', 'db'], ...servers(2, ['cache'], 'lb', 'sa'), ['cache', 'replica#sa'], ['db', 'replica#sa'],
+          ['client', 'dns'],
+          ['dns', 'cdn'],
+          ['dns', 'cdn#us'],
+          ['cdn#us', 'lb#us'],
+          ...servers(us, ['cache#us'], 'lb#us', 'us'),
+          ['cache#us', 'db'],
+          ...servers(2, ['cache'], 'lb', 'sa'),
+          ['cache', 'replica#sa'],
+          ['db', 'replica#sa'],
         ],
         [['client', 'cdn']],
       ),
@@ -788,12 +954,25 @@ const monthEnd = (primary: Region, us: number) =>
     primary,
     (id) => id === 'db',
   )
-const legacyTo = (target: string): [string, string][] =>
-  STARTUP_LEGACY.nodes.filter((n) => n.kind === 'server').map((n) => [n.id, target])
+const legacyTo = (target: string): [string, string][] => STARTUP_LEGACY.nodes.filter((n) => n.kind === 'server').map((n) => [n.id, target])
 const workers = (n: number): [string, string][] =>
-  Array.from({ length: n }, (_, i) => [['queue', `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
+  Array.from(
+    { length: n },
+    (_, i) =>
+      [
+        ['queue', `worker#${i}`],
+        [`worker#${i}`, 'db'],
+      ] as [string, string][],
+  ).flat()
 const replicas = (n: number): [string, string][] =>
-  Array.from({ length: n }, (_, i) => [['cache', `replica#${i}`], ['db', `replica#${i}`]] as [string, string][]).flat()
+  Array.from(
+    { length: n },
+    (_, i) =>
+      [
+        ['cache', `replica#${i}`],
+        ['db', `replica#${i}`],
+      ] as [string, string][],
+  ).flat()
 const paymentPolicy = (a: Architecture, policy: Partial<ArchEdge>): Architecture => ({
   ...a,
   edges: a.edges.map((e) => (e.target === 'payment' ? { source: e.source, target: e.target, ...policy } : e)),
@@ -812,18 +991,32 @@ function blackFriday(limiter: boolean): Architecture {
 
 /** The legacy servers publishing to a topic (or a queue) with `n` workers behind it, under the code option `fix`. */
 function publishing(fix: string, n: number, via: 'topic' | 'queue' = 'topic'): Architecture {
-  const subscribers = Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat()
+  const subscribers = Array.from(
+    { length: n },
+    (_, i) =>
+      [
+        [via, `worker#${i}`],
+        [`worker#${i}`, 'db'],
+      ] as [string, string][],
+  ).flat()
   return { ...extend(STARTUP_LEGACY, [...legacyTo(via), ...subscribers]), fixes: { 'chamadas-encadeadas': fix } }
 }
 /** The search level's drawing with `n` indexes, each subscribed to the topic and searched by every server. */
 const searchIndexes = (n: number) => {
   const ids = Array.from({ length: n }, (_, i) => (i === 0 ? 'search' : `search#${i}`))
-  return extend(byId('busca-nao-acha').start!, ids.flatMap((id) => [['topic', id] as [string, string], ...legacyTo(id)]))
+  return extend(
+    byId('busca-nao-acha').start!,
+    ids.flatMap((id) => [['topic', id] as [string, string], ...legacyTo(id)]),
+  )
 }
 /** Users, a CDN pulling from object storage, `servers` servers searching `indexes` indexes fed by the storage's topic. */
 function premiere(servers: number, indexes: number, fed = true): Architecture {
   const idx = Array.from({ length: indexes }, (_, i) => `search#${i}`)
-  const edges: [string, string][] = [['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'lb']]
+  const edges: [string, string][] = [
+    ['client', 'cdn'],
+    ['cdn', 'storage'],
+    ['cdn', 'lb'],
+  ]
   for (let i = 0; i < servers; i++) edges.push(['lb', `server#${i}`], ...idx.map((s) => [`server#${i}`, s] as [string, string]))
   if (fed) edges.push(['storage', 'topic'], ...idx.map((s) => ['topic', s] as [string, string]))
   return arch(edges)
@@ -835,23 +1028,89 @@ describe('levels', () => {
     ['colocar-no-ar', false, arch([['client', 'server']])],
     // Built for traffic that has not come yet: over the budget.
     ['colocar-no-ar', false, fanOut(2, 'db', [['client', 'lb']])],
-    ['colocar-no-ar', true, arch([['client', 'server'], ['server', 'db']])],
-    ['primeiro-deploy', false, arch([['client', 'server'], ['server', 'db']])],
+    [
+      'colocar-no-ar',
+      true,
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+    ],
+    [
+      'primeiro-deploy',
+      false,
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+    ],
     ['primeiro-deploy', true, fanOut(4, 'db', [['client', 'lb']])],
     ['banco-nao-aguenta', false, fanOut(6, 'db', [['client', 'lb']])],
-    ['banco-nao-aguenta', true, fanOut(7, 'cache', [['client', 'lb'], ['cache', 'db']])],
+    [
+      'banco-nao-aguenta',
+      true,
+      fanOut(7, 'cache', [
+        ['client', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
     // Servers for the images: as many as the budget pays still drop half the traffic.
-    ['imagens-pesadas', false, fanOut(4, 'cache', [['client', 'lb'], ['cache', 'db']])],
-    ['imagens-pesadas', true, fanOut(4, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    [
+      'imagens-pesadas',
+      false,
+      fanOut(4, 'cache', [
+        ['client', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
+    [
+      'imagens-pesadas',
+      true,
+      fanOut(4, 'cache', [
+        ['client', 'cdn'],
+        ['cdn', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
     // One server, alone or behind a balancer, is a single point of failure.
-    ['caiu-de-madrugada', false, arch([['client', 'server'], ['server', 'db']])],
+    [
+      'caiu-de-madrugada',
+      false,
+      arch([
+        ['client', 'server'],
+        ['server', 'db'],
+      ]),
+    ],
     ['caiu-de-madrugada', false, fanOut(1, 'db', [['client', 'lb']])],
     ['caiu-de-madrugada', true, fanOut(2, 'db', [['client', 'lb']])],
     // Six servers hold the peak, but when one falls the other five run too hot.
-    ['materia-na-tv', false, fanOut(6, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    [
+      'materia-na-tv',
+      false,
+      fanOut(6, 'cache', [
+        ['client', 'cdn'],
+        ['cdn', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
     // No CDN: the images alone sink the servers.
-    ['materia-na-tv', false, fanOut(9, 'cache', [['client', 'lb'], ['cache', 'db']])],
-    ['materia-na-tv', true, fanOut(7, 'cache', [['client', 'cdn'], ['cdn', 'lb'], ['cache', 'db']])],
+    [
+      'materia-na-tv',
+      false,
+      fanOut(9, 'cache', [
+        ['client', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
+    [
+      'materia-na-tv',
+      true,
+      fanOut(7, 'cache', [
+        ['client', 'cdn'],
+        ['cdn', 'lb'],
+        ['cache', 'db'],
+      ]),
+    ],
     // Out of the career until the E-commerce company (#15); kept tuned for it.
     // E-commerce, all starting from what the Startup left.
     // Orders waiting on the database: more servers do not help, a queue with workers does.
@@ -863,7 +1122,18 @@ describe('levels', () => {
     ['catalogo-gigante', true, extend(STARTUP_LEGACY, [...servers(2), ...replicas(2)])],
     // The bot: servers cannot outgrow it, a per-client limit stops it.
     ['bot-de-precos', false, extend(STARTUP_LEGACY, servers(4))],
-    ['bot-de-precos', true, extend(STARTUP_LEGACY, [['cdn', 'limiter'], ['limiter', 'lb']], [['cdn', 'lb']])],
+    [
+      'bot-de-precos',
+      true,
+      extend(
+        STARTUP_LEGACY,
+        [
+          ['cdn', 'limiter'],
+          ['limiter', 'lb'],
+        ],
+        [['cdn', 'lb']],
+      ),
+    ],
     // The legacy three retries without backoff turn each payment outage into a storm.
     ['pagamento-instavel', false, byId('pagamento-instavel').start!],
     ['pagamento-instavel', true, paymentPolicy(byId('pagamento-instavel').start!, { retries: 1 })],
@@ -1050,7 +1320,13 @@ describe('balancing strategy', () => {
   it('ignores the setting until the code lets the player choose', () => {
     const locked = simulateTick(leastConn('other'), old, 0, mulberry32(1))
     expect(locked.nodes['server#0'].load).toBeCloseTo(250)
-    expect(balanceOf(leastConn('other').nodes.find((n) => n.kind === 'lb')!, old, { lb: 'other' })).toBe('round-robin')
+    expect(
+      balanceOf(
+        leastConn('other').nodes.find((n) => n.kind === 'lb')!,
+        old,
+        { lb: 'other' },
+      ),
+    ).toBe('round-robin')
     expect(canSetBalance(old, { lb: 'strategy' })).toBe(true)
     expect(canSetBalance(old, undefined)).toBe(false)
   })
@@ -1173,7 +1449,12 @@ describe('object storage', () => {
   })
 
   it('takes the files and uploads off the servers; API reads still reach them', () => {
-    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db']])
+    const a = arch([
+      ['client', 'cdn'],
+      ['cdn', 'storage'],
+      ['cdn', 'server'],
+      ['server', 'db'],
+    ])
     const r = simulateTick(a, files, 0, mulberry32(1))
     expect(r.nodes.storage.load).toBeCloseTo(600 * 0.05 + 100)
     expect(r.nodes.server.load).toBeCloseTo(300 * 0.9)
@@ -1181,7 +1462,15 @@ describe('object storage', () => {
   })
 
   it('copies each upload it stores to the topic, as work nobody waits for', () => {
-    const a = arch([['client', 'cdn'], ['cdn', 'storage'], ['cdn', 'server'], ['server', 'db'], ['storage', 'topic'], ['topic', 'worker'], ['worker', 'db']])
+    const a = arch([
+      ['client', 'cdn'],
+      ['cdn', 'storage'],
+      ['cdn', 'server'],
+      ['server', 'db'],
+      ['storage', 'topic'],
+      ['topic', 'worker'],
+      ['worker', 'db'],
+    ])
     const r = simulateTick(a, files, 0, mulberry32(1))
     expect(r.edges['storage->topic']).toBeCloseTo(100)
     expect(r.nodes.worker.load).toBeCloseTo(100)
@@ -1195,7 +1484,14 @@ describe('pub/sub topic', () => {
     arch([
       ['client', 'server'],
       ['server', via],
-      ...Array.from({ length: n }, (_, i) => [[via, `worker#${i}`], [`worker#${i}`, 'db']] as [string, string][]).flat(),
+      ...Array.from(
+        { length: n },
+        (_, i) =>
+          [
+            [via, `worker#${i}`],
+            [`worker#${i}`, 'db'],
+          ] as [string, string][],
+      ).flat(),
     ])
 
   it('hands every subscriber a copy of every event, where a queue splits them', () => {
@@ -1224,7 +1520,18 @@ describe('pub/sub topic', () => {
     expect(canConnect(a, 'topic', 'worker')).toBe(true)
     expect(canConnect(a, 'topic', 'search')).toBe(true)
     expect(canConnect(a, 'topic', 'db')).toBe(false)
-    const reads = simulateTick(arch([['client', 'server'], ['server', 'topic'], ['server', 'db'], ['topic', 'worker'], ['worker', 'db']]), { ...steady, traffic: [{ from: 0, rps: 300 }] }, 0, mulberry32(1))
+    const reads = simulateTick(
+      arch([
+        ['client', 'server'],
+        ['server', 'topic'],
+        ['server', 'db'],
+        ['topic', 'worker'],
+        ['worker', 'db'],
+      ]),
+      { ...steady, traffic: [{ from: 0, rps: 300 }] },
+      0,
+      mulberry32(1),
+    )
     expect(reads.nodes.topic.load).toBe(0)
     expect(reads.nodes.db.load).toBeCloseTo(300)
   })
@@ -1236,8 +1543,10 @@ describe('search index', () => {
   const design = (indexes: number, fed = indexes) =>
     arch([
       ['client', 'lb'],
-      ...Array.from({ length: 4 }, (_, i) =>
-        [['lb', `server#${i}`], [`server#${i}`, 'topic'], ...Array.from({ length: indexes }, (_, j) => [`server#${i}`, `search#${j}`])] as [string, string][],
+      ...Array.from(
+        { length: 4 },
+        (_, i) =>
+          [['lb', `server#${i}`], [`server#${i}`, 'topic'], ...Array.from({ length: indexes }, (_, j) => [`server#${i}`, `search#${j}`])] as [string, string][],
       ).flat(),
       ...Array.from({ length: fed }, (_, j) => ['topic', `search#${j}`] as [string, string]),
     ])
@@ -1317,7 +1626,12 @@ describe('streaming levels across seeds', () => {
     ['upload-trava-servidor', 'four servers more', () => extend(STARTUP_LEGACY, servers(4)), false],
     ['busca-nao-acha', 'two fed indexes', () => searchIndexes(2), true],
     ['busca-nao-acha', 'one fed index', () => extend(byId('busca-nao-acha').start!, [['topic', 'search']]), false],
-    ['busca-nao-acha', 'the search in the database', () => extend(byId('busca-nao-acha').start!, [...legacyTo('cache'), ['cache', 'db']], [], ['search']), false],
+    [
+      'busca-nao-acha',
+      'the search in the database',
+      () => extend(byId('busca-nao-acha').start!, [...legacyTo('cache'), ['cache', 'db']], [], ['search']),
+      false,
+    ],
     ['estreia-de-serie', 'storage as origin, five servers, three fed indexes', () => premiere(5, 3), true],
     ['estreia-de-serie', 'two indexes', () => premiere(5, 2), false],
     ['estreia-de-serie', 'indexes nobody feeds', () => premiere(5, 3, false), false],

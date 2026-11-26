@@ -16,7 +16,14 @@ const isFramework = (f: unknown): f is Framework => f === 'hono' || f === 'fetch
 
 export const isProject = (v: unknown): v is Project => {
   const p = v as Project
-  return !!p && typeof p.id === 'string' && isFramework(p.framework) && !!p.files && typeof p.files === 'object' && Object.values(p.files).every((c) => typeof c === 'string')
+  return (
+    !!p &&
+    typeof p.id === 'string' &&
+    isFramework(p.framework) &&
+    !!p.files &&
+    typeof p.files === 'object' &&
+    Object.values(p.files).every((c) => typeof c === 'string')
+  )
 }
 
 /**
@@ -157,7 +164,9 @@ export function loadProjectList(): ProjectEntry[] {
   try {
     const saved = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as unknown
     // A broken entry is dropped, not allowed to take the whole list down.
-    return Array.isArray(saved) ? saved.filter((e): e is ProjectEntry => !!e && typeof e.id === 'string' && typeof e.name === 'string' && isFramework(e.framework)) : []
+    return Array.isArray(saved)
+      ? saved.filter((e): e is ProjectEntry => !!e && typeof e.id === 'string' && typeof e.name === 'string' && isFramework(e.framework))
+      : []
   } catch {
     return []
   }

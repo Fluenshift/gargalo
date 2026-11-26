@@ -318,7 +318,7 @@ const honoIndex = (stage: number) => {
       "import { Hono } from 'hono'",
       "import type { Env } from './env'",
       "import { deErro, problema } from './http'",
-      ...mods.map(([file, name]) => "import { " + name + " } from './routes/" + file + "'"),
+      ...mods.map(([file, name]) => 'import { ' + name + " } from './routes/" + file + "'"),
     ) +
     String.raw`
 const app = new Hono<{ Bindings: Env }>()
@@ -339,7 +339,7 @@ const fetchIndex = (stage: number) => {
     lines(
       "import type { Env } from './env'",
       "import { deErro, problema } from './http'",
-      ...mods.map(([file, name]) => "import { " + name + " } from './routes/" + file + "'"),
+      ...mods.map(([file, name]) => 'import { ' + name + " } from './routes/" + file + "'"),
     ) +
     String.raw`
 type Rota = (req: Request, env: Env, id?: string) => Promise<Response>

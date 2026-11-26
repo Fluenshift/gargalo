@@ -14,16 +14,18 @@ const startNodeWorker: StartWorker = (onMessage, onError) => {
 }
 
 /** A worker that is ready at once and answers each message with `reply`. */
-const fake = (reply: (input: WorkerMessage) => unknown[], posted: WorkerMessage[] = []): StartWorker => (onMessage) => {
-  queueMicrotask(() => onMessage({ ready: true }))
-  return {
-    postMessage: (input) => {
-      posted.push(input)
-      for (const out of reply(input)) queueMicrotask(() => onMessage(out as never))
-    },
-    terminate: () => {},
+const fake =
+  (reply: (input: WorkerMessage) => unknown[], posted: WorkerMessage[] = []): StartWorker =>
+  (onMessage) => {
+    queueMicrotask(() => onMessage({ ready: true }))
+    return {
+      postMessage: (input) => {
+        posted.push(input)
+        for (const out of reply(input)) queueMicrotask(() => onMessage(out as never))
+      },
+      terminate: () => {},
+    }
   }
-}
 
 afterAll(async () => {
   await prewarm(fake(() => []))
@@ -33,7 +35,9 @@ const project = (index: string): Project => ({ id: 'p', framework: 'fetch', file
 
 describe('project runner', () => {
   it('answers a request on the worker, cuts off one that never ends and answers again on a new worker', async () => {
-    const ok = project(`export default { async fetch(req: Request) {\n  console.log('oi')\n  return new Response(req.method + ' ' + new URL(req.url).pathname + ' ' + (await req.text()))\n} }`)
+    const ok = project(
+      `export default { async fetch(req: Request) {\n  console.log('oi')\n  return new Response(req.method + ' ' + new URL(req.url).pathname + ' ' + (await req.text()))\n} }`,
+    )
     const outcome = await request(ok, { method: 'POST', path: '/a', body: 'corpo' }, startNodeWorker)
     expect(outcome).toMatchObject({ response: { status: 200, body: 'POST /a corpo' }, logs: [{ level: 'log', text: 'oi' }] })
     expect(outcome.ms).toBeGreaterThanOrEqual(0)
@@ -56,7 +60,12 @@ describe('project runner', () => {
   })
 
   it('rejects with the worker’s message when a call fails, and when the worker never loads', async () => {
-    await expect(applyMigrations(starter('p', 'hono'), fake(() => [{ failed: 'A migração migrations/001_init.sql falhou: x' }]))).rejects.toThrow('A migração')
+    await expect(
+      applyMigrations(
+        starter('p', 'hono'),
+        fake(() => [{ failed: 'A migração migrations/001_init.sql falhou: x' }]),
+      ),
+    ).rejects.toThrow('A migração')
     const notLoaded: StartWorker = (onMessage) => ({ postMessage: () => onMessage({ ready: false, message: 'sem wasm' }), terminate: () => {} })
     await expect(listTables(starter('p', 'hono'), notLoaded)).rejects.toThrow('sem wasm')
     const broken: StartWorker = (_, onError) => ({ postMessage: () => onError(''), terminate: () => {} })
@@ -64,10 +73,16 @@ describe('project runner', () => {
   })
 
   it('runs a project’s tests through the worker, one result per test', async () => {
-    const tests = [{ name: 'a', requests: [] }, { name: 'b', requests: [] }]
+    const tests = [
+      { name: 'a', requests: [] },
+      { name: 'b', requests: [] },
+    ]
     const posted: WorkerMessage[] = []
     const start = fake((input) => ('tests' in input ? input.tests.map((t, index) => ({ index, result: { name: t.name, passed: true } })) : []), posted)
-    expect(await runTests(starter('p', 'hono'), tests, 'SELECT 1', start)).toEqual([{ name: 'a', passed: true }, { name: 'b', passed: true }])
+    expect(await runTests(starter('p', 'hono'), tests, 'SELECT 1', start)).toEqual([
+      { name: 'a', passed: true },
+      { name: 'b', passed: true },
+    ])
     expect(posted).toEqual([{ project: starter('p', 'hono'), seed: 'SELECT 1', tests }])
   })
 })

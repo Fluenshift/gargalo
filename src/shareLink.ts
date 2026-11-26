@@ -23,7 +23,10 @@ interface DrawnEdge {
 
 const toBase64Url = (text: string) => {
   const bytes = new TextEncoder().encode(text)
-  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
 }
 
 const fromBase64Url = (value: string) => {

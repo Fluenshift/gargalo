@@ -143,11 +143,7 @@ export function bossBeaten(company: Company, passed: Passed): boolean {
 }
 
 /** The piece is usable in this company, or the company that unlocks it (if any). */
-export function pieceUnlock(
-  kind: Kind,
-  companyIndex: number,
-  companies: Company[] = COMPANIES,
-): { unlocked: true } | { unlocked: false; by?: Company } {
+export function pieceUnlock(kind: Kind, companyIndex: number, companies: Company[] = COMPANIES): { unlocked: true } | { unlocked: false; by?: Company } {
   const by = companies.findIndex((c) => c.unlocks.includes(kind))
   if (by !== -1 && by <= companyIndex) return { unlocked: true }
   return { unlocked: false, by: by === -1 ? undefined : companies[by] }
@@ -200,8 +196,6 @@ export function loadProgress(read: (key: string) => string | null, companies: Co
     saved = null
   }
   const current =
-    typeof saved === 'string' && findStage(saved, companies) && levelStatus(saved, passed, companies) !== 'locked'
-      ? saved
-      : nextLevel(passed, companies)
+    typeof saved === 'string' && findStage(saved, companies) && levelStatus(saved, passed, companies) !== 'locked' ? saved : nextLevel(passed, companies)
   return { passed, current }
 }

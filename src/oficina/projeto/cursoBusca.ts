@@ -629,7 +629,16 @@ const listagem: Stage = {
   title: 'Listagem simples de produtos',
   statement: 'Crie GET /produtos, que lista { id, nome, preco_centavos } em ordem de id, e faça rotas desconhecidas responderem 404 em problem+json.',
   steps: PASSOS_LISTAGEM,
-  files: ['src/index.ts', 'src/routes/health.ts', 'src/routes/produtos.ts', 'src/db/saude.ts', 'src/db/produtos.ts', 'src/env.ts', 'src/http.ts', 'migrations/001_init.sql'],
+  files: [
+    'src/index.ts',
+    'src/routes/health.ts',
+    'src/routes/produtos.ts',
+    'src/db/saude.ts',
+    'src/db/produtos.ts',
+    'src/env.ts',
+    'src/http.ts',
+    'migrations/001_init.sql',
+  ],
   seed: SEED_ESTAGIO_1,
   tests: [
     {
@@ -641,12 +650,7 @@ const listagem: Stage = {
       requests: [{ request: { path: '/nada' }, expect: { status: 404, body: { status: 404 } } }],
     },
   ],
-  checklist: [
-    { id: 'camadas' },
-    { id: 'sem-select-estrela' },
-    { id: 'sql-parametrizado' },
-    { id: 'problem-json', request: { path: '/nada' } },
-  ],
+  checklist: [{ id: 'camadas' }, { id: 'sem-select-estrela' }, { id: 'sql-parametrizado' }, { id: 'problem-json', request: { path: '/nada' } }],
   hints: [
     'Consulte src/routes/health.ts e src/index.ts para ver como estruturar rotas: copie o padrão new Hono + app.route; o banco chega em c.env.db. Para responder erros como 404 no formato problem+json, use o helper problema (ou ErroHttp) de src/http.ts.',
     'No banco, monte SELECT id, nome, preco_centavos FROM produtos ORDER BY id. Na rota Hono, use c.json(await listarProdutos(c.env.db)) (ou Response.json(await listarProdutos(env.db)) no fetch puro).',
@@ -835,7 +839,17 @@ const busca: Stage = {
       requests: [
         {
           request: { path: '/produtos?limite=3' },
-          expect: { status: 200, body: { itens: [{ id: 1, nome: 'Teclado mecânico', preco_centavos: 34990 }, { id: 2, nome: 'Teclado sem fio', preco_centavos: 19990 }, { id: 3, nome: 'Tela 24 polegadas', preco_centavos: 89990 }], proximoCursor: 3 } },
+          expect: {
+            status: 200,
+            body: {
+              itens: [
+                { id: 1, nome: 'Teclado mecânico', preco_centavos: 34990 },
+                { id: 2, nome: 'Teclado sem fio', preco_centavos: 19990 },
+                { id: 3, nome: 'Tela 24 polegadas', preco_centavos: 89990 },
+              ],
+              proximoCursor: 3,
+            },
+          },
         },
       ],
     },

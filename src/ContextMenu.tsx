@@ -11,19 +11,7 @@ export interface MenuItem {
  * A small menu at a screen point. Focuses its first item, moves with the arrow
  * keys, and closes on Escape, Tab or a press outside it.
  */
-export function ContextMenu({
-  x,
-  y,
-  label,
-  items,
-  onClose,
-}: {
-  x: number
-  y: number
-  label: string
-  items: MenuItem[]
-  onClose: () => void
-}) {
+export function ContextMenu({ x, y, label, items, onClose }: { x: number; y: number; label: string; items: MenuItem[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
 

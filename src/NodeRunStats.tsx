@@ -107,13 +107,7 @@ export function NodeRunStats({ ticks, nodeId, kind, shown }: Props) {
         <div key={r.name} className={`meter${r.bad ? ' is-bad' : ''}`}>
           <span className="meter__name">{r.name}</span>
           <span className="meter__value">{r.value}</span>
-          <Sparkline
-            label={`${r.name} por segundo`}
-            values={upTo(r.values)}
-            length={ticks.length}
-            goal={r.goal}
-            max={r.max}
-          />
+          <Sparkline label={`${r.name} por segundo`} values={upTo(r.values)} length={ticks.length} goal={r.goal} max={r.max} />
         </div>
       ))}
     </section>

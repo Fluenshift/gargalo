@@ -13,8 +13,16 @@ const bearer = (variable: string) => ({ Authorization: 'Bearer {{' + variable + 
 const PRODUTOS_SEED = "INSERT INTO produtos (nome, preco_centavos) VALUES ('Caneta', 250), ('Caderno', 1500)"
 const CATALOGO_SEED = "INSERT INTO produtos (nome, preco_centavos) SELECT 'Produto ' || g, g * 100 FROM generate_series(1, 60) AS g"
 
-const PEDIDO = { itens: [{ produtoId: 1, quantidade: 2 }, { produtoId: 2, quantidade: 1 }] }
-const SEM_PEDIDOS = { sql: 'SELECT (SELECT count(*) FROM pedidos)::int AS pedidos, (SELECT count(*) FROM itens_pedido)::int AS itens', rows: [{ pedidos: 0, itens: 0 }] }
+const PEDIDO = {
+  itens: [
+    { produtoId: 1, quantidade: 2 },
+    { produtoId: 2, quantidade: 1 },
+  ],
+}
+const SEM_PEDIDOS = {
+  sql: 'SELECT (SELECT count(*) FROM pedidos)::int AS pedidos, (SELECT count(*) FROM itens_pedido)::int AS itens',
+  rows: [{ pedidos: 0, itens: 0 }],
+}
 const PRODUTO_RUIM = { nome: '', preco_centavos: -5 }
 
 const cadastro = (email: string) => post('/usuarios', { email, senha: 'segredo123' })
@@ -400,7 +408,7 @@ export function mensagemDe(err: unknown): string {
   },
   {
     title: 'Ligue os erros no index',
-    do: 'Em src/index.ts, importe problema e deErro de \'./http\' e ligue os dois: rota não encontrada responde 404 e todo erro lançado passa por deErro.',
+    do: "Em src/index.ts, importe problema e deErro de './http' e ligue os dois: rota não encontrada responde 404 e todo erro lançado passa por deErro.",
     learn:
       'O Hono tem dois ganchos: app.notFound roda quando nenhuma rota casou, e app.onError recebe todo erro lançado numa rota. Ligados às suas funções, todos os erros da API saem em problem+json, sem try/catch em cada rota.',
     file: 'src/index.ts',
@@ -571,7 +579,7 @@ export function obrigatorio<T>(valor: T | undefined, mensagem: string): T {
   },
   {
     title: 'POST /produtos e a lista',
-    do: "Clique em Abrir src/routes/produtos.ts e escreva as rotas POST /produtos (responde 201 com Location) e GET /produtos (a lista).",
+    do: 'Clique em Abrir src/routes/produtos.ts e escreva as rotas POST /produtos (responde 201 com Location) e GET /produtos (a lista).',
     learn:
       'Um arquivo por recurso: src/routes/produtos.ts cria um roteador, exporta com nome, e o index escolhe o prefixo. O POST lê o [corpo JSON](hono-body), chama a função do banco e responde 201 com o produto. O cabeçalho [Location](hono-header-resposta) diz onde o recurso novo está, e o cliente não precisa adivinhar. GET na raiz devolve a lista.',
     file: 'src/routes/produtos.ts',
@@ -631,7 +639,7 @@ export async function categorias(req: Request, env: Env, id?: string): Promise<R
   },
   {
     title: 'Ler, atualizar e apagar por id',
-    do: "Em src/routes/produtos.ts, acrescente GET, PUT e DELETE de /produtos/:id, passando o id por idDe e o resultado do banco por achado.",
+    do: 'Em src/routes/produtos.ts, acrescente GET, PUT e DELETE de /produtos/:id, passando o id por idDe e o resultado do banco por achado.',
     learn:
       'Uma rota com [:id](hono-param) casa qualquer valor naquela posição, e c.req.param("id") devolve texto. Passe o texto por idDe e o resultado do banco por achado: id ruim ou produto sem linha vira 404 sem if na rota. O DELETE responde 204, que por definição [não leva corpo](hono-sem-corpo).',
     file: 'src/routes/produtos.ts',
@@ -654,7 +662,11 @@ categorias.delete('/:id', async (c) => {
       note: "No seu caso: GET, PUT e DELETE de '/:id' em produtos, com 'Produto' no achado; o PUT recebe { nome, preco_centavos }. idDe e achado vêm de '../http'.",
     },
     docs: ['hono-param', 'hono-sem-corpo', 'achado-404'],
-    check: { kind: 'file', path: 'src/routes/produtos.ts', contains: ["produtos.get('/:id'", "produtos.put('/:id'", "produtos.delete('/:id'", 'achado(', 'idDe(', '204'] },
+    check: {
+      kind: 'file',
+      path: 'src/routes/produtos.ts',
+      contains: ["produtos.get('/:id'", "produtos.put('/:id'", "produtos.delete('/:id'", 'achado(', 'idDe(', '204'],
+    },
     byFramework: {
       fetch: {
         learn:
@@ -844,7 +856,7 @@ if (!evento) throw new ErroHttp(422, 'Evento inexistente', 'O evento ' + item.ev
   },
   {
     title: 'As rotas de /pedidos',
-    do: "Clique em Abrir src/routes/pedidos.ts e escreva POST /pedidos (201 com Location) e GET /pedidos/:id (404 quando não existe).",
+    do: 'Clique em Abrir src/routes/pedidos.ts e escreva POST /pedidos (201 com Location) e GET /pedidos/:id (404 quando não existe).',
     learn:
       'São duas rotas, no mesmo molde dos produtos. POST /pedidos recebe { itens: [{ produtoId, quantidade }] }, chama criarPedido e responde 201 com Location; GET /pedidos/:id devolve o pedido, ou 404. O que muda é que o corpo traz uma lista, e o 422 já vem do banco: a rota não precisa de if para ele.',
     file: 'src/routes/pedidos.ts',
@@ -889,8 +901,7 @@ reservas.get('/:id', async (c) => c.json(achado(await buscarReserva(c.env.db, id
   {
     title: 'Registre /pedidos no index',
     do: "Em src/index.ts, importe as rotas de './routes/pedidos' e ligue o caminho /pedidos.",
-    learn:
-      'O roteador de pedidos também precisa ser montado no app, do mesmo jeito que o de produtos. Sem isso, POST /pedidos responde 404.',
+    learn: 'O roteador de pedidos também precisa ser montado no app, do mesmo jeito que o de produtos. Sem isso, POST /pedidos responde 404.',
     file: 'src/index.ts',
     example: {
       file: 'src/index.ts',
@@ -1194,7 +1205,11 @@ export const paginaSchema = z.object({
       note: 'No seu caso: listaSchema com cursor (padrão 0, mínimo 0), limite (padrão 20, mínimo 1), q opcional, e preco_min e preco_max opcionais (inteiros). Escreva também lerConsulta(req, schema), no molde de lerCorpo, mas com os parâmetros da URL no lugar do corpo.',
     },
     docs: ['zod-coerce', 'zod-safeparse'],
-    check: { kind: 'file', path: 'src/validacao.ts', contains: ['export const listaSchema', 'z.coerce.number()', 'export function lerConsulta', 'searchParams'] },
+    check: {
+      kind: 'file',
+      path: 'src/validacao.ts',
+      contains: ['export const listaSchema', 'z.coerce.number()', 'export function lerConsulta', 'searchParams'],
+    },
   },
   {
     title: 'A rota devolve itens e proximoCursor',
@@ -1291,7 +1306,11 @@ export async function hashPin(pin: string): Promise<string> {
       note: "No seu caso: hashSenha(senha) e confereSenha(senha, guardado). confereSenha separa o guardado no ':', volta o sal de hex para bytes, refaz o hash e compara com o que estava guardado.",
     },
     docs: ['hash-senha'],
-    check: { kind: 'file', path: 'src/auth.ts', contains: ['export async function hashSenha', 'export async function confereSenha', 'PBKDF2', 'getRandomValues'] },
+    check: {
+      kind: 'file',
+      path: 'src/auth.ts',
+      contains: ['export async function hashSenha', 'export async function confereSenha', 'PBKDF2', 'getRandomValues'],
+    },
   },
   {
     title: 'Cadastro no banco: criarUsuario',
@@ -1313,7 +1332,11 @@ export async function criarMembro(db: Db, email: string, senhaHash: string): Pro
       note: "No seu caso: criarUsuario(db, email, senhaHash) devolve { id, email, papel }, nunca o senha_hash. O primeiro usuário vira admin: no lugar de um papel fixo, use CASE WHEN EXISTS (SELECT 1 FROM usuarios) THEN 'cliente' ELSE 'admin' END. Escreva também buscarCredenciais(db, email), que devolve ainda o senha_hash, para o login.",
     },
     docs: ['on-conflict', 'db-query'],
-    check: { kind: 'file', path: 'src/db/usuarios.ts', contains: ['export async function criarUsuario', 'ON CONFLICT', 'EXISTS', 'export async function buscarCredenciais'] },
+    check: {
+      kind: 'file',
+      path: 'src/db/usuarios.ts',
+      contains: ['export async function criarUsuario', 'ON CONFLICT', 'EXISTS', 'export async function buscarCredenciais'],
+    },
   },
   {
     title: 'Token assinado: criarToken',
@@ -1367,7 +1390,7 @@ export async function criarConvite(email: string): Promise<string> {
   },
   {
     title: 'Rotas de cadastro e login',
-    do: "Clique em Abrir src/routes/usuarios.ts, escreva POST /usuarios e POST /login, ligue os dois caminhos no index e clique em Testar agora.",
+    do: 'Clique em Abrir src/routes/usuarios.ts, escreva POST /usuarios e POST /login, ligue os dois caminhos no index e clique em Testar agora.',
     learn:
       'POST /usuarios valida { email, senha } (senha com 8 caracteres ou mais), grava só o hash e responde 201 com { id, email, papel }; e-mail repetido responde 409. POST /login busca o usuário pelo e-mail, confere a senha e devolve o token. Senha errada e e-mail desconhecido respondem o mesmo 401, para não revelar quais e-mails existem.',
     file: 'src/routes/usuarios.ts',
@@ -1392,7 +1415,9 @@ membros.post('/', async (c) => {
       send: { body: { email: 'ana@loja.com', senha: 'segredo123' } },
       status: 200,
       absent: ['senha', 'senha_hash'],
-      before: [{ request: cadastro('ana@loja.com'), expect: { status: 201, body: { email: 'ana@loja.com', papel: 'admin' }, absent: ['senha', 'senha_hash'] } }],
+      before: [
+        { request: cadastro('ana@loja.com'), expect: { status: 201, body: { email: 'ana@loja.com', papel: 'admin' }, absent: ['senha', 'senha_hash'] } },
+      ],
     },
     byFramework: {
       fetch: {
@@ -1538,18 +1563,38 @@ const produtos: Stage = {
       name: 'cria e lê pelo Location',
       sequential: true,
       requests: [
-        { request: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }), expect: { status: 201, body: { nome: 'Lápis', preco_centavos: 150 } }, save: { onde: 'header.location', id: 'body.id' } },
+        {
+          request: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }),
+          expect: { status: 201, body: { nome: 'Lápis', preco_centavos: 150 } },
+          save: { onde: 'header.location', id: 'body.id' },
+        },
         { request: { path: '{{onde}}' }, expect: { status: 200, body: { id: '{{id}}', nome: 'Lápis', preco_centavos: 150 } } },
       ],
       db: { sql: 'SELECT nome, preco_centavos FROM produtos WHERE id = $1', params: ['{{id}}'], rows: [{ nome: 'Lápis', preco_centavos: 150 }] },
     },
     {
       name: 'lista os produtos em ordem de id',
-      requests: [{ request: { path: '/produtos' }, expect: { status: 200, body: [{ id: 1, nome: 'Caneta', preco_centavos: 250 }, { id: 2, nome: 'Caderno', preco_centavos: 1500 }] } }],
+      requests: [
+        {
+          request: { path: '/produtos' },
+          expect: {
+            status: 200,
+            body: [
+              { id: 1, nome: 'Caneta', preco_centavos: 250 },
+              { id: 2, nome: 'Caderno', preco_centavos: 1500 },
+            ],
+          },
+        },
+      ],
     },
     {
       name: 'atualiza um produto',
-      requests: [{ request: { method: 'PUT', path: '/produtos/1', body: { nome: 'Caneta azul', preco_centavos: 300 } }, expect: { status: 200, body: { id: 1, nome: 'Caneta azul', preco_centavos: 300 } } }],
+      requests: [
+        {
+          request: { method: 'PUT', path: '/produtos/1', body: { nome: 'Caneta azul', preco_centavos: 300 } },
+          expect: { status: 200, body: { id: 1, nome: 'Caneta azul', preco_centavos: 300 } },
+        },
+      ],
       db: { sql: 'SELECT nome, preco_centavos FROM produtos WHERE id = 1', rows: [{ nome: 'Caneta azul', preco_centavos: 300 }] },
     },
     {
@@ -1579,7 +1624,7 @@ const produtos: Stage = {
   ],
   hints: [
     'Comece pelo banco: um módulo src/db/produtos.ts com uma função por operação (criar, buscar, listar, atualizar, remover). As rotas só chamam essas funções.',
-    "INSERT … RETURNING id, nome, preco_centavos devolve a linha criada numa ida só ao banco; UPDATE e DELETE também aceitam RETURNING, e sem linha de volta o produto não existia (404).",
+    'INSERT … RETURNING id, nome, preco_centavos devolve a linha criada numa ida só ao banco; UPDATE e DELETE também aceitam RETURNING, e sem linha de volta o produto não existia (404).',
     "Para o 201: c.header('Location', '/produtos/' + id) e c.json(criado, 201) no Hono; Response.json(criado, { status: 201, headers: { Location } }) no fetch puro. O 204 não leva corpo.",
   ],
   explanation:
@@ -1605,15 +1650,38 @@ const pedidos: Stage = {
           request: { path: '{{onde}}' },
           expect: {
             status: 200,
-            body: { id: '{{id}}', total_centavos: 2000, itens: [{ produto_id: 1, quantidade: 2, preco_centavos: 250 }, { produto_id: 2, quantidade: 1, preco_centavos: 1500 }] },
+            body: {
+              id: '{{id}}',
+              total_centavos: 2000,
+              itens: [
+                { produto_id: 1, quantidade: 2, preco_centavos: 250 },
+                { produto_id: 2, quantidade: 1, preco_centavos: 1500 },
+              ],
+            },
           },
         },
       ],
-      db: { sql: 'SELECT produto_id, quantidade, preco_centavos FROM itens_pedido ORDER BY id', rows: [{ produto_id: 1, quantidade: 2, preco_centavos: 250 }, { produto_id: 2, quantidade: 1, preco_centavos: 1500 }] },
+      db: {
+        sql: 'SELECT produto_id, quantidade, preco_centavos FROM itens_pedido ORDER BY id',
+        rows: [
+          { produto_id: 1, quantidade: 2, preco_centavos: 250 },
+          { produto_id: 2, quantidade: 1, preco_centavos: 1500 },
+        ],
+      },
     },
     {
       name: 'produto inexistente desfaz o pedido inteiro',
-      requests: [{ request: post('/pedidos', { itens: [{ produtoId: 1, quantidade: 1 }, { produtoId: 999, quantidade: 1 }] }), expect: { status: 422 } }],
+      requests: [
+        {
+          request: post('/pedidos', {
+            itens: [
+              { produtoId: 1, quantidade: 1 },
+              { produtoId: 999, quantidade: 1 },
+            ],
+          }),
+          expect: { status: 422 },
+        },
+      ],
       db: SEM_PEDIDOS,
     },
     { name: 'pedido que não existe responde 404', requests: [{ request: { path: '/pedidos/999' }, expect: { status: 404 } }] },
@@ -1676,7 +1744,7 @@ const validacao: Stage = {
     { id: 'transacao' },
   ],
   hints: [
-    "Descreva a forma da entrada uma vez: z.object({ nome: z.string().min(1), preco_centavos: z.number().int().min(0) }). Números vindos do JSON são number, não string.",
+    'Descreva a forma da entrada uma vez: z.object({ nome: z.string().min(1), preco_centavos: z.number().int().min(0) }). Números vindos do JSON são number, não string.',
     'schema.safeParse(corpo) não lança: devolve { success, data } ou { success: false, error }. Os campos errados estão em error.issues, cada um com path e message.',
     'Valide antes de chamar o banco, numa função só (lerCorpo(req, schema)) usada por todas as rotas, e lance o 400 por ali: um app.onError (ou try/catch no fetch puro) o transforma em problem+json.',
   ],
@@ -1688,8 +1756,7 @@ const validacao: Stage = {
 const paginacao: Stage = {
   id: 'paginacao',
   title: 'Paginação e filtros',
-  statement:
-    'Pagine GET /produtos por cursor, com limite máximo e filtros opcionais por nome e preço: a resposta vira { itens, proximoCursor }.',
+  statement: 'Pagine GET /produtos por cursor, com limite máximo e filtros opcionais por nome e preço: a resposta vira { itens, proximoCursor }.',
   steps: PASSOS_PAGINACAO,
   files: [...validacao.files],
   seed: CATALOGO_SEED,
@@ -1698,16 +1765,26 @@ const paginacao: Stage = {
       name: 'páginas por cursor sem pular nem repetir',
       sequential: true,
       requests: [
-        { request: { path: '/produtos?limite=3' }, expect: { status: 200, body: { itens: itensDe(1, 2, 3), proximoCursor: 3 } }, save: { c: 'body.proximoCursor' } },
+        {
+          request: { path: '/produtos?limite=3' },
+          expect: { status: 200, body: { itens: itensDe(1, 2, 3), proximoCursor: 3 } },
+          save: { c: 'body.proximoCursor' },
+        },
         { request: { path: '/produtos?limite=3&cursor={{c}}' }, expect: { status: 200, body: { itens: itensDe(4, 5, 6), proximoCursor: 6 } } },
       ],
     },
-    { name: 'a última página não tem próximo cursor', requests: [{ request: { path: '/produtos?limite=10&cursor=58' }, expect: { status: 200, body: { itens: itensDe(59, 60), proximoCursor: null } } }] },
+    {
+      name: 'a última página não tem próximo cursor',
+      requests: [{ request: { path: '/produtos?limite=10&cursor=58' }, expect: { status: 200, body: { itens: itensDe(59, 60), proximoCursor: null } } }],
+    },
     {
       name: 'filtra por preço',
       requests: [{ request: { path: '/produtos?preco_min=200&preco_max=300' }, expect: { status: 200, body: { itens: itensDe(2, 3), proximoCursor: null } } }],
     },
-    { name: 'filtra por nome', requests: [{ request: { path: '/produtos?q=produto%206' }, expect: { status: 200, body: { itens: itensDe(6, 60), proximoCursor: null } } }] },
+    {
+      name: 'filtra por nome',
+      requests: [{ request: { path: '/produtos?q=produto%206' }, expect: { status: 200, body: { itens: itensDe(6, 60), proximoCursor: null } } }],
+    },
     { name: 'limite inválido responde 400', requests: [{ request: { path: '/produtos?limite=0' }, expect: { status: 400 } }] },
   ],
   checklist: [
@@ -1782,7 +1859,12 @@ const auth: Stage = {
   ],
   checklist: [
     { id: 'senha-hash', request: cadastro('ana@loja.com'), password: 'segredo123', sql: 'SELECT * FROM usuarios' },
-    { id: 'auth-401-403', before: USUARIOS, anonymous: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }), forbidden: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }, bearer('cliente')) },
+    {
+      id: 'auth-401-403',
+      before: USUARIOS,
+      anonymous: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }),
+      forbidden: post('/produtos', { nome: 'Lápis', preco_centavos: 150 }, bearer('cliente')),
+    },
     { id: 'sem-vazar-campos', requests: [cadastro('ana@loja.com'), login('ana@loja.com')], fields: ['senha', 'senha_hash'] },
     { id: 'validacao-400', request: post('/usuarios', { email: 'ruim', senha: '1' }), fields: ['email', 'senha'] },
     { id: 'problem-json', request: login('ninguem@loja.com') },

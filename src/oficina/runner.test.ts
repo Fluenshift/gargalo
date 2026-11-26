@@ -84,7 +84,11 @@ describe('runTests', () => {
   })
 
   it('prewarm rejects when the database does not load, and the next run starts over', async () => {
-    const broken: StartWorker = (onMessage) => ({ postMessage: () => {}, terminate: () => {}, ...(queueMicrotask(() => onMessage({ ready: false, message: 'sem wasm' })), {}) })
+    const broken: StartWorker = (onMessage) => ({
+      postMessage: () => {},
+      terminate: () => {},
+      ...(queueMicrotask(() => onMessage({ ready: false, message: 'sem wasm' })), {}),
+    })
     await expect(prewarm(broken)).rejects.toThrow('sem wasm')
     const { start, started } = counted(startNodeWorker)
     const one = { ...exercise, visible: [test('a', '/')], hidden: [] }
@@ -119,10 +123,11 @@ describe('runTests', () => {
       const ok = { name: 'a', passed: true }
       // Ready late, then answers at once: the 2 s per test only start counting at ready.
       const slowLoad: StartWorker = (onMessage) => ({
-        postMessage: () => setTimeout(() => {
-          onMessage({ ready: true })
-          onMessage({ index: 0, result: ok })
-        }, LOAD_TIMEOUT_MS - 1),
+        postMessage: () =>
+          setTimeout(() => {
+            onMessage({ ready: true })
+            onMessage({ index: 0, result: ok })
+          }, LOAD_TIMEOUT_MS - 1),
         terminate: () => {},
       })
       const loaded = runTests(code, { ...exercise, visible: [test('a', '/')] }, 'visible', slowLoad)

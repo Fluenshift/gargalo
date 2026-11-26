@@ -69,7 +69,8 @@ export function buildOpenApi({ title, routes = [], requests }: OpenApiInput): Op
     }
   }
 
-  for (const methods of Object.values(paths)) for (const op of Object.values(methods)) if (!Object.keys(op.responses).length) op.responses = { default: { description: 'Ainda não testada' } }
+  for (const methods of Object.values(paths))
+    for (const op of Object.values(methods)) if (!Object.keys(op.responses).length) op.responses = { default: { description: 'Ainda não testada' } }
 
   return { openapi: '3.1.0', info: { title, version: '1.0.0' }, paths }
 }

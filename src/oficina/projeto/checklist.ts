@@ -18,8 +18,17 @@ export type CheckRef =
   | ({ id: 'validacao-400'; /** Sends an invalid body. */ request: RequestSpec; /** Each must be named in the answer. */ fields: string[] } & Before)
   | ({ id: 'paginacao-cursor'; /** Asks for far more than the cap, e.g. `/produtos?limite=1000`. */ path: string; max: number } & Before)
   | ({ id: 'sem-vazar-campos'; requests: RequestSpec[]; /** Keys no response may have, e.g. `senha`, `senha_hash`. */ fields: string[] } & Before)
-  | ({ id: 'idempotencia'; /** Sent twice, with its Idempotency-Key header. */ request: RequestSpec; /** Must return one row after both. */ sql: string } & Before)
-  | ({ id: 'senha-hash'; /** Creates a user with `password`. */ request: RequestSpec; password: string; /** Reads the stored user back. */ sql: string } & Before)
+  | ({
+      id: 'idempotencia'
+      /** Sent twice, with its Idempotency-Key header. */ request: RequestSpec
+      /** Must return one row after both. */ sql: string
+    } & Before)
+  | ({
+      id: 'senha-hash'
+      /** Creates a user with `password`. */ request: RequestSpec
+      password: string
+      /** Reads the stored user back. */ sql: string
+    } & Before)
   | ({ id: 'auth-401-403'; /** No credentials. */ anonymous: RequestSpec; /** Valid credentials, no permission. */ forbidden: RequestSpec } & Before)
 
 export type CheckId = CheckRef['id']
@@ -164,7 +173,9 @@ function concatenatedSql(src: string, path: string): string[] {
 function directSql(src: string, path: string): string[] {
   if (!path.startsWith('src/routes/') && path !== 'src/index.ts') return []
   const { code } = scan(src)
-  return [...code.matchAll(/\b(?:db|tx)\s*\.\s*(?:query|transaction)\s*(?:<[^>()]*>)?\s*\(/g)].map((m) => `${path}:${lineOf(src, m.index)}: a rota chama o banco direto.`)
+  return [...code.matchAll(/\b(?:db|tx)\s*\.\s*(?:query|transaction)\s*(?:<[^>()]*>)?\s*\(/g)].map(
+    (m) => `${path}:${lineOf(src, m.index)}: a rota chama o banco direto.`,
+  )
 }
 
 function selectStar(src: string, path: string): string[] {
@@ -179,7 +190,9 @@ const NOT_TABLES = ['set', 'skip', 'nowait', 'of']
 function writesWithoutTransaction(src: string, path: string): string[] {
   const { literals, code } = scan(src)
   const tables = new Set(
-    literals.filter((l) => SQL.test(l.text)).flatMap((l) => [...l.text.matchAll(/\b(?:insert\s+into|update|delete\s+from)\s+"?(\w+)/gi)].map((m) => m[1].toLowerCase())),
+    literals
+      .filter((l) => SQL.test(l.text))
+      .flatMap((l) => [...l.text.matchAll(/\b(?:insert\s+into|update|delete\s+from)\s+"?(\w+)/gi)].map((m) => m[1].toLowerCase())),
   )
   // shortcut: per file, not per function; a write split across files goes unseen. Track calls between modules if stages need it.
   for (const word of NOT_TABLES) tables.delete(word)
@@ -334,7 +347,8 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
       judge: (ref, [res]) => {
         if (!res) return fail(`${label(ref.request)} não respondeu.`)
         if (res.status < 400) return fail(`${label(ref.request)} ${said(res)}; esperado um erro.`)
-        if (!res.headers['content-type']?.startsWith('application/problem+json')) return fail(`Content-Type foi ${res.headers['content-type'] ?? 'nenhum'}, esperado application/problem+json.`)
+        if (!res.headers['content-type']?.startsWith('application/problem+json'))
+          return fail(`Content-Type foi ${res.headers['content-type'] ?? 'nenhum'}, esperado application/problem+json.`)
         const body = (res.body ?? {}) as Record<string, unknown>
         const missing = ['type', 'title'].filter((k) => typeof body[k] !== 'string')
         if (body.status !== res.status) missing.push('status')
@@ -373,7 +387,9 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
         const list = Object.values(body).find(Array.isArray)
         if (!list) return fail('Não achei a lista de itens na resposta.')
         if (list.length > ref.max) return fail(`Vieram ${list.length} itens; o máximo é ${ref.max}.`)
-        return Object.keys(body).some((k) => /cursor|pr[oó]xim|next/i.test(k)) ? pass(`No máximo ${ref.max}, com cursor.`) : fail('Faltou o cursor da próxima página (por exemplo proximoCursor).')
+        return Object.keys(body).some((k) => /cursor|pr[oó]xim|next/i.test(k))
+          ? pass(`No máximo ${ref.max}, com cursor.`)
+          : fail('Faltou o cursor da próxima página (por exemplo proximoCursor).')
       },
     },
   },
@@ -405,7 +421,8 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
       judge: (ref, [first, second], rows) => {
         if (!first || !second) return fail(`${label(ref.request)} não respondeu.`)
         if (first.status >= 300) return fail(`A primeira vez ${said(first)}.`)
-        if (second.status !== first.status || JSON.stringify(second.body) !== JSON.stringify(first.body)) return fail('A segunda vez respondeu diferente da primeira.')
+        if (second.status !== first.status || JSON.stringify(second.body) !== JSON.stringify(first.body))
+          return fail('A segunda vez respondeu diferente da primeira.')
         return rows?.length === 1 ? pass('Repetir não grava de novo.') : fail(`Depois das duas, o banco tem ${rows?.length ?? 0} linhas; esperado 1.`)
       },
     },
@@ -416,7 +433,9 @@ const CHECKS: { [I in CheckId]: CheckDef<I> } = {
     how: 'Cria um usuário, lê o que ficou gravado e confere que a senha não aparece; procura no código uma função de hash (PBKDF2, scrypt…).',
     fix: "Derive com crypto.subtle (importKey + deriveBits com 'PBKDF2', sal aleatório por usuário) e grave sal e hash, nunca a senha.",
     static: (files) =>
-      sources(files).some(([, src]) => HASHING.test(src)) ? pass('O código usa uma função de hash.') : fail('Não achei hash de senha no código (crypto.subtle, PBKDF2, scrypt…).'),
+      sources(files).some(([, src]) => HASHING.test(src))
+        ? pass('O código usa uma função de hash.')
+        : fail('Não achei hash de senha no código (crypto.subtle, PBKDF2, scrypt…).'),
     behaviour: {
       steps: (ref) => [{ request: ref.request }],
       db: (ref) => ref.sql,

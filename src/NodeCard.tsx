@@ -7,7 +7,16 @@ import type { Balance, Kind, Region } from './sim/model'
 import type { NodeStats } from './sim/engine'
 import { waitLabel } from './sim/metrics'
 
-export type ComponentNode = Node<{ kind: Kind; region?: Region; balance?: Balance; /** What this piece handles when the level makes it differ from its kind. */ capacity?: number; stats?: NodeStats }, 'component'>
+export type ComponentNode = Node<
+  {
+    kind: Kind
+    region?: Region
+    balance?: Balance
+    /** What this piece handles when the level makes it differ from its kind. */ capacity?: number
+    stats?: NodeStats
+  },
+  'component'
+>
 
 const fmt = (n: number) => Math.round(n).toLocaleString('pt-BR')
 
@@ -57,9 +66,7 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
       </div>
       {stats ? (
         <>
-          <div className="node__load">
-            {state === 'down' ? 'Fora do ar' : `${fmt(stats.load)} req/s`}
-          </div>
+          <div className="node__load">{state === 'down' ? 'Fora do ar' : `${fmt(stats.load)} req/s`}</div>
           {finite && state !== 'down' && (
             <div className="node__bar" aria-hidden>
               <span style={{ width: `${Math.min(100, stats.utilization * 100)}%` }} />
@@ -77,12 +84,8 @@ export function NodeCard({ id, data, selected, deletable }: NodeProps<ComponentN
               {Number.isFinite(stats.lagMs) && ` · ${Math.round((stats.staleRate ?? 0) * 100)}% velhas`}
             </div>
           )}
-          {(stats.refused ?? 0) >= 1 && (
-            <div className="node__queue">recusando {fmt(stats.refused ?? 0)}/s (429)</div>
-          )}
-          {stats.dropRate > 0.001 && state !== 'down' && (
-            <div className="node__drop">perdendo {Math.round(stats.dropRate * 100)}%</div>
-          )}
+          {(stats.refused ?? 0) >= 1 && <div className="node__queue">recusando {fmt(stats.refused ?? 0)}/s (429)</div>}
+          {stats.dropRate > 0.001 && state !== 'down' && <div className="node__drop">perdendo {Math.round(stats.dropRate * 100)}%</div>}
         </>
       ) : (
         <div className="node__spec">

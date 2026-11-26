@@ -26,21 +26,12 @@ export interface Removal<N extends Item = Item, E extends Link = Link> {
  * What removing these nodes and edges takes away: the nodes that can be deleted
  * and every edge asked for or touching one of those nodes.
  */
-export function planRemoval<N extends Item, E extends Link>(
-  nodes: N[],
-  edges: E[],
-  nodeIds: Iterable<string>,
-  edgeIds: Iterable<string> = [],
-): Removal<N, E> {
+export function planRemoval<N extends Item, E extends Link>(nodes: N[], edges: E[], nodeIds: Iterable<string>, edgeIds: Iterable<string> = []): Removal<N, E> {
   const askedNodes = new Set(nodeIds)
   const askedEdges = new Set(edgeIds)
-  const removedNodes = nodes.flatMap((item, index) =>
-    askedNodes.has(item.id) && item.deletable !== false ? [{ item, index }] : [],
-  )
+  const removedNodes = nodes.flatMap((item, index) => (askedNodes.has(item.id) && item.deletable !== false ? [{ item, index }] : []))
   const gone = new Set(removedNodes.map((r) => r.item.id))
-  const removedEdges = edges.flatMap((item, index) =>
-    askedEdges.has(item.id) || gone.has(item.source) || gone.has(item.target) ? [{ item, index }] : [],
-  )
+  const removedEdges = edges.flatMap((item, index) => (askedEdges.has(item.id) || gone.has(item.source) || gone.has(item.target) ? [{ item, index }] : []))
   return { nodes: removedNodes, edges: removedEdges }
 }
 
@@ -53,11 +44,7 @@ export function without<T extends { id: string }>(list: T[], removed: Indexed<T>
 }
 
 /** Puts removed items back at their old indices, skipping ids already present or rejected by `keep`. */
-export function restore<T extends { id: string }>(
-  list: T[],
-  removed: Indexed<T>[],
-  keep: (item: T) => boolean = () => true,
-): T[] {
+export function restore<T extends { id: string }>(list: T[], removed: Indexed<T>[], keep: (item: T) => boolean = () => true): T[] {
   const out = [...list]
   const present = new Set(list.map((x) => x.id))
   for (const { item, index } of [...removed].sort((a, b) => a.index - b.index)) {
@@ -111,8 +98,7 @@ export interface Rect {
   bottom: number
 }
 
-export const pointInRect = (x: number, y: number, r: Rect) =>
-  x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+export const pointInRect = (x: number, y: number, r: Rect) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
 
 /** Keeps a menu of size w×h opened at (x, y) inside a vw×vh viewport. */
 export function clampMenu(x: number, y: number, w: number, h: number, vw: number, vh: number, margin = 8) {

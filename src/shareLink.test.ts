@@ -16,7 +16,10 @@ describe('share link', () => {
     expect(findStage(level.id)).toBeDefined()
     const out = decodeShare(encodeShare(level.id, design))
     expect(out?.level.id).toBe(level.id)
-    expect(out?.design.nodes.map((n) => [n.id, n.position.x, n.position.y])).toEqual([['client', 0, 10], ['server', 200, 10]])
+    expect(out?.design.nodes.map((n) => [n.id, n.position.x, n.position.y])).toEqual([
+      ['client', 0, 10],
+      ['server', 200, 10],
+    ])
     expect(out?.design.edges).toEqual(design.edges)
   })
 

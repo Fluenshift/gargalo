@@ -15,7 +15,9 @@ import { unzip, zip } from './zip'
 
 const last = cursoPedidos.stages.at(-1)!
 const reference: Project = { id: 'p1', framework: 'hono', files: last.reference.hono }
-const results: Results = Object.fromEntries(cursoPedidos.stages.map((s) => [stageResultId('ecommerce', s.id), { stars: 3, cost: 0, p99Ms: 0, availability: 1 }]))
+const results: Results = Object.fromEntries(
+  cursoPedidos.stages.map((s) => [stageResultId('ecommerce', s.id), { stars: 3, cost: 0, p99Ms: 0, availability: 1 }]),
+)
 const ctx = (over: Partial<ExportContext> = {}): ExportContext => ({
   name: 'Minha API de Pedidos',
   course: cursoPedidos,
@@ -29,7 +31,19 @@ describe('exportFiles on the e-commerce reference project', () => {
 
   it("keeps the player's files and adds what runs outside the browser", () => {
     for (const path of Object.keys(reference.files)) expect(files[path]).toBe(reference.files[path])
-    for (const path of ['package.json', 'tsconfig.json', 'docker-compose.yml', '.env.example', '.gitignore', 'openapi.json', 'README.md', 'src/infra/banco.ts', 'src/infra/migrar.ts', 'src/infra/servidor.ts', 'tests/suporte.ts'])
+    for (const path of [
+      'package.json',
+      'tsconfig.json',
+      'docker-compose.yml',
+      '.env.example',
+      '.gitignore',
+      'openapi.json',
+      'README.md',
+      'src/infra/banco.ts',
+      'src/infra/migrar.ts',
+      'src/infra/servidor.ts',
+      'tests/suporte.ts',
+    ])
       expect(files, path).toHaveProperty([path])
   })
 
@@ -54,12 +68,25 @@ describe('exportFiles on the e-commerce reference project', () => {
     expect(pkg.name).toBe('minha-api-de-pedidos')
     expect(Object.keys(pkg.dependencies)).toEqual(expect.arrayContaining(['hono', '@hono/node-server', 'pg', '@electric-sql/pglite', 'zod']))
     expect(pkg.scripts).toMatchObject({ start: expect.any(String), test: 'vitest run' })
-    expect(importedPackages({ a: "import { z } from 'zod'\nimport x from 'node:fs'\nimport y from '@a/b/c'\nimport z2 from './local'" })).toEqual(['@a/b', 'zod'])
+    expect(importedPackages({ a: "import { z } from 'zod'\nimport x from 'node:fs'\nimport y from '@a/b/c'\nimport z2 from './local'" })).toEqual([
+      '@a/b',
+      'zod',
+    ])
   })
 
   it('writes a README in Portuguese with every section', () => {
     const readme = files['README.md']
-    for (const section of ['# Minha API de Pedidos', '## O que a API faz', '## Etapas concluídas', '## Boas práticas do checklist', '## Como rodar', 'Com Docker', 'Sem Docker', '## Testes', '## Publicar no GitHub'])
+    for (const section of [
+      '# Minha API de Pedidos',
+      '## O que a API faz',
+      '## Etapas concluídas',
+      '## Boas práticas do checklist',
+      '## Como rodar',
+      'Com Docker',
+      'Sem Docker',
+      '## Testes',
+      '## Publicar no GitHub',
+    ])
       expect(readme, section).toContain(section)
     expect(readme).toContain('`GET /produtos/{id}`')
     expect(readme).toContain('Health check (3 de 3 estrelas)')
@@ -81,7 +108,9 @@ describe('exportFiles on the e-commerce reference project', () => {
 
   it('lists only the practices the code proves when a stage has fewer than three stars', () => {
     const stage = cursoPedidos.stages.find((s) => s.id === 'produtos')!
-    const two = exportFiles(reference, ctx({ results: { [stageResultId('ecommerce', 'produtos')]: { stars: 2, cost: 0, p99Ms: 0, availability: 1 } } }))['README.md']
+    const two = exportFiles(reference, ctx({ results: { [stageResultId('ecommerce', 'produtos')]: { stars: 2, cost: 0, p99Ms: 0, availability: 1 } } }))[
+      'README.md'
+    ]
     const lines = two.split('\n').filter((l) => l.endsWith('(Produtos)') || l.endsWith(`(${stage.title})`))
     expect(lines.length).toBeGreaterThan(0)
     expect(lines.length).toBeLessThan(stage.checklist.length + 1)
@@ -99,7 +128,11 @@ describe('exportFiles on the e-commerce reference project', () => {
 
 // The exported src/infra files run here as they are, on PGlite; pg is not installed in this repo, so its adapter gets a Pool-shaped stand-in.
 describe('the exported database adapter', () => {
-  type Banco = { query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>; transaction<R>(fn: (tx: Banco) => Promise<R>): Promise<R>; exec(sql: string): Promise<void> }
+  type Banco = {
+    query(sql: string, params?: unknown[]): Promise<Record<string, unknown>[]>
+    transaction<R>(fn: (tx: Banco) => Promise<R>): Promise<R>
+    exec(sql: string): Promise<void>
+  }
   let dir: string
   let pg: PGlite
   let mod: { pgBanco(pool: unknown): Banco; pgliteBanco(pg: PGlite): Banco }
@@ -216,7 +249,9 @@ describe('the exported acceptance runner', () => {
     // 'junction' needs no admin rights on Windows; elsewhere Node ignores the type and makes a plain symlink.
     symlinkSync(join(process.cwd(), 'node_modules'), join(dir, 'node_modules'), 'junction')
     const suporte = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'tests/suporte.ts')).href)) as Suporte
-    const { migrar } = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'src/infra/migrar.ts')).href)) as { migrar(db: Banco, pasta: string): Promise<string[]> }
+    const { migrar } = (await import(/* @vite-ignore */ pathToFileURL(join(dir, 'src/infra/migrar.ts')).href)) as {
+      migrar(db: Banco, pasta: string): Promise<string[]>
+    }
     const banco = await suporte.abrirBanco()
     // What preparar() does, with the migrations folder spelled out (it reads ./migrations from where npm test runs).
     const rodar = async (caso: Caso) => {

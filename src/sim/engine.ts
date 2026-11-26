@@ -48,7 +48,22 @@
 // What is specific to a kind of piece (routing, state carried between seconds)
 // lives in its Spec, so the engine has no per-kind branches.
 
-import { ANSWER_LOST, PROTOCOLS, balanceOf, instanceCapacity, levelWork, openEdges, REGION_RTT_MS, SPECS, botRpsAt, levelPieces, regionOf, rpsAt, totalCost, userRegions } from './model'
+import {
+  ANSWER_LOST,
+  PROTOCOLS,
+  balanceOf,
+  instanceCapacity,
+  levelWork,
+  openEdges,
+  REGION_RTT_MS,
+  SPECS,
+  botRpsAt,
+  levelPieces,
+  regionOf,
+  rpsAt,
+  totalCost,
+  userRegions,
+} from './model'
 import type { ArchEdge, Architecture, ArchNode, Balance, ClassLoad, Level, NodeState, Region, RequestClass, Spec, UserClass } from './model'
 
 /**
@@ -422,9 +437,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     // A bot scrapes the whole catalogue; only people pile onto the viral key.
     const hot = c === 'bot' ? 0 : (level.hotKey ?? 0)
     const hotId = keyed.reduce((a, b) => (created.get(a)! <= created.get(b)! ? a : b))
-    return targets.map((id) =>
-      !keyed.includes(id) ? even : even * (1 - hot) + (id === hotId ? even * keyed.length * hot : 0),
-    )
+    return targets.map((id) => (!keyed.includes(id) ? even : even * (1 - hot) + (id === hotId ? even * keyed.length * hot : 0)))
   }
 
   const zero = (): ClassLoad => ({ static: 0, read: 0, write: 0, bot: 0 })
@@ -449,7 +462,10 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     const result =
       endsSomething || kids.length === 0
         ? capacity
-        : Math.min(capacity, kids.reduce((sum, kid) => sum + effectiveCapacity(kid), 0))
+        : Math.min(
+            capacity,
+            kids.reduce((sum, kid) => sum + effectiveCapacity(kid), 0),
+          )
     capacityMemo.set(id, result)
     return result
   }
@@ -505,10 +521,7 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
       const downstreamCapacity = (children.get(node.id) ?? []).reduce((sum, id) => sum + effectiveCapacity(id), 0)
       const feeders = (parents.get(node.id) ?? []).map((id) => byId.get(id)!)
       const sources = feeders.map((n) => n.kind)
-      const sourceRttMs = Math.max(
-        0,
-        ...feeders.filter((n) => !pieces[n.kind].global).map((n) => REGION_RTT_MS[regionOf(n)][regionOf(node)]),
-      )
+      const sourceRttMs = Math.max(0, ...feeders.filter((n) => !pieces[n.kind].global).map((n) => REGION_RTT_MS[regionOf(n)][regionOf(node)]))
       const next = spec.step(arrived, state.get(node.id), { downstreamCapacity, sources, sourceRttMs })
       a = next.load
       dropped = next.dropped ?? dropped
@@ -533,7 +546,10 @@ function tick(g: Graph, t: number, rng: Rng, state: Map<string, NodeState>): Tic
     const shareOf = (part: ClassLoad, c: RequestClass) => (arrived[c] > 0 ? part[c] / arrived[c] : 0)
     const refusedShare = perClass((c) => shareOf(refused, c))
     const droppedShare = perClass((c) => shareOf(dropped, c))
-    passRate.set(node.id, perClass((c) => pass * Math.max(0, 1 - droppedShare[c] - refusedShare[c])))
+    passRate.set(
+      node.id,
+      perClass((c) => pass * Math.max(0, 1 - droppedShare[c] - refusedShare[c])),
+    )
     flowAt.set(node.id, { capPass, blips, refused: refusedShare, dropped: droppedShare, staleRate })
     const utilization = capacity === Infinity ? 0 : load / capacity
     const stats: NodeStats = {
@@ -842,12 +858,7 @@ export function latencyPercentiles(values: number[]): Percentiles {
   return { p50Ms: at(0.5), p95Ms: at(0.95), p99Ms: at(0.99) }
 }
 
-export function summarize(
-  arch: Architecture,
-  level: Level,
-  ticks: TickResult[],
-  pieces: Record<string, Spec> = SPECS,
-): RunSummary {
+export function summarize(arch: Architecture, level: Level, ticks: TickResult[], pieces: Record<string, Spec> = SPECS): RunSummary {
   const total = ticks.reduce((s, t) => s + t.rps, 0)
   const served = ticks.reduce((s, t) => s + t.served, 0)
   const failed = emptyFailures()

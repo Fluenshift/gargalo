@@ -74,7 +74,17 @@ export function LinkPanel({
   return (
     <aside ref={rootRef} className="inspector link-panel" aria-labelledby={titleId}>
       <header className="inspector__head">
-        <svg className="kind-icon" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden>
+        <svg
+          className="kind-icon"
+          width="30"
+          height="30"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          aria-hidden
+        >
           <circle cx="5" cy="12" r="2.5" />
           <circle cx="19" cy="12" r="2.5" />
           <path d="M7.5 12h9" />
@@ -139,13 +149,7 @@ export function LinkPanel({
         <p>Quando uma chamada falha, tenta de novo. Ajuda em falhas passageiras; num destino sobrecarregado, multiplica a carga dele.</p>
         <div className="segmented" role="group" aria-labelledby={`${titleId}-retries`}>
           {RETRY_CHOICES.map((n) => (
-            <button
-              key={n}
-              type="button"
-              aria-pressed={retries === n}
-              disabled={!editable}
-              onClick={() => onChange({ ...policy, retries: n })}
-            >
+            <button key={n} type="button" aria-pressed={retries === n} disabled={!editable} onClick={() => onChange({ ...policy, retries: n })}>
               {n}
             </button>
           ))}
@@ -166,12 +170,7 @@ export function LinkPanel({
       </label>
 
       <label className="toggle">
-        <input
-          type="checkbox"
-          checked={policy.breaker ?? false}
-          disabled={!editable}
-          onChange={(e) => onChange({ ...policy, breaker: e.target.checked })}
-        />
+        <input type="checkbox" checked={policy.breaker ?? false} disabled={!editable} onChange={(e) => onChange({ ...policy, breaker: e.target.checked })} />
         <span>
           <strong>Circuit breaker</strong>
           Se mais da metade das chamadas falha, para de chamar por 5 s e falha na hora. Depois deixa passar 10% para testar.
@@ -187,7 +186,8 @@ export function LinkPanel({
         />
         <span>
           <strong>Chave de idempotência</strong>
-          Cada chamada leva um código. Se a resposta se perde e a tentativa se repete, o destino reconhece o código e não executa de novo: sem ela, uma escrita pode sair duas vezes.
+          Cada chamada leva um código. Se a resposta se perde e a tentativa se repete, o destino reconhece o código e não executa de novo: sem ela, uma escrita
+          pode sair duas vezes.
         </span>
       </label>
 

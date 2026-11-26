@@ -1,8 +1,7 @@
 // Keyboard handling shared by the panels that listen on the window.
 
 /** Whether an element takes typed text (a text field, a list box, an editable region). */
-export const isTyping = (el: EventTarget | null) =>
-  el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
+export const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
 /**
  * Whether an Escape that reached the window is for the layer rooted at `root`: nothing above it

@@ -55,15 +55,51 @@ function shape(date: string): Shape {
   const kind = Math.floor(rng() * 4)
   if (kind === 0) {
     const read = between(0.6, 0.8, 0.05)
-    return { theme: 'quase tudo leitura', mix: { static: round(0.9 - read, 0.05), read, write: 0.1 }, rps: between(1200, 2800, 100), bot: 0, crash: false, cdn: false, cache: true, limiter: false }
+    return {
+      theme: 'quase tudo leitura',
+      mix: { static: round(0.9 - read, 0.05), read, write: 0.1 },
+      rps: between(1200, 2800, 100),
+      bot: 0,
+      crash: false,
+      cdn: false,
+      cache: true,
+      limiter: false,
+    }
   }
   if (kind === 1) {
     const stat = between(0.55, 0.75, 0.05)
-    return { theme: 'muitas imagens', mix: { static: stat, read: round(0.95 - stat, 0.05), write: 0.05 }, rps: between(2000, 4500, 100), bot: 0, crash: false, cdn: true, cache: true, limiter: false }
+    return {
+      theme: 'muitas imagens',
+      mix: { static: stat, read: round(0.95 - stat, 0.05), write: 0.05 },
+      rps: between(2000, 4500, 100),
+      bot: 0,
+      crash: false,
+      cdn: true,
+      cache: true,
+      limiter: false,
+    }
   }
   if (kind === 2)
-    return { theme: 'um servidor cai no meio', mix: { static: 0.3, read: 0.55, write: 0.15 }, rps: between(500, 1500, 100), bot: 0, crash: true, cdn: false, cache: true, limiter: false }
-  return { theme: 'um bot raspando o site', mix: { static: 0.3, read: 0.55, write: 0.15 }, rps: between(600, 1200, 100), bot: between(1500, 3000, 100), crash: false, cdn: false, cache: true, limiter: true }
+    return {
+      theme: 'um servidor cai no meio',
+      mix: { static: 0.3, read: 0.55, write: 0.15 },
+      rps: between(500, 1500, 100),
+      bot: 0,
+      crash: true,
+      cdn: false,
+      cache: true,
+      limiter: false,
+    }
+  return {
+    theme: 'um bot raspando o site',
+    mix: { static: 0.3, read: 0.55, write: 0.15 },
+    rps: between(600, 1200, 100),
+    bot: between(1500, 3000, 100),
+    crash: false,
+    cdn: false,
+    cache: true,
+    limiter: true,
+  }
 }
 
 /** The design the day is tuned on: enough servers to stay under 70% busy, plus what the trouble calls for. */
@@ -71,10 +107,17 @@ function referenceDesign(s: Shape): Architecture {
   const edgeServed = s.cdn ? s.mix.static * 0.95 : 0
   const atServers = s.rps * (1 - edgeServed)
   const servers = Math.max(2, Math.ceil(atServers / (400 * 0.7)) + (s.crash ? 1 : 0))
-  const ids: [string, Kind][] = [['client', 'client'], ['lb', 'lb'], ['db', 'db']]
+  const ids: [string, Kind][] = [
+    ['client', 'client'],
+    ['lb', 'lb'],
+    ['db', 'db'],
+  ]
   const edges: ArchEdge[] = []
   let front = 'client'
-  for (const [on, id, kind] of [[s.cdn, 'cdn', 'cdn'], [s.limiter, 'limiter', 'limiter']] as [boolean, string, Kind][]) {
+  for (const [on, id, kind] of [
+    [s.cdn, 'cdn', 'cdn'],
+    [s.limiter, 'limiter', 'limiter'],
+  ] as [boolean, string, Kind][]) {
     if (!on) continue
     ids.push([id, kind])
     edges.push({ source: front, target: id })
@@ -113,7 +156,14 @@ export function dailyLevel(date: string): Daily {
     durationS: 60,
     mix: s.mix,
     traffic: [{ from: 0, rps: s.rps }],
-    ...(s.bot ? { bot: [{ from: 0, rps: 0 }, { from: 10, rps: s.bot }] } : {}),
+    ...(s.bot
+      ? {
+          bot: [
+            { from: 0, rps: 0 },
+            { from: 10, rps: s.bot },
+          ],
+        }
+      : {}),
     failures: s.crash ? [{ kind: 'server', index: 0, from: 20, to: 40 }] : [],
     goals: { minAvailability: 0.99, maxP99Ms: Infinity, maxCost: Infinity },
   }
@@ -142,8 +192,7 @@ export function loadDaily(raw: string | null): DailyRecord {
   try {
     const parsed: unknown = JSON.parse(raw ?? '{}')
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
-      for (const [date, stars] of Object.entries(parsed))
-        if (isDate(date) && typeof stars === 'number' && [0, 1, 2, 3].includes(stars)) out[date] = stars
+      for (const [date, stars] of Object.entries(parsed)) if (isDate(date) && typeof stars === 'number' && [0, 1, 2, 3].includes(stars)) out[date] = stars
   } catch {
     // Corrupt: start the record over.
   }

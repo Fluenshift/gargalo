@@ -12,7 +12,19 @@ const CLASSES: [UserClass, string][] = [
 ]
 
 /** A number the player types: while it has focus it shows exactly what was typed, and only numbers go up. */
-function NumField({ label, value, onChange, suffix, scale = 1 }: { label: string; value: number; onChange: (n: number) => void; suffix?: string; scale?: number }) {
+function NumField({
+  label,
+  value,
+  onChange,
+  suffix,
+  scale = 1,
+}: {
+  label: string
+  value: number
+  onChange: (n: number) => void
+  suffix?: string
+  scale?: number
+}) {
   const shown = String(Math.round(value * scale * 10_000) / 10_000)
   const [text, setText] = useState<string | null>(null)
   return (
@@ -83,7 +95,12 @@ export function TrafficEditor({ traffic, errors, onChange }: { traffic: Traffic;
             <NumField label={`Pico ${i + 1}, início`} value={s.from} onChange={(from) => setSpike(i, { from })} suffix="s" />
             <NumField label={`Pico ${i + 1}, fim`} value={s.to} onChange={(to) => setSpike(i, { to })} suffix="s" />
             <NumField label={`Pico ${i + 1}, req/s`} value={s.rps} onChange={(rps) => setSpike(i, { rps })} />
-            <button type="button" className="traffic__remove" aria-label={`Remover pico ${i + 1}`} onClick={() => set({ spikes: traffic.spikes.filter((_, j) => j !== i) })}>
+            <button
+              type="button"
+              className="traffic__remove"
+              aria-label={`Remover pico ${i + 1}`}
+              onClick={() => set({ spikes: traffic.spikes.filter((_, j) => j !== i) })}
+            >
               ×
             </button>
           </div>
@@ -92,7 +109,14 @@ export function TrafficEditor({ traffic, errors, onChange }: { traffic: Traffic;
           type="button"
           className="levels__map"
           disabled={traffic.spikes.length >= MAX_ROWS}
-          onClick={() => set({ spikes: [...traffic.spikes, { from: Math.min(20, Math.max(0, traffic.durationS - 10)), to: Math.min(40, traffic.durationS), rps: Math.round(traffic.rps * 3) }] })}
+          onClick={() =>
+            set({
+              spikes: [
+                ...traffic.spikes,
+                { from: Math.min(20, Math.max(0, traffic.durationS - 10)), to: Math.min(40, traffic.durationS), rps: Math.round(traffic.rps * 3) },
+              ],
+            })
+          }
         >
           Adicionar pico
         </button>
@@ -116,7 +140,12 @@ export function TrafficEditor({ traffic, errors, onChange }: { traffic: Traffic;
             <NumField label={`Falha ${i + 1}, número da peça`} value={f.index + 1} onChange={(n) => setFailure(i, { index: n - 1 })} />
             <NumField label={`Falha ${i + 1}, início`} value={f.from} onChange={(from) => setFailure(i, { from })} suffix="s" />
             <NumField label={`Falha ${i + 1}, fim`} value={f.to} onChange={(to) => setFailure(i, { to })} suffix="s" />
-            <button type="button" className="traffic__remove" aria-label={`Remover falha ${i + 1}`} onClick={() => set({ failures: traffic.failures.filter((_, j) => j !== i) })}>
+            <button
+              type="button"
+              className="traffic__remove"
+              aria-label={`Remover falha ${i + 1}`}
+              onClick={() => set({ failures: traffic.failures.filter((_, j) => j !== i) })}
+            >
               ×
             </button>
           </div>
@@ -125,7 +154,14 @@ export function TrafficEditor({ traffic, errors, onChange }: { traffic: Traffic;
           type="button"
           className="levels__map"
           disabled={traffic.failures.length >= MAX_ROWS}
-          onClick={() => set({ failures: [...traffic.failures, { kind: 'server', index: 0, from: Math.min(20, Math.max(0, traffic.durationS - 10)), to: Math.min(40, traffic.durationS) }] })}
+          onClick={() =>
+            set({
+              failures: [
+                ...traffic.failures,
+                { kind: 'server', index: 0, from: Math.min(20, Math.max(0, traffic.durationS - 10)), to: Math.min(40, traffic.durationS) },
+              ],
+            })
+          }
         >
           Adicionar falha
         </button>
