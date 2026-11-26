@@ -59,6 +59,9 @@ jobs:
       # tsc -b, then vite build: a type error fails here, before the minute of tests.
       - if: steps.changes.outputs.code == 'true'
         run: pnpm run build
+      # vercel.json gives the Oficina worker its own CSP by file name; renamed, it would lose eval and WASM in production.
+      - if: steps.changes.outputs.code == 'true'
+        run: ls dist/assets/oficinaWorker-*.js
       # Thresholds (80%) live in vite.config.ts; vitest exits non-zero below them.
       # 100%: every vCPU of the runner. By default vitest leaves one to its main process, which mostly waits.
       - if: steps.changes.outputs.code == 'true'
