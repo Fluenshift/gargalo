@@ -68,12 +68,14 @@ SELECT setval('produtos_id_seq', ${TOTAL_BUSCA});`
 const PASSOS_LISTAGEM: GuidedStep[] = [
   {
     title: 'Conheça a tela',
+    do: 'Clique em Testar agora: o projeto já responde GET /health. Os arquivos ficam à esquerda e este painel guia cada passo.',
     learn:
       'À esquerda ficam os arquivos do projeto; embaixo, o Banco (tabelas e migrações) e o Console (o que sua API registrou). Aqui à direita, a aba Requisição chama sua API como um navegador faria, e Rodar testes confere a etapa e dá até 3 estrelas. O projeto já responde GET /health: clique em Testar agora para ver.',
     check: { kind: 'request', path: '/health', status: 200, body: { status: 'ok' } },
   },
   {
     title: 'A porta de entrada: src/index.ts',
+    do: 'Clique em Abrir src/index.ts e leia como o app liga cada caminho a um arquivo. Nada para digitar ainda.',
     learn:
       'Toda requisição entra por src/index.ts. Lá, new Hono() cria o [app](hono-app) e app.route liga cada caminho ao arquivo que cuida dele. Um arquivo por recurso deixa o index curto e fácil de ler.',
     file: 'src/index.ts',
@@ -120,6 +122,7 @@ export default {
   },
   {
     title: 'Leia a rota /health',
+    do: 'Clique em Abrir src/routes/health.ts e leia: a rota GET /produtos que você vai escrever tem esta forma.',
     learn:
       'Uma rota recebe a requisição e devolve uma resposta; o SQL fica em src/db/, e a rota só chama. O banco chega em c.env.db, com o tipo [Env](env). [db.query](db-query) devolve as linhas como objetos.',
     file: 'src/routes/health.ts',
@@ -166,6 +169,7 @@ export async function health(env: Env): Promise<Response> {
   },
   {
     title: 'O que o src/http.ts já traz',
+    do: 'Clique em Abrir src/http.ts e leia as funções prontas: você vai usá-las, não editá-las.',
     learn:
       'Este curso começa com src/http.ts pronto, para você focar em listar e buscar. [ErroHttp e problema](http-helpers) montam erros em [problem+json](problem-json), e deErro transforma qualquer erro lançado numa resposta. Você vai lançar ErroHttp nas etapas seguintes, para recusar entradas inválidas.',
     file: 'src/http.ts',
@@ -184,6 +188,7 @@ throw new ErroHttp(400, 'Busca inválida', 'Informe o que buscar.')`,
   },
   {
     title: 'O SQL: listarProdutos em src/db/produtos.ts',
+    do: 'Clique em Abrir src/db/produtos.ts e escreva listarProdutos(db): id, nome e preco_centavos, em ordem de id.',
     learn:
       'SELECT * traz toda coluna: se a tabela ganhar um campo interno, ele vaza na resposta. Liste as colunas e fixe a ordem com ORDER BY, ou a lista muda de lugar entre consultas. A função só devolve linhas; o HTTP fica na rota.',
     file: 'src/db/produtos.ts',
@@ -211,6 +216,7 @@ export async function listarClientes(db: Db): Promise<Cliente[]> {
   },
   {
     title: 'A rota GET /produtos',
+    do: 'Clique em Abrir src/routes/produtos.ts e escreva GET /produtos, que devolve listarProdutos em JSON.',
     learn:
       'Crie o arquivo da rota em src/routes/. Ela chama listarProdutos e responde a lista em JSON; nada de SQL aqui. O arquivo exporta um roteador, e quem escolhe o caminho completo é o index.',
     file: 'src/routes/produtos.ts',
@@ -255,6 +261,7 @@ export async function clientes(req: Request, env: Env): Promise<Response> {
   },
   {
     title: 'Registre a rota e padronize o 404',
+    do: 'Em src/index.ts, ligue o caminho /produtos e faça a rota desconhecida responder 404 em problem+json.',
     learn:
       'O roteador só responde depois de montado no app. [app.notFound](hono-notfound) troca o texto "404 Not Found" do Hono por problem+json, e [app.onError](hono-erros) faz o mesmo com todo erro lançado. Sem isso, um ErroHttp viraria um 500 genérico.',
     file: 'src/index.ts',
@@ -305,6 +312,7 @@ import { deErro, problema } from './http'
   },
   {
     title: 'Teste a listagem',
+    do: 'Clique em Testar agora: GET /produtos deve responder 200 com a lista. Depois, rode os testes da etapa.',
     learn:
       'Teste à mão antes dos testes automáticos: o erro aparece mais cedo e mais claro. 404 quer dizer que a rota não foi registrada; 500, que o código lançou um erro (veja o Console). Com a lista na resposta, e um caminho desconhecido respondendo 404 em problem+json, rode os testes da etapa.',
     docs: ['problem-json'],
@@ -320,6 +328,7 @@ import { deErro, problema } from './http'
 const PASSOS_PAGINACAO: GuidedStep[] = [
   {
     title: 'Por que não OFFSET',
+    do: 'Leia o exemplo: com OFFSET, o banco lê e descarta tudo antes da página. Nada para digitar ainda.',
     learn:
       'Devolver tudo de uma vez enche a memória e a rede, então a lista vira páginas. Com OFFSET, o banco lê e joga fora todas as linhas anteriores: páginas fundas ficam lentas, e uma inserção no meio faz itens pularem ou repetirem. Com [cursor](paginacao-cursor), a consulta pede só o que vem depois do último id visto, direto pelo índice da chave primária.',
     example: {
@@ -335,6 +344,7 @@ SELECT id, titulo FROM posts WHERE id > $1 ORDER BY id LIMIT 20`,
   },
   {
     title: 'Query string vira número: zod com coerce',
+    do: 'Em src/validacao.ts, escreva listaSchema com cursor (padrão 0) e limite (padrão 20), usando z.coerce.',
     learn:
       'cursor e limite chegam na URL como texto: "20" não é o número 20. O [z.coerce.number()](zod-coerce) converte antes de validar, e .default() preenche o que não veio. O que não é número, ou é negativo, o [schema](zod-schema) recusa.',
     file: 'src/validacao.ts',
@@ -353,6 +363,7 @@ export const buscaPostsSchema = z.object({
   },
   {
     title: 'Falhas viram 400: lerConsulta',
+    do: 'Em src/validacao.ts, escreva lerConsulta(req, schema), que valida a query string e lança 400 quando ela não passa.',
     learn:
       'O schema precisa ver a query como um objeto: [Object.fromEntries](zod-validar) faz isso com searchParams. Se safeParse falhar, lance um ErroHttp 400 com a lista de campos no extra, e o deErro responde em problem+json. Uma função só, lerConsulta, serve a toda rota com query.',
     file: 'src/validacao.ts',
@@ -378,6 +389,7 @@ export function lerPaginaPosts(req: Request) {
   },
   {
     title: 'A consulta por cursor',
+    do: 'Em src/db/produtos.ts, troque listarProdutos por listarProdutos(db, filtro): ids maiores que o cursor, em ordem, com LIMIT.',
     learn:
       '[WHERE id > $1](paginacao-cursor) pula tudo que o cliente já viu, usando o índice da chave primária, e LIMIT $2 corta a página. O ORDER BY id é obrigatório: sem ele, "depois do cursor" não quer dizer nada. O cursor da primeira página é 0.',
     file: 'src/db/produtos.ts',
@@ -397,6 +409,7 @@ export function lerPaginaPosts(req: Request) {
   },
   {
     title: 'Um teto para o limite',
+    do: 'Em src/db/produtos.ts, crie LIMITE_MAX = 50 e use Math.min(filtro.limite, LIMITE_MAX).',
     learn:
       'O cliente escolhe o limite, e ?limite=1000000 derrubaria o servidor. Aplique um teto no código, com Math.min: pediu mais de 50, recebe 50. O schema recusa o inválido, e o teto corrige o exagero.',
     file: 'src/db/produtos.ts',
@@ -414,6 +427,7 @@ const tamanho = Math.min(filtro.tamanho, TAMANHO_MAX)`,
   },
   {
     title: 'Uma linha a mais: há próxima página?',
+    do: 'Peça limite + 1 linhas e devolva { itens, proximoCursor }, com proximoCursor null quando não houver mais.',
     learn:
       'Para saber se há próxima página sem um COUNT(*) caro, peça limite + 1 linhas. Se vieram mais que o limite, existe próxima: devolva só o limite e use o id do último item como proximoCursor. Se não vieram, proximoCursor é null.',
     file: 'src/db/produtos.ts',
@@ -431,6 +445,7 @@ return { itens, proximo }`,
   },
   {
     title: 'A rota entrega os parâmetros',
+    do: 'Em src/routes/produtos.ts, faça GET /produtos passar lerConsulta(…, listaSchema) para listarProdutos.',
     learn:
       'A rota lê a query com lerConsulta, passa o filtro ao banco e responde { itens, proximoCursor }. Um cursor ou limite inválido lança 400 antes de tocar o banco, e o app o converte em problem+json.',
     file: 'src/routes/produtos.ts',
@@ -459,6 +474,7 @@ export async function posts(req: Request, env: Env): Promise<Response> {
   },
   {
     title: 'Teste a primeira página',
+    do: 'Clique em Testar agora: GET /produtos?limite=3 deve trazer 3 itens e um proximoCursor. Depois, rode os testes da etapa.',
     learn:
       'Com limite=3, a primeira página termina no id 9, porque os ids deste banco pulam de 3 em 3: proximoCursor é 9. Peça a seguinte com cursor=9. E confira os erros: limite=0 e cursor=-1 devem responder 400 em problem+json.',
     docs: ['paginacao-cursor'],
@@ -469,6 +485,7 @@ export async function posts(req: Request, env: Env): Promise<Response> {
 const PASSOS_BUSCA: GuidedStep[] = [
   {
     title: 'Por que um índice funcional',
+    do: 'Leia o exemplo: o índice precisa ser sobre a mesma expressão que a consulta usa. Nada para digitar ainda.',
     learn:
       'WHERE lower(nome) LIKE $1 em milhares de linhas obriga o banco a olhar linha por linha: um Seq Scan. Um [índice sobre lower(nome)](indice-prefixo) guarda os nomes já em minúsculas e ordenados, e a busca por prefixo vira um intervalo nele. text_pattern_ops é o que deixa o LIKE usar esse índice mesmo com a ordenação de idioma do banco.',
     example: {
@@ -485,6 +502,7 @@ SELECT id, email FROM clientes WHERE lower(email) LIKE 'ana%'
   },
   {
     title: 'A migração do índice',
+    do: 'Clique em Abrir migrations/002_indice_busca.sql, crie o índice produtos_nome_idx sobre lower(nome) e clique em Aplicar migrações.',
     learn:
       'O índice nasce numa migração nova, e não editando a anterior: a 001 já rodou. A expressão do índice tem de ser a mesma da consulta: se o índice é em lower(nome), a consulta usa lower(nome). A classe text_pattern_ops vem depois da expressão.',
     file: 'migrations/002_indice_busca.sql',
@@ -500,6 +518,7 @@ CREATE INDEX clientes_email_idx ON clientes (lower(email) text_pattern_ops);`,
   },
   {
     title: 'O prefixo: minúsculas e curingas escapados',
+    do: 'Em src/db/produtos.ts, monte o padrão da busca: o termo em minúsculas, com % e _ escapados, e um % no fim.',
     learn:
       'Busca por começo de nome é LIKE com o termo seguido de %. Mas % e _ são curingas do LIKE: se o usuário digitar "%", casaria tudo. [Escape os curingas](like-prefixo) com uma barra e ponha o termo em minúsculas, para casar com lower(nome).',
     file: 'src/db/produtos.ts',
@@ -516,6 +535,7 @@ const prefixo = termo.trim().toLowerCase().replace(/[\\%_]/g, '\\$&') + '%'
   },
   {
     title: 'A consulta usa a expressão do índice',
+    do: 'Em src/db/produtos.ts, escreva buscarProdutos(db, busca) com WHERE lower(nome) LIKE $1.',
     learn:
       'A consulta usa exatamente a expressão do índice: WHERE lower(nome) LIKE $1 e ORDER BY lower(nome). Assim o banco anda pelo índice já ordenado, sem outro passo de ordenação. LIMIT 20 mantém a resposta pequena.',
     file: 'src/db/produtos.ts',
@@ -536,6 +556,7 @@ const prefixo = termo.trim().toLowerCase().replace(/[\\%_]/g, '\\$&') + '%'
   },
   {
     title: 'Busca ausente ou vazia',
+    do: 'Em src/routes/produtos.ts, faça GET /produtos sem busca (ou com busca vazia) continuar listando como antes. Depois clique em Testar agora.',
     learn:
       'Sem ?busca, a rota lista como antes. Com ?busca= vazio, o cliente errou: responda 400, não a lista inteira. [Ausente é undefined](hono-query) e vazio é uma string vazia, então a rota precisa separar os dois casos.',
     file: 'src/routes/produtos.ts',
@@ -580,6 +601,7 @@ const prefixo = termo.trim().toLowerCase().replace(/[\\%_]/g, '\\$&') + '%'
   },
   {
     title: 'Responda { produtos }',
+    do: 'Com busca preenchida, a rota responde { produtos } com o resultado de buscarProdutos. Clique em Testar agora.',
     learn:
       'Com a busca válida, chame o banco e responda { produtos: [...] }: um objeto, e não o array puro. Ele se distingue da lista paginada, que responde { itens, proximoCursor }. O prefixo já chega escapado do banco, então a rota não trata curingas.',
     file: 'src/routes/produtos.ts',
@@ -617,6 +639,7 @@ const prefixo = termo.trim().toLowerCase().replace(/[\\%_]/g, '\\$&') + '%'
   },
   {
     title: 'Curingas literais e testes',
+    do: 'Clique em Testar agora: busca=% deve procurar o caractere %, não tudo. Depois, rode os testes da etapa.',
     learn:
       'Teste o caso difícil: ?busca=%25 é o texto "%" (a URL escreve % como %25). Com os curingas soltos, listaria tudo; escapados, não acha nenhum produto cujo nome comece com "%". Quando passar, rode os testes: eles também conferem que o índice existe no banco.',
     docs: ['like-prefixo'],

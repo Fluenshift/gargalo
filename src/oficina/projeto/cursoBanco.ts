@@ -14,6 +14,7 @@ const FINTECH_SEED = `${CONTAS_SEED};\nINSERT INTO pagamentos (chave, valor_cent
 const PASSOS_CONTAS: GuidedStep[] = [
   {
     title: 'Onde cada coisa mora',
+    do: 'Abra src/index.ts e src/routes/health.ts e leia como o projeto se organiza. Nada para digitar ainda.',
     learn:
       'Toda requisição entra por src/index.ts: new Hono() cria o [app](hono-app) e app.route liga cada prefixo ao arquivo que cuida dele. As rotas ficam em src/routes/ e só cuidam de HTTP; o SQL fica em src/db/, e o banco chega em c.env.db (veja o [Env](env)). Aqui à direita, a aba Requisição chama sua API como um navegador faria, e Rodar testes confere a etapa, com até 3 estrelas.',
     file: 'src/index.ts',
@@ -56,6 +57,7 @@ export async function health(env: Env): Promise<Response> {
   },
   {
     title: 'O que o src/http.ts já traz',
+    do: 'Clique em Abrir src/http.ts e leia as funções prontas: você vai usá-las, não editá-las.',
     learn:
       'Este curso começa com src/http.ts pronto, para você focar no banco. [ErroHttp e problema](http-helpers) montam erros em [problem+json](problem-json), e deErro transforma qualquer erro lançado numa resposta. [idDe e achado](id-achado) validam o id da URL e viram 404 quando a linha não existe.',
     file: 'src/http.ts',
@@ -77,6 +79,7 @@ if (fatura.paga) throw new ErroHttp(409, 'Fatura já paga')`,
   },
   {
     title: 'Dinheiro em centavos: a tabela',
+    do: 'Clique em Abrir migrations/001_contas.sql, crie a tabela contas (titular e saldo_centavos em inteiro, nunca negativo) e clique em Aplicar migrações.',
     learn:
       'Dinheiro em ponto flutuante arredonda errado e perde centavos. Guarde um [inteiro em centavos](dinheiro-centavos) e deixe o banco recusar saldo negativo com CHECK. A [migração](sql-migracao) é um arquivo SQL em migrations/ que cria a tabela.',
     file: 'migrations/001_contas.sql',
@@ -95,6 +98,7 @@ CREATE TABLE cartoes (
   },
   {
     title: 'O SQL em src/db/contas.ts',
+    do: 'Clique em Abrir src/db/contas.ts e escreva criarConta(db, conta), buscarConta(db, id) e listarContas(db).',
     learn:
       'Cada operação vira uma função em src/db/, e a rota só chama. Os valores entram por [$1, $2 em params](db-query), nunca colados no SQL, e [RETURNING](returning) devolve a linha gravada. Liste as colunas em vez de usar SELECT *: a resposta não muda quando a tabela ganhar uma coluna interna.',
     file: 'src/db/contas.ts',
@@ -144,6 +148,7 @@ export async function listarCartoes(db: Db): Promise<Cartao[]> {
   },
   {
     title: 'Valide na borda com Zod',
+    do: 'Clique em Abrir src/validacao.ts e escreva contaSchema: titular texto não vazio e saldo_centavos inteiro de 0 para cima.',
     learn:
       'Nunca confie no corpo que chega: um saldo de 10.5 ou de -100 corromperia o banco. Um [schema do Zod](zod-schema) descreve o formato aceito, e o TypeScript deduz o tipo a partir dele. Os limites ficam no schema: o int do Postgres vai só até 2147483647.',
     file: 'src/validacao.ts',
@@ -163,6 +168,7 @@ export const cartaoSchema = z.object({
   },
   {
     title: 'Transforme falhas em 400: lerCorpo',
+    do: 'Em src/validacao.ts, escreva lerCorpo(req, schema), que lê o JSON e lança 400 quando ele não passa no schema.',
     learn:
       'safeParse não lança erro: devolve success e os dados, ou a lista de problemas. Converta a falha num [ErroHttp 400](zod-validar) com a lista de campos no extra, e o deErro a responde em problem+json. Uma função só, lerCorpo, serve a todas as rotas de POST.',
     file: 'src/validacao.ts',
@@ -186,6 +192,7 @@ export async function lerCartao(req: Request) {
   },
   {
     title: 'As rotas de contas',
+    do: 'Clique em Abrir src/routes/contas.ts e escreva POST /contas (201), GET /contas e GET /contas/:id (404 quando não existe).',
     learn:
       'A rota é fina: lê a entrada, chama a função de src/db/ e responde. POST responde [201 com o cabeçalho Location](hono-header-resposta), que diz onde ler o recurso novo; GET /:id usa idDe e achado para os erros 400 e 404. Os erros são lançados: quem os converte em resposta é o app, no próximo passo.',
     file: 'src/routes/contas.ts',
@@ -252,6 +259,7 @@ export async function cartoes(req: Request, env: Env, id?: string): Promise<Resp
   },
   {
     title: 'Registre a rota e padronize os erros',
+    do: 'Em src/index.ts, ligue o caminho /contas e o tratamento de erros com deErro. Depois clique em Testar agora: GET /contas/abc deve responder 404.',
     learn:
       'Falta ligar a rota e dizer ao app como responder erros. [app.notFound](hono-notfound) trata o caminho sem dono, e [app.onError](hono-erros) pega todo erro lançado: os dois usam os helpers de http.ts. Sem esse passo, um ErroHttp viraria um 500 genérico.',
     file: 'src/index.ts',
@@ -312,6 +320,7 @@ export default {
 const PASSOS_TRANSFERENCIAS: GuidedStep[] = [
   {
     title: 'A corrida do saldo',
+    do: 'Leia o exemplo: duas transferências ao mesmo tempo podem gastar o mesmo saldo. Nada para digitar ainda.',
     learn:
       'Duas transferências ao mesmo tempo da mesma conta podem ler o mesmo saldo e gastar o dinheiro duas vezes: uma [condição de corrida](corrida-saldo). Ler o saldo, conferir no código e gravar depois deixa a brecha aberta; a saída é deixar o próprio UPDATE conferir. O banco do navegador roda uma transação por vez e não mostra a corrida, então a conferência saldo-atomico do checklist lê o seu SQL para ver se a brecha existe.',
     example: {
@@ -330,6 +339,7 @@ if (!baixado) throw new ErroHttp(409, 'Sem estoque') // nenhuma linha mudou`,
   },
   {
     title: 'A tabela de transferências',
+    do: 'Clique em Abrir migrations/002_transferencias.sql, crie a tabela transferencias (de, para, valor_centavos, criado_em) e clique em Aplicar migrações.',
     learn:
       'Cada etapa traz sua migração, numerada para rodar depois da anterior. A transferência guarda quem enviou, quem recebeu e o valor, com [REFERENCES](sql-migracao) para o banco recusar uma conta que não existe. O CHECK impede valor zero ou negativo, mesmo se a validação falhar.',
     file: 'migrations/002_transferencias.sql',
@@ -348,6 +358,7 @@ if (!baixado) throw new ErroHttp(409, 'Sem estoque') // nenhuma linha mudou`,
   },
   {
     title: 'Uma regra entre dois campos',
+    do: 'Em src/validacao.ts, escreva transferenciaSchema com de, para e valor_centavos, e a regra de que de e para são diferentes.',
     learn:
       'O corpo traz três números, e a regra "origem diferente do destino" envolve dois campos. [refine](zod-refine) roda depois dos campos individuais e recebe o objeto inteiro; o path diz em qual campo mostrar o erro. Os ids e o valor começam em 1: zero e negativos nunca existem.',
     file: 'src/validacao.ts',
@@ -370,6 +381,7 @@ if (!baixado) throw new ErroHttp(409, 'Sem estoque') // nenhuma linha mudou`,
   },
   {
     title: 'Tudo ou nada: a transação',
+    do: 'Clique em Abrir src/db/transferencias.ts e escreva a casca de transferir(db, de, para, valor) com db.transaction.',
     learn:
       'Débito, crédito e registro precisam gravar juntos, ou nenhum grava. [db.transaction](db-transaction) abre a transação e entrega um tx: use sempre o tx lá dentro, nunca o db. Se qualquer passo lançar um erro, o banco desfaz tudo o que a transação já gravou.',
     file: 'src/db/transferencias.ts',
@@ -392,6 +404,7 @@ if (!baixado) throw new ErroHttp(409, 'Sem estoque') // nenhuma linha mudou`,
   },
   {
     title: 'Debite com UPDATE condicional',
+    do: 'Dentro da transação, debite a origem com um UPDATE que só vale se o saldo bastar; sem linha, lance 404 ou 409.',
     learn:
       'Primeiro tire o dinheiro da origem, e deixe o [UPDATE condicional](update-condicional) conferir o saldo: WHERE saldo_centavos >= $1. RETURNING vem vazio quando nenhuma linha mudou, e então a conta não existe ou o saldo não bastou. Pergunte ao banco qual dos dois, para responder 404 ou 409.',
     file: 'src/db/transferencias.ts',
@@ -415,6 +428,7 @@ if (!antes) {
   },
   {
     title: 'Credite o destino e registre',
+    do: 'Na mesma transação, credite o destino e insira a linha em transferencias; devolva { de, para, valor_centavos, saldo_centavos }.',
     learn:
       'Com a origem debitada, credite o destino e grave a linha da transferência. Se o destino não existir, o UPDATE devolve vazio: lance um ErroHttp 404, e o [throw dentro da transação](db-transaction) desfaz o débito que já tinha sido feito. Termine devolvendo o novo saldo da origem.',
     file: 'src/db/transferencias.ts',
@@ -433,6 +447,7 @@ return { de: id, para, pontos: custo, saldo: antes.pontos } // o resultado da fu
   },
   {
     title: 'Evite impasse: trave as contas em ordem',
+    do: 'Como primeira consulta da transação, trave as duas contas em ordem de id com SELECT … FOR UPDATE.',
     learn:
       'Uma transferência de A para B e outra de B para A, ao mesmo tempo, podem ficar cada uma esperando a outra: um [deadlock](for-update-ordem). A saída é travar sempre na mesma ordem, a do id, com FOR UPDATE antes de mexer nos saldos. O banco do navegador não reproduz isso, mas num Postgres de verdade evita a falha.',
     file: 'src/db/transferencias.ts',
@@ -449,6 +464,7 @@ await tx.query('SELECT id FROM carteiras WHERE id = ANY($1) ORDER BY id FOR UPDA
   },
   {
     title: 'A rota e o registro',
+    do: 'Clique em Abrir src/routes/transferencias.ts, escreva POST /transferencias e ligue o caminho /transferencias no index.',
     learn:
       'A rota segue o molde da etapa anterior: lê o corpo validado, chama transferir e responde 200 com o resultado. Os erros 400, 404 e 409 já saem como problem+json pelo app. Registre a rota no index como fez com contas e teste com POST na aba Requisição.',
     file: 'src/routes/transferencias.ts',
@@ -493,6 +509,7 @@ export async function pontos(req: Request, env: Env): Promise<Response> {
 const PASSOS_PAGAMENTOS: GuidedStep[] = [
   {
     title: 'Por que uma chave de idempotência',
+    do: 'Leia o exemplo: a mesma chave repetida não pode cobrar duas vezes. Nada para digitar ainda.',
     learn:
       'Quando a rede falha, o cliente repete o POST sem saber se o primeiro chegou, e sem proteção cobra duas vezes. Com o cabeçalho Idempotency-Key, o cliente manda uma chave única por cobrança, e o servidor reconhece a repetição. Essa regra é a [idempotência](idempotencia): a mesma chave com o mesmo valor devolve a resposta original, e com outro valor é um erro 422.',
     example: {
@@ -511,6 +528,7 @@ const PASSOS_PAGAMENTOS: GuidedStep[] = [
   },
   {
     title: 'A chave é UNIQUE no banco',
+    do: 'Clique em Abrir migrations/003_pagamentos.sql, crie a tabela pagamentos (chave UNIQUE e valor_centavos positivo) e clique em Aplicar migrações.',
     learn:
       'Guarde a chave numa coluna UNIQUE: o banco recusa duas linhas com a mesma chave, mesmo que duas requisições cheguem juntas. Essa garantia mora no banco porque é o único lugar onde a corrida se resolve de verdade. Veja a [migração](sql-migracao) da etapa anterior para o formato.',
     file: 'migrations/003_pagamentos.sql',
@@ -529,6 +547,7 @@ const PASSOS_PAGAMENTOS: GuidedStep[] = [
   },
   {
     title: 'O valor do pagamento',
+    do: 'Em src/validacao.ts, escreva pagamentoSchema com valor_centavos.',
     learn:
       'Você já escreveu schemas: pagamentoSchema só tem valor_centavos, um inteiro de 1 a 2147483647. A chave não entra nele, porque não vem no corpo e sim num cabeçalho. Valide o valor do mesmo jeito que na transferência, com [zod](zod-schema).',
     file: 'src/validacao.ts',
@@ -545,6 +564,7 @@ export const envioSchema = z.object({
   },
   {
     title: 'Leia o cabeçalho Idempotency-Key',
+    do: 'Clique em Abrir src/routes/pagamentos.ts e escreva POST /pagamentos lendo o cabeçalho Idempotency-Key (sem ele, 400) e o corpo validado.',
     learn:
       'O cabeçalho não vem no corpo: leia com [c.req.header](hono-header), que ignora maiúsculas e devolve undefined quando falta. Sem a chave não há como proteger a cobrança, então responda 400 com ErroHttp antes de qualquer outra coisa.',
     file: 'src/routes/pagamentos.ts',
@@ -585,6 +605,7 @@ export const envioSchema = z.object({
   },
   {
     title: 'Insira sem brigar: ON CONFLICT',
+    do: 'Clique em Abrir src/db/pagamentos.ts e escreva processarPagamento(db, chave, valorCentavos) com INSERT … ON CONFLICT DO NOTHING.',
     learn:
       'Conferir a chave com um SELECT e inserir depois deixa a mesma brecha da corrida do saldo. Em vez disso, tente inserir logo: [ON CONFLICT DO NOTHING](on-conflict) ignora a linha quando a chave já existe, e o RETURNING vem vazio. Um INSERT só decide quem chegou primeiro.',
     file: 'src/db/pagamentos.ts',
@@ -606,6 +627,7 @@ export const envioSchema = z.object({
   },
   {
     title: 'Chave repetida: devolver ou recusar',
+    do: 'Em processarPagamento, quando o INSERT não gravar, busque o pagamento da chave: mesmo valor, devolva-o; valor diferente, lance 422.',
     learn:
       'Se o INSERT veio vazio, a chave já foi usada: busque o pagamento guardado. Com o mesmo valor, é uma repetição, e a resposta é a original; com valor diferente, é a chave reutilizada para outra cobrança, e a resposta é 422. O 422 diz: entendi o pedido, mas não posso aceitá-lo.',
     file: 'src/db/pagamentos.ts',
@@ -623,6 +645,7 @@ return guardado // repetição idêntica: a mesma resposta de antes`,
   },
   {
     title: 'A rota responde 201, sempre',
+    do: 'Faça a rota chamar processarPagamento e responder 201, e ligue o caminho /pagamentos no index.',
     learn:
       'A rota entrega a chave e o valor à função do banco e responde 201 com o pagamento, tanto na primeira vez quanto na repetição: quem repete recebe a mesma resposta de antes. Registre a rota no index. Depois, na aba Requisição, mande POST com o cabeçalho Idempotency-Key duas vezes: o id não muda.',
     file: 'src/routes/pagamentos.ts',

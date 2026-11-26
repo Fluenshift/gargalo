@@ -141,12 +141,14 @@ const FIXED = revisaoRoutes(...FIXED_BLOCKS)
 const PASSOS_REVISAO: GuidedStep[] = [
   {
     title: 'Vazamento: veja o que a rota devolve',
+    do: 'Clique em Testar agora e olhe a resposta de GET /usuarios: repare no campo que não deveria estar ali.',
     learn:
       'Revisar começa por reproduzir: antes de mexer no código, veja o bug acontecer. Clique em Testar agora e leia o corpo da resposta de GET /usuarios, campo por campo. Uma rota que devolve linhas sem escolher as colunas entrega tudo que a tabela tem, inclusive o que ninguém deveria ver.',
     check: { kind: 'request', path: '/usuarios', status: 200 },
   },
   {
     title: 'Vazamento: escolha as colunas',
+    do: 'Em src/index.ts, troque o SELECT * de /usuarios pelas colunas id, nome e email. Depois clique em Testar agora.',
     learn:
       'SELECT * devolve toda coluna da tabela, e quando alguém acrescentar uma coluna sensível amanhã ela vaza sozinha. Listar as [colunas](select-colunas) faz da consulta uma lista do que pode sair. Depois de corrigir, clique em Testar agora e confira que o campo sumiu.',
     file: 'src/index.ts',
@@ -164,12 +166,14 @@ return Response.json(await env.db.query('SELECT id, nome, cidade FROM clientes O
   },
   {
     title: 'SQL injection: engane a busca',
+    do: 'Clique em Testar agora: o nome enviado vira SQL e a busca devolve todos os usuários.',
     learn:
       'A busca monta o SQL juntando texto com o nome que veio na URL. Se o nome contiver aspas, quem pediu passa a escrever pedaço do seu SQL: é uma [SQL injection](sql-injecao). Clique em Testar agora: a busca por um nome que não existe devolve todos os usuários.',
     check: { kind: 'request', path: INJECAO, status: 200 },
   },
   {
     title: 'SQL injection: passe o nome como parâmetro',
+    do: 'Em src/index.ts, troque a concatenação do nome por um parâmetro $1. Depois clique em Testar agora: a busca deve voltar vazia.',
     learn:
       'A defesa é nunca colar a entrada no texto do SQL. Escreva $1 onde o valor entra e passe o valor à parte, no segundo argumento de [db.query](db-query): o banco trata aquilo sempre como dado, nunca como comando.',
     file: 'src/index.ts',
@@ -189,12 +193,14 @@ return Response.json(await env.db.query('SELECT id, nome FROM clientes WHERE cid
   },
   {
     title: 'N+1: conte as consultas',
+    do: 'Clique em Testar agora e veja quantas consultas GET /pedidos faz: uma por pedido, mais uma.',
     learn:
       'A lista de pedidos busca os itens de cada pedido com uma consulta dentro de um laço: com 4 pedidos são 5 consultas, com 1000 são 1001. É o [N+1](n-mais-um), e passa em teste de caminho feliz porque a resposta está certa. Clique em Testar agora e leia, junto da resposta, quantas consultas ela custou.',
     check: { kind: 'request', path: '/pedidos', status: 200 },
   },
   {
     title: 'N+1: busque todos os itens de uma vez',
+    do: 'Em src/index.ts, busque os itens de todos os pedidos numa consulta só e agrupe por pedido_id. Depois clique em Testar agora: devem ser 2 consultas.',
     learn:
       'Troque as N consultas por uma só: peça os itens de todos os pedidos com WHERE coluna = ANY($1), passando a lista de ids, e agrupe o resultado em memória. Dá sempre 2 consultas, não importa quantos pedidos existam.',
     file: 'src/index.ts',
@@ -215,12 +221,14 @@ return Response.json(autores.map((a) => ({ ...a, livros: livros.filter((l) => l.
   },
   {
     title: 'Condição de corrida: ler, esperar, gravar',
+    do: 'Clique em Testar agora e leia o código de /produtos/1/comprar: ele lê o estoque, espera e só então grava.',
     learn:
       'A compra lê o estoque, decide e só depois grava. Se duas compras do último item chegam juntas, as duas leem 1, as duas decidem vender e o item é vendido duas vezes. O Testar agora faz uma compra só e não mostra isso: o bug só aparece com dois pedidos ao mesmo tempo, e é o Rodar testes que os envia.',
     check: { kind: 'request', method: 'POST', path: '/produtos/1/comprar', status: 201 },
   },
   {
     title: 'Condição de corrida: deixe o banco decidir',
+    do: 'Em src/index.ts, troque o ler-e-gravar por um UPDATE que só baixa o estoque se ele for maior que zero. Depois, rode os testes da etapa.',
     learn:
       'Em vez de ler e gravar, faça o banco conferir e gravar numa operação só: UPDATE ... WHERE condição RETURNING. Se a condição falhou, nenhuma linha volta e a compra é recusada. Registre a compra na mesma [transação](db-transaction), para a baixa e o registro andarem juntos.',
     file: 'src/index.ts',
