@@ -46,7 +46,8 @@ jobs:
       - if: steps.changes.outputs.code == 'true'
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          # engines.node, the same version Vercel reads.
+          node-version-file: package.json
           cache: pnpm
       - if: steps.changes.outputs.code == 'true'
         run: pnpm install --frozen-lockfile

@@ -4,7 +4,7 @@ Jogo de backend e system design. Na carreira, monte uma arquitetura (CDN, load b
 
 ## Rodar
 
-Precisa do [pnpm](https://pnpm.io/installation) 12. Com outra versão instalada, o pnpm troca sozinho para a fixada no `package.json`.
+Precisa do Node 24 e do [pnpm](https://pnpm.io/installation) 12. Com outra versão instalada, o pnpm troca sozinho para a fixada no `package.json`.
 
 ```bash
 pnpm install
