@@ -24,14 +24,16 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       # Every installed package must carry a valid npm registry signature (catches tampered tarballs).
-      - run: npm audit signatures
-      - run: npx oxlint --deny-warnings
+      - run: pnpm audit signatures
+      - run: pnpm exec oxlint --deny-warnings
 
   typecheck:
     name: Typecheck
@@ -40,12 +42,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx tsc -b
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsc -b
 
   test:
     name: Test and coverage
@@ -54,13 +58,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       # Thresholds (80%) live in vite.config.ts; vitest exits non-zero below them.
-      - run: npm run test:coverage
+      - run: pnpm run test:coverage
 
   build:
     name: Build
@@ -69,9 +75,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npx vite build
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vite build

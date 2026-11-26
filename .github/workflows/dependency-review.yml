@@ -20,11 +20,12 @@ jobs:
           config-file: ./.github/dependency-review-config.yml
 
   # dependency-review-action needs GitHub Advanced Security on private repos;
-  # npm audit covers known vulnerabilities on any plan.
-  npm-audit:
-    name: npm audit
+  # pnpm audit covers known vulnerabilities on any plan. It reads the lockfile, no install needed.
+  pnpm-audit:
+    name: pnpm audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - run: npm audit --audit-level=moderate
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - run: pnpm audit --audit-level moderate
