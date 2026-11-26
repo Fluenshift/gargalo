@@ -26,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          # Whole history: the next step diffs against the base. Nothing here pushes, so the token isn't kept.
           fetch-depth: 0
+          persist-credentials: false
       - name: Changes beyond documentation
         id: changes
         env:

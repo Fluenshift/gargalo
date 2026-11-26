@@ -4,20 +4,26 @@ name: Dependency Review
 on:
   pull_request:
 
+# A new push to a PR cancels the review of the push before it.
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   dependency-review:
     name: Dependency review
-    # Writes the summary comment on the PR; the audit job below only reads.
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: write # posts the review summary as a comment on the PR
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/dependency-review-action@v5
         with:
           config-file: ./.github/dependency-review-config.yml
@@ -30,5 +36,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - run: pnpm audit --audit-level moderate
