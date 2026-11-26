@@ -1,3 +1,4 @@
 # Any dependency change needs the owner's review, including PRs opened by agents or bots.
-/package.json      @levyrodrigues23
-/package-lock.json @levyrodrigues23
+/package.json        @levyrodrigues23
+/pnpm-lock.yaml      @levyrodrigues23
+/pnpm-workspace.yaml @levyrodrigues23
