@@ -2,3 +2,10 @@
 /package.json        @levyrodrigues23
 /pnpm-lock.yaml      @levyrodrigues23
 /pnpm-workspace.yaml @levyrodrigues23
+
+# Workflows run with the repository's token: changes to them, to the actions lockfile and to the
+# CI configuration go through the owner too (GitHub's guide on secure use of Actions).
+/.github/workflows/                   @levyrodrigues23
+/.github/dependabot.yml               @levyrodrigues23
+/.github/dependency-review-config.yml @levyrodrigues23
+/.github/CODEOWNERS                   @levyrodrigues23

@@ -23,10 +23,10 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/dependency-review-action@v5
+      - uses: actions/dependency-review-action@v5.0.1
         with:
           config-file: ./.github/dependency-review-config.yml
 
@@ -37,8 +37,20 @@ jobs:
     runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: pnpm/action-setup@v6.1.1
       - run: pnpm audit --audit-level moderate
+
+  # Fails when .github/workflows/actions.lock is out of sync with the workflows,
+  # or a locked commit no longer matches its tag upstream.
+  actions-lock:
+    name: Actions lockfile
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/gh-actions-lock@verify/v0.5.1
