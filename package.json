@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint --deny-warnings",
+    "fmt": "oxfmt",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
@@ -37,6 +38,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.1.1",
+    "oxfmt": "0.80.0",
     "oxlint": "^1.94.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.6",
