@@ -4,21 +4,29 @@ name: Dependency Review
 on:
   pull_request:
 
+# A new push to a PR cancels the review of the push before it.
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
+# Light jobs (an API call, a lockfile read) run on single-CPU ubuntu-slim runners: they start in a container,
+# not a whole VM, and their 15-minute limit is far above what these take.
 jobs:
   dependency-review:
     name: Dependency review
-    # Writes the summary comment on the PR; the audit job below only reads.
     permissions:
       contents: read
-      pull-requests: write
-    runs-on: ubuntu-latest
+      pull-requests: write # posts the review summary as a comment on the PR
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/dependency-review-action@v5
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v5.0.1
         with:
           config-file: ./.github/dependency-review-config.yml
 
@@ -26,9 +34,23 @@ jobs:
   # pnpm audit covers known vulnerabilities on any plan. It reads the lockfile, no install needed.
   pnpm-audit:
     name: pnpm audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6.1.1
       - run: pnpm audit --audit-level moderate
+
+  # Fails when .github/workflows/actions.lock is out of sync with the workflows,
+  # or a locked commit no longer matches its tag upstream.
+  actions-lock:
+    name: Actions lockfile
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/gh-actions-lock@verify/v0.5.1

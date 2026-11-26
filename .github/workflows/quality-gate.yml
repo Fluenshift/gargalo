@@ -24,9 +24,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
+          # Whole history: the next step diffs against the base. Nothing here pushes, so the token isn't kept.
           fetch-depth: 0
+          persist-credentials: false
       - name: Changes beyond documentation
         id: changes
         env:
@@ -40,11 +42,11 @@ jobs:
           else
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
-      # The version comes from packageManager in package.json. Third-party action: pinned to a commit.
+      # The version comes from packageManager in package.json.
       - if: steps.changes.outputs.code == 'true'
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        uses: pnpm/action-setup@v6.1.1
       - if: steps.changes.outputs.code == 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@v7.1.0
         with:
           # engines.node, the same version Vercel reads.
           node-version-file: package.json

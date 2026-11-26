@@ -4,10 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # pnpm installs only versions at least a day old (pnpm-workspace.yaml). Three days keeps every update
-    # installable and gives the registry time to pull a bad release. Security updates don't wait.
+    # A version waits seven days before Dependabot proposes it: time for the registry to pull a bad release,
+    # and well past the one day pnpm requires (pnpm-workspace.yaml). Security updates don't wait.
     cooldown:
-      default-days: 3
+      default-days: 7
     ignore:
       # Types must match engines.node in package.json (24), not the newest Node.
       - dependency-name: '@types/node'
@@ -20,7 +20,7 @@ updates:
     schedule:
       interval: weekly
     cooldown:
-      default-days: 3
+      default-days: 7
     groups:
       actions:
         patterns: ['*']

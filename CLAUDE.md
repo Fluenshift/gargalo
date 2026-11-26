@@ -28,6 +28,7 @@ A change is done when `pnpm run lint && pnpm run test:coverage && pnpm run build
 - No new dependency without the owner's approval in the conversation or issue. Prefer what the platform, the standard library or an installed package already does.
 - Before proposing a package, confirm it is real and healthy on the npm registry (`pnpm view <name> time.created repository.url maintainers`, weekly downloads on npmjs.com): exact name, an existing source repository, real maintainers and history. AI-suggested names can be hallucinated and squatted with malware (slopsquatting); never install a name you have not checked.
 - Install with `pnpm add <name>@<exact version>` so the lockfile records it, and say in the PR why the package is needed. The supply-chain settings in `pnpm-workspace.yaml` (minimum release age, trust policy) apply to every install; loosen them only with the owner's approval.
+- Actions are dependencies too. Workflows reference them by version tag, and `.github/workflows/actions.lock` pins each one to a commit. After changing a `uses:` line, run `gh actions-lock` (the `github/gh-actions-lock` extension) and commit the lockfile; the Actions lockfile check fails while it's stale.
 
 ## Git
 
