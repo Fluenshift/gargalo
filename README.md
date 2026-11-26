@@ -10,6 +10,7 @@ Precisa do Node 24 e do [pnpm](https://pnpm.io/installation) 12. Com outra vers�
 pnpm install
 pnpm dev       # http://localhost:5173
 pnpm test      # testes do motor de simulação e da Oficina
+pnpm fmt       # formata o código (oxfmt)
 ```
 
 ## Como a simulação funciona
