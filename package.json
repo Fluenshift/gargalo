@@ -21,7 +21,7 @@
     "@lezer/highlight": "1.2.5",
     "@xyflow/react": "^13.0.2",
     "codemirror": "6.0.2",
-    "hono": "4.13.19",
+    "hono": "4.13.20",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sucrase": "3.35.1",
