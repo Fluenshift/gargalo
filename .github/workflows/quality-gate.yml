@@ -6,9 +6,11 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to a PR cancels the run of the push before it: only the last one matters.
+# On main every merge is checked, so a run is never cancelled there.
 concurrency:
   group: quality-gate-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
