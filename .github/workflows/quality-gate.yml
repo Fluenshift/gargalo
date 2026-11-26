@@ -54,7 +54,7 @@ jobs:
       - if: steps.changes.outputs.code == 'true'
         run: pnpm audit signatures
       - if: steps.changes.outputs.code == 'true'
-        run: pnpm exec oxlint --deny-warnings
+        run: pnpm run lint
       # tsc -b, then vite build: a type error fails here, before the minute of tests.
       - if: steps.changes.outputs.code == 'true'
         run: pnpm run build
