@@ -1,12 +1,19 @@
 fail-on-severity: moderate
 comment-summary-in-pr: on-failure
-deny-licenses:
-  - GPL-2.0-only
-  - GPL-2.0-or-later
-  - GPL-3.0-only
-  - GPL-3.0-or-later
-  - AGPL-3.0-only
-  - AGPL-3.0-or-later
+# Only these licenses may come in with a new or updated package; anything else fails the review until
+# someone looks at it. The list is what the project already uses (MPL-2.0 comes with lightningcss,
+# from Vite) plus a few other permissive ones. deny-licenses, the old way, is deprecated.
+allow-licenses:
+  - MIT
+  - ISC
+  - 0BSD
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - Apache-2.0
+  - MPL-2.0
+  - CC0-1.0
+  - BlueOak-1.0.0
+  - Unlicense
 # New packages with a weak OpenSSF Scorecard (no repo, no maintainers, no history) get flagged in the PR summary.
 show-openssf-scorecard: true
 warn-on-openssf-scorecard-level: 3
