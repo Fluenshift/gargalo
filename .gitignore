@@ -8,6 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+# pnpm project: a lockfile from npm or yarn is never committed.
+package-lock.json
+yarn.lock
 dist
 dist-ssr
 *.local
