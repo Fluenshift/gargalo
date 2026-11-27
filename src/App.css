@@ -9,6 +9,26 @@
   redefines the palette, further down. src/contrast.test.ts checks AA on both.
 */
 
+/* Self-hosted (latin subset, OFL) so no visit pings Google; Vite hashes them into /assets. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/instrument-serif-400.woff2') format('woff2');
+}
+
 :root {
   /* Type */
   --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
